@@ -83,7 +83,8 @@ class Postgres(BaseClient):
 
         with open(write_file, 'r') as f:
             with self.conn.cursor() as cursor:
-                cursor.copy_from(f, self.temp_table_name, sep=',')
+                copy = 'COPY {} TO STDOUT WITH CSV'.format(self.table_name)
+                cursor.copy_expert(copy, file)
 
         check_load_stmt = "SELECT COUNT(*) FROM {table_name}".format(table_name=self.temp_table_name)
         response = self.execute_sql(check_load_stmt, fetch='one')
