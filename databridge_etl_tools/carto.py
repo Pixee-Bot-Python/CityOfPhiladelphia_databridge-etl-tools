@@ -11,7 +11,7 @@ import petl as etl
 import geopetl
 import requests
 
-from .postgres_client import Postgres
+from .postgres import Postgres
 
 
 csv.field_size_limit(sys.maxsize)

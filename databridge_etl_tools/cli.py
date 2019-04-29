@@ -1,8 +1,8 @@
 import click
 
-from client.oracle_client import Oracle
-from client.carto_client import Carto
-from client.postgres_client import Postgres
+from .oracle import Oracle
+from .carto import Carto
+from .postgres import Postgres
 
 
 @click.group()
