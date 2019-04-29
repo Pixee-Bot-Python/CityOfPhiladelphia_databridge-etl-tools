@@ -19,14 +19,14 @@ setup(
         'idna==2.8',
         'jmespath==0.9.4',
         'petl==1.2.0',
-        'psycopg2==2.6.2',
+        'psycopg2==2.8.2',
         'pyrestcli==0.6.8',
         'python-dateutil==2.8.0',
         'requests==2.21.0',
         's3transfer==0.2.0',
         'six==1.12.0',
         'urllib3==1.24.2',
-        '-e https://github.com/CityOfPhiladelphia/geopetl.git@b7c854c3dd3853abf32731f5dc1b707ea9ecae23#egg=geopetl',
+        'geopetl @ git+ssh://git@github.com/CityOfPhiladelphia/geopetl@#egg=b7c854c3dd3853abf32731f5dc1b707ea9ecae23'
     ],
     entry_points={
         'console_scripts': [
