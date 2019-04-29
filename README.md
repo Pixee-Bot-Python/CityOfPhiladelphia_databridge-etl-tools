@@ -28,5 +28,5 @@ databridge_etl_tools load \
 
 ## Installation
 ```bash
-pip install git+https://github.com/CityOfPhiladelphia/databridge-etl-tools#egg=databridge_etl_tools --process-dependency-links
+pip install git+https://github.com/CityOfPhiladelphia/databridge-etl-tools#egg=databridge_etl_tools
 ```

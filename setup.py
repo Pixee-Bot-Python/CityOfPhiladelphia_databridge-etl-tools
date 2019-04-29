@@ -26,9 +26,7 @@ setup(
         's3transfer==0.2.0',
         'six==1.12.0',
         'urllib3==1.24.2',
-    ],
-    dependency_links=[
-        'https://github.com/CityOfPhiladelphia/geopetl.git@b7c854c3dd3853abf32731f5dc1b707ea9ecae23#egg=geopetl',
+        '-e https://github.com/CityOfPhiladelphia/geopetl.git@b7c854c3dd3853abf32731f5dc1b707ea9ecae23#egg=geopetl',
     ],
     entry_points={
         'console_scripts': [
