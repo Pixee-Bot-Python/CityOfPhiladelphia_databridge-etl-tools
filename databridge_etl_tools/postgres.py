@@ -11,13 +11,14 @@ TEST = os.environ.get('TEST', False)
 
 class Postgres(BaseClient):
 
-    def __init__(self, connection_string, table_name, table_schema, s3_bucket):
+    def __init__(self, connection_string, table_name, table_schema, s3_bucket, select_users=None):
 
         super(Postgres, self).__init__(
             connection_string=connection_string,
             table_name=table_name,
             table_schema=table_schema,
-            s3_bucket=s3_bucket
+            s3_bucket=s3_bucket,
+            select_users=select_users
         )
 
     @property
@@ -140,7 +141,7 @@ class Postgres(BaseClient):
                 'ALTER TABLE "{}" RENAME TO "{}_old";'.format(self.table_name, self.table_name) + \
                 'ALTER TABLE "{}" RENAME TO "{}";'.format(self.temp_table_name, self.table_name) + \
                 'DROP TABLE "{}_old" cascade;'.format(self.table_name) + \
-                generate_select_grants() + \
+                self.generate_select_grants() + \
                 'COMMIT;'
         self.logger.info('Swapping temporary and production tables...')
         self.logger.info(stmt)

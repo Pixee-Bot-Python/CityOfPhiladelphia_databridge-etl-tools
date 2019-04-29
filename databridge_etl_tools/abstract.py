@@ -44,13 +44,21 @@ class BaseClient(ABC):
     _schema = None
     _num_rows_in_upload_file = None
 
-    def __init__(self, connection_string, table_name, table_schema, s3_bucket, index_fields=None, output_file=False):
+    def __init__(self, 
+                 connection_string, 
+                 table_name, 
+                 table_schema, 
+                 s3_bucket, 
+                 index_fields=None, 
+                 output_file=False, 
+                 select_users=None):
         self.connection_string = os.environ.get('CONNECTION_STRING', connection_string)
         self.table_name = table_name
         self.table_schema = table_schema
         self.s3_bucket = s3_bucket
         self.index_fields = index_fields
         self.output_file = output_file
+        self.select_users = select_users
 
     @property
     def schema_table_name(self):
@@ -222,9 +230,10 @@ class BaseClient(ABC):
 
     def generate_select_grants(self):
         grants_sql = ''
-        if not db_select_users:
+        if not self.select_users:
             return grants_sql
-        for user in db_select_users:
+        select_users = self.select_users.split(',')
+        for user in select_users:
             self.logger.info('{} - Granting SELECT to {}'.format(db_table_name, user))
             grants_sql += 'GRANT SELECT ON "{}" TO "{}";'.format(db_table_name, user)
         self.logger.info(grants_sql)
