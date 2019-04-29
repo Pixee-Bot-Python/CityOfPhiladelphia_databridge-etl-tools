@@ -1,0 +1,132 @@
+import csv
+import sys
+import os
+import re
+import json
+
+from carto.sql import SQLClient
+from carto.auth import APIKeyAuthClient
+from carto.exceptions import CartoException
+import petl as etl
+import geopetl
+import requests
+
+from .postgres_client import Postgres
+
+
+csv.field_size_limit(sys.maxsize)
+
+TEST = os.environ.get('TEST', False)
+USR_BASE_URL = "https://{user}.carto.com/"
+CONNECTION_STRING_REGEX = r'^carto://(.+):(.+)'
+
+class Carto(Postgres):
+
+    _user = None
+    _api_key = None
+    _schema = None
+
+    def __init__(self, connection_string, table_name, table_schema, s3_bucket):
+
+        super(Carto, self).__init__(
+            connection_string=connection_string,
+            table_name=table_name,
+            table_schema=table_schema,
+            s3_bucket=s3_bucket
+        )
+
+    @property
+    def user(self):
+        if self._user is None:
+            creds = re.match(CONNECTION_STRING_REGEX, self.connection_string).groups()
+            user = creds[0]
+            self._user = user
+        return self._user
+
+    @property
+    def api_key(self):
+        if self._api_key is None:
+            creds = re.match(CONNECTION_STRING_REGEX, self.connection_string).groups()
+            api_key = creds[1]
+            self._api_key = api_key
+        return self._api_key
+
+    @property
+    def conn(self):
+        if self._conn is None:
+            self.logger.info('Making connection to Carto {} account...'.format(self.user))
+            try:
+                api_key = self.api_key
+                base_url = USR_BASE_URL.format(user=self.user)
+                auth_client = APIKeyAuthClient(api_key=api_key, base_url=base_url)
+                conn = SQLClient(auth_client)
+                self._conn = conn
+                self.logger.info('Connected to Carto.\n')
+            except CartoException as e:
+                self.logger.error('Failed making connection to Carto {} account...'.format(self.user))
+                raise e
+        return self._conn
+
+    def execute_sql(self, stmt, fetch='many'):
+        self.logger.info('Executing: {}'.format(stmt))
+        response = self.conn.send(stmt)
+        return response
+
+    def write(self):
+        self.get_csv_from_s3()
+        rows = etl.fromcsv(self.csv_path, encoding='latin-1') \
+                    .cutout('etl_read_timestamp')
+        header = rows[0]
+        str_header = ''
+        num_fields = len(header)
+        self._num_rows_in_upload_file = rows.nrows()
+        for i, field in enumerate(header):
+            if i < num_fields - 1:
+                str_header += field + ', '
+            else:
+                str_header += field
+
+        self.logger.info('Writing to temp table...')
+        # format geom field:
+        if self.geom_field and geom_srid:
+            rows = rows.convert(geom_field,
+                                lambda c: 'SRID={srid};{geom}'.format(srid=geom_srid, geom=c) if c else '')
+        write_file = self.temp_csv_path
+        rows.tocsv(write_file)
+        q = "COPY {table_name} ({header}) FROM STDIN WITH (FORMAT csv, HEADER true)".format(
+            table_name=self.temp_table_name, header=str_header)
+        url = USR_BASE_URL.format(user=self.user) + 'api/v2/sql/copyfrom'
+        with open(write_file, 'rb') as f:
+            r = requests.post(url, params={'api_key': self.api_key, 'q': q}, data=f, stream=True)
+
+            if r.status_code != 200:
+                self.logger.error('Carto Write Error Response: {}'.format(r.text))
+                self.logger.error('Exiting...')
+                exit(1)
+            else:
+                status = r.json()
+                self.logger.info('Carto Write Successful: {} rows imported.\n'.format(status['total_rows']))
+
+    def cartodbfytable(self):
+        self.logger.info('Cartodbfytable\'ing table: {}'.format(self.temp_table_name))
+        self.execute_sql("select cdb_cartodbfytable('{}', '{}');".format(self.user, self.temp_table_name))
+        self.logger.info('Successfully Cartodbyfty\'d table.\n')
+
+    def run_workflow(self):
+        if TEST:
+            self.logger.info('THIS IS A TEST RUN, PRODUCTION TABLES WILL NOT BE AFFECTED!\n')
+        try:
+            self.create_table()
+            self.write()
+            self.verify_count()
+            self.cartodbfytable()
+            self.vacuum_analyze()
+            if TEST:
+                self.cleanup()
+            else:
+                self.swap_table()
+            self.logger.info('Done!')
+        except Exception as e:
+            self.logger.error('Workflow failed, reverting...')
+            self.cleanup()
+            raise e
