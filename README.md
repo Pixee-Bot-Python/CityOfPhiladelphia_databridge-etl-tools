@@ -22,7 +22,7 @@ databridge_etl_tools cartoupdate \
 databridge_etl_tools load \
     --table_name li_appeals_type \
     --table_schema gis_lni \
-    --connection-string postgresql://user:password@host:port \
+    --connection-string postgresql://user:password@host:port/db_name \
     --s3_bucket s3_bucket
 ```
 
