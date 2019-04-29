@@ -19,7 +19,7 @@ setup(
         'idna==2.8',
         'jmespath==0.9.4',
         'petl==1.2.0',
-        'psycopg2==2.8.2',
+        'psycopg2==2.6.2',
         'pyrestcli==0.6.8',
         'python-dateutil==2.8.0',
         'requests==2.21.0',

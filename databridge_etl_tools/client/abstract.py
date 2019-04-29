@@ -218,28 +218,6 @@ class BaseClient(ABC):
                 result = cursor.fetchmany()
                 return result
 
-    def verify_count(self):
-        self.logger.info('Verifying row count...')
-
-        data = self.execute_sql('SELECT count(*) FROM "{}";'.format(self.temp_table_name), fetch='many')
-        num_rows_in_table = data['rows'][0]['count']
-        num_rows_inserted = num_rows_in_table  # for now until inserts/upserts are implemented
-        num_rows_expected = self._num_rows_in_upload_file
-        message = '{} - expected rows: {} inserted rows: {}.'.format(
-            self.temp_table_name,
-            num_rows_expected,
-            num_rows_inserted
-        )
-        self.logger.info(message)
-        if num_rows_in_table != num_rows_expected:
-            self.logger.error('Did not insert all rows, reverting...')
-            stmt = 'BEGIN;' + \
-                    'DROP TABLE if exists "{}" cascade;'.format(temp_table_name) + \
-                    'COMMIT;'
-            execute_sql(stmt)
-            exit(1)
-        self.logger.info('Row count verified.\n')
-
     def generate_select_grants(self):
         grants_sql = ''
         if not db_select_users:

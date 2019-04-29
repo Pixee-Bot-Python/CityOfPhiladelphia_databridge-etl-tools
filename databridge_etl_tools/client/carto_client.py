@@ -72,6 +72,27 @@ class Carto(Postgres):
         response = self.conn.send(stmt)
         return response
 
+    def create_table(self):
+        self.logger.info('Creating temp table...')
+        stmt = '''DROP TABLE IF EXISTS {table_name}; 
+                    CREATE TABLE {table_name} ({schema});'''.format(table_name=self.temp_table_name,
+                                                                    schema=self.schema)
+        self.execute_sql(stmt)
+        check_table_sql = "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = '{}');".format(self.temp_table_name)
+        response = self.execute_sql(check_table_sql, fetch='many')
+        exists = response['rows'][0]['exists']
+
+        if not exists:
+            message = '{} - Could not create table'.format(self.temp_table_name)
+            self.logger.error(message)
+            raise Exception(message)
+
+        if self.index_fields:
+            self.logger.info("Indexing fields: {}".format(self.index_fields))
+            self.create_indexes()
+
+        self.logger.info('Temp table created successfully.\n')
+
     def write(self):
         self.get_csv_from_s3()
         rows = etl.fromcsv(self.csv_path, encoding='latin-1') \
@@ -106,6 +127,28 @@ class Carto(Postgres):
             else:
                 status = r.json()
                 self.logger.info('Carto Write Successful: {} rows imported.\n'.format(status['total_rows']))
+
+    def verify_count(self):
+        self.logger.info('Verifying row count...')
+
+        data = self.execute_sql('SELECT count(*) FROM "{}";'.format(self.temp_table_name), fetch='many')
+        num_rows_in_table = data['rows'][0]['count']
+        num_rows_inserted = num_rows_in_table  # for now until inserts/upserts are implemented
+        num_rows_expected = self._num_rows_in_upload_file
+        message = '{} - expected rows: {} inserted rows: {}.'.format(
+            self.temp_table_name,
+            num_rows_expected,
+            num_rows_inserted
+        )
+        self.logger.info(message)
+        if num_rows_in_table != num_rows_expected:
+            self.logger.error('Did not insert all rows, reverting...')
+            stmt = 'BEGIN;' + \
+                    'DROP TABLE if exists "{}" cascade;'.format(temp_table_name) + \
+                    'COMMIT;'
+            execute_sql(stmt)
+            exit(1)
+        self.logger.info('Row count verified.\n')
 
     def cartodbfytable(self):
         self.logger.info('Cartodbfytable\'ing table: {}'.format(self.temp_table_name))
