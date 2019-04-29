@@ -79,10 +79,7 @@ class BaseClient(ABC):
 
     @property
     def csv_path(self):
-        if self.output_file:
-            csv_file_name = self.output_file
-        else:
-            csv_file_name = self.table_name
+        csv_file_name = self.table_name
         # On Windows, save to current directory
         if os.name == 'nt':
             csv_path = '{}.csv'.format(csv_file_name)
@@ -108,7 +105,7 @@ class BaseClient(ABC):
 
     @property
     def csv_s3_key(self):
-        csv_s3_key = '{}/{}/{}.csv'.format(S3_STAGING_PREFIX, table_schema, self.table_name)
+        csv_s3_key = '{}/{}/{}.csv'.format(S3_STAGING_PREFIX, self.table_schema, self.table_name)
         return csv_s3_key
 
     @property

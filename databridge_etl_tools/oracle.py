@@ -31,7 +31,7 @@ class Oracle(BaseClient):
     def extract(self):
         self.logger.info('Starting extract from {}'.format(self.schema_table_name))
 
-        etl.fromoraclesde(self.conn, self.schema_table_name) \
+        etl.fromoraclesde(self.conn, self.schema_table_name, timestamp=True) \
            .tocsv(self.csv_path, encoding='latin-1')
 
         self.load_csv_to_s3()

@@ -26,13 +26,14 @@ class Carto(Postgres):
     _api_key = None
     _schema = None
 
-    def __init__(self, connection_string, table_name, table_schema, s3_bucket):
+    def __init__(self, connection_string, table_name, table_schema, s3_bucket, select_users):
 
         super(Carto, self).__init__(
             connection_string=connection_string,
             table_name=table_name,
             table_schema=table_schema,
-            s3_bucket=s3_bucket
+            s3_bucket=s3_bucket,
+            select_users=select_users
         )
 
     @property
@@ -134,6 +135,7 @@ class Carto(Postgres):
         data = self.execute_sql('SELECT count(*) FROM "{}";'.format(self.temp_table_name), fetch='many')
         num_rows_in_table = data['rows'][0]['count']
         num_rows_inserted = num_rows_in_table  # for now until inserts/upserts are implemented
+        # Carto does count the header
         num_rows_expected = self._num_rows_in_upload_file
         message = '{} - expected rows: {} inserted rows: {}.'.format(
             self.temp_table_name,
@@ -154,6 +156,17 @@ class Carto(Postgres):
         self.logger.info('Cartodbfytable\'ing table: {}'.format(self.temp_table_name))
         self.execute_sql("select cdb_cartodbfytable('{}', '{}');".format(self.user, self.temp_table_name))
         self.logger.info('Successfully Cartodbyfty\'d table.\n')
+
+    def swap_table(self):
+        stmt = 'BEGIN;' + \
+                'ALTER TABLE "{}" RENAME TO "{}_old";'.format(self.table_name, self.table_name) + \
+                'ALTER TABLE "{}" RENAME TO "{}";'.format(self.temp_table_name, self.table_name) + \
+                'DROP TABLE "{}_old" cascade;'.format(self.table_name) + \
+                self.generate_select_grants() + \
+                'COMMIT;'
+        self.logger.info('Swapping temporary and production tables...')
+        self.logger.info(stmt)
+        self.execute_sql(stmt)
 
     def run_workflow(self):
         if TEST:
