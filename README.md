@@ -25,3 +25,8 @@ databridge_etl_tools load \
     --connection-string postgresql://user:password@host:port \
     --s3_bucket s3_bucket
 ```
+
+## Installation
+```bash
+pip install git+https://github.com/CityOfPhiladelphia/databridge-etl-tools#egg=databridge_etl_tools --process-dependency-links
+```
