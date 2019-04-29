@@ -9,13 +9,14 @@ from .abstract import BaseClient
 
 class Oracle(BaseClient):
 
-    def __init__(self, connection_string, table_name, table_schema, s3_bucket):
+    def __init__(self, connection_string, table_name, table_schema, s3_bucket, output_file):
 
         super(Oracle, self).__init__(
             connection_string=connection_string,
             table_name=table_name,
             table_schema=table_schema,
-            s3_bucket=s3_bucket
+            s3_bucket=s3_bucket,
+            output_file=output_file
         )
 
     @property

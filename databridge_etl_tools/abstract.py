@@ -7,7 +7,6 @@ import json
 import boto3
 
 
-GIS_PREFIX = 'gis_'
 S3_STAGING_PREFIX = 'staging'
 JSON_SCHEMA_PREFIX = 'schemas'
 
@@ -45,12 +44,13 @@ class BaseClient(ABC):
     _schema = None
     _num_rows_in_upload_file = None
 
-    def __init__(self, connection_string, table_name, table_schema, s3_bucket, index_fields=None):
+    def __init__(self, connection_string, table_name, table_schema, s3_bucket, index_fields=None, output_file=False):
         self.connection_string = os.environ.get('CONNECTION_STRING', connection_string)
         self.table_name = table_name
         self.table_schema = table_schema
         self.s3_bucket = s3_bucket
         self.index_fields = index_fields
+        self.output_file = output_file
 
     @property
     def schema_table_name(self):
@@ -71,12 +71,16 @@ class BaseClient(ABC):
 
     @property
     def csv_path(self):
+        if self.output_file:
+            csv_file_name = self.output_file
+        else:
+            csv_file_name = self.table_name
         # On Windows, save to current directory
         if os.name == 'nt':
-            csv_path = '{}.csv'.format(self.table_name)
+            csv_path = '{}.csv'.format(csv_file_name)
         # On Linux, save to tmp folder
         else:
-            csv_path = '/tmp/{}_{}.csv'.format(self.table_name)
+            csv_path = '/tmp/{}_{}.csv'.format(csv_file_name)
         return csv_path
 
     @property
@@ -96,8 +100,6 @@ class BaseClient(ABC):
 
     @property
     def csv_s3_key(self):
-        if GIS_PREFIX in self.table_schema:
-            table_schema = self.table_schema.replace(GIS_PREFIX, '')
         csv_s3_key = '{}/{}/{}.csv'.format(S3_STAGING_PREFIX, table_schema, self.table_name)
         return csv_s3_key
 

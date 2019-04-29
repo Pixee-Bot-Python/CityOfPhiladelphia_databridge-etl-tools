@@ -14,12 +14,14 @@ def main():
 @click.option('--table_schema')
 @click.option('--connection_string')
 @click.option('--s3_bucket')
-def extract(table_name, table_schema, connection_string, s3_bucket):
+@click.option('--output_file', default=False)
+def extract(table_name, table_schema, connection_string, s3_bucket, output_file):
     oracle = Oracle(
         table_name=table_name,
         table_schema=table_schema,
         connection_string=connection_string,
-        s3_bucket=s3_bucket)
+        s3_bucket=s3_bucket,
+        output_file=output_file)
     oracle.extract()
 
 @main.command()
