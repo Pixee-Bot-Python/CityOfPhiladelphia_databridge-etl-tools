@@ -130,3 +130,6 @@ schemas/
 
 # CSVs
 *.csv
+
+# Build
+build/

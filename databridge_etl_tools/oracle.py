@@ -38,3 +38,6 @@ class Oracle(BaseClient):
         os.remove(self.csv_path)
 
         self.logger.info('Successfully extracted from {}'.format(self.schema_table_name))
+
+    def write(self):
+        raise NotImplementedError

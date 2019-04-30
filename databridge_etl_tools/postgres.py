@@ -47,6 +47,9 @@ class Postgres(BaseClient):
         self.execute_sql(stmt)
         self.logger.info('Indexes created successfully.\n')
 
+    def extract(self):
+        raise NotImplementedError
+
     # def create_table(self):
     #     self.logger.info('Creating temp table...')
     #     stmt = '''DROP TABLE IF EXISTS {table_name}; 
