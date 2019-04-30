@@ -5,14 +5,6 @@ language: generic
 services:
   - docker # required, but travis uses older version of docker :(
 
-git:
-  submodules:
-    false
-    
-before_install:
-  - echo -e "\n\nmachine github.com\n  $CI_TOKEN\n" >~/.netrc
-  - git submodule update --init --recursive
-
 script:
   - echo "no tests!" # put testing scripts here once they're written
 
