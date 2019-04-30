@@ -10,31 +10,6 @@ import boto3
 S3_STAGING_PREFIX = 'staging'
 JSON_SCHEMA_PREFIX = 'schemas'
 
-DATA_TYPE_MAP = {
-    'string':           'text',
-    'number':           'numeric',
-    'float':            'numeric',
-    'double precision': 'numeric',
-    'integer':          'integer',
-    'boolean':          'boolean',
-    'object':           'jsonb',
-    'array':            'jsonb',
-    'date':             'date',
-    'time':             'time',
-    'datetime':         'date',
-    'geom':             'geometry',
-    'geometry':         'geometry'
-}
-
-GEOM_TYPE_MAP = {
-    'point':           'Point',
-    'line':            'Linestring',
-    'polygon':         'MultiPolygon',
-    'multipolygon':    'MultiPolygon',
-    'multilinestring': 'MultiLineString',
-    'geometry':        'Geometry',
-}
-
 class BaseClient(ABC):
 
     _geom_field = None
@@ -57,13 +32,6 @@ class BaseClient(ABC):
         self.s3_key = s3_key
         self.index_fields = index_fields
         self.select_users = select_users
-
-    @property
-    def temp_table_name(self):
-        if not self.table_name:
-            self.logger.error("Can't get table name, exiting...")
-            exit(1)
-        return 't_' + self.table_name
 
     @property
     @abstractmethod
@@ -153,22 +121,6 @@ class BaseClient(ABC):
                     geom_srid = scheme.get('name', None)
                     self._geom_srid = geom_srid
         return self._geom_srid
-        
-    def get_csv_from_s3(self):
-        self.logger.info('Fetching csv s3://{}/{}'.format(self.s3_bucket, self.s3_key))
-
-        s3 = boto3.resource('s3')
-        s3.Object(self.s3_bucket, self.s3_key).download_file(self.csv_path)
-
-        self.logger.info('CSV successfully downloaded.\n'.format(self.s3_bucket, self.s3_key))
-
-    def get_json_schema_from_s3(self):
-        self.logger.info('Fetching json schema: s3://{}/{}'.format(self.s3_bucket, self.json_schema_s3_key))
-
-        s3 = boto3.resource('s3')
-        s3.Object(self.s3_bucket, self.json_schema_s3_key).download_file(self.json_schema_path)
-
-        self.logger.info('Json schema successfully downloaded.\n'.format(self.s3_bucket, self.json_schema_s3_key))
 
     def execute_sql(self, stmt, fetch=None):
         self.logger.info('Executing: {}'.format(stmt))

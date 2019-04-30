@@ -26,16 +26,6 @@ class Oracle():
         return schema_table_name
 
     @property
-    def logger(self):
-       if self._logger is None:
-           logger = logging.getLogger(__name__)
-           logger.setLevel(logging.INFO)
-           sh = logging.StreamHandler(sys.stdout)
-           logger.addHandler(sh)
-           self._logger = logger
-       return self._logger
-
-    @property
     def conn(self):
         if self._conn is None:
             self.logger.info('Trying to connect to Oracle database...')
@@ -54,6 +44,16 @@ class Oracle():
         else:
             csv_path = '/tmp/{}_{}.csv'.format(csv_file_name)
         return csv_path
+
+    @property
+    def logger(self):
+       if self._logger is None:
+           logger = logging.getLogger(__name__)
+           logger.setLevel(logging.INFO)
+           sh = logging.StreamHandler(sys.stdout)
+           logger.addHandler(sh)
+           self._logger = logger
+       return self._logger
 
     def load_csv_to_s3(self):
         self.logger.info('Starting load to s3: {}'.format(self.s3_key))
