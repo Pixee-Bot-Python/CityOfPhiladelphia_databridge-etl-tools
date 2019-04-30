@@ -31,6 +31,16 @@ databridge_etl_tools load \
     --csv_s3_key csv_s3_key
 ```
 
+| Flag                 | Help                                                                    |
+|----------------------|-------------------------------------------------------------------------|
+| --table_name         | The name of the table to extract or load to/from in a database or Carto |
+| --table_schema       | The name of the schema (user) to extract or load to/from in a database  |
+| --connection_string  | The connection string to a database or Carto                            |
+| --s3_bucket          | The S3 bucket to fetch or load to                                       |
+| --json_schema_s3_key | The S3 key for the JSON schema file                                     |
+| --csv_s3_key         | The S3 key for the CSV file                                             |
+| --select_users       | The Carto users to grant select access to                               |
+
 ## Installation
 ```bash
 pip install git+https://github.com/CityOfPhiladelphia/databridge-etl-tools#egg=databridge_etl_tools
