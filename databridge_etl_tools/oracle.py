@@ -42,7 +42,7 @@ class Oracle():
             csv_path = '{}.csv'.format(csv_file_name)
         # On Linux, save to tmp folder
         else:
-            csv_path = '/tmp/{}_{}.csv'.format(csv_file_name)
+            csv_path = '/tmp/{}.csv'.format(csv_file_name)
         return csv_path
 
     @property
