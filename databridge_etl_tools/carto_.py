@@ -16,7 +16,6 @@ import requests
 
 csv.field_size_limit(sys.maxsize)
 
-TEST = os.environ.get('TEST', False)
 USR_BASE_URL = "https://{user}.carto.com/"
 CONNECTION_STRING_REGEX = r'^carto://(.+):(.+)'
 
@@ -349,18 +348,13 @@ class Carto():
         self.execute_sql(stmt)
 
     def run_workflow(self):
-        if TEST:
-            self.logger.info('THIS IS A TEST RUN, PRODUCTION TABLES WILL NOT BE AFFECTED!\n')
         try:
             self.create_table()
             self.write()
             self.verify_count()
             self.cartodbfytable()
             self.vacuum_analyze()
-            if TEST:
-                self.cleanup()
-            else:
-                self.swap_table()
+            self.swap_table()
             self.logger.info('Done!')
         except Exception as e:
             self.logger.error('Workflow failed, reverting...')

@@ -9,9 +9,8 @@ import boto3
 import petl as etl
 import geopetl
 
-csv.field_size_limit(sys.maxsize)
 
-TEST = os.environ.get('TEST', False)
+csv.field_size_limit(sys.maxsize)
 
 DATA_TYPE_MAP = {
     'string':           'text',
@@ -274,8 +273,6 @@ class Postgres():
         self.logger.info('Temporary tables dropped successfully.\n')
 
     def run_workflow(self):
-        if TEST:
-            self.logger.info('THIS IS A TEST RUN, PRODUCTION TABLES WILL NOT BE AFFECTED!\n')
         try:
             self.write()
             self.conn.commit()
