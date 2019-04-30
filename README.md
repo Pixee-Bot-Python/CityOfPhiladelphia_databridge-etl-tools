@@ -2,6 +2,12 @@
 
 Command line tools to extract and load SQL and Carto tables.
 
+## Requirements
+- Python 3.5 +
+- Pip
+- Oracle 11g Client
+- Postgres
+
 ## Usage
 ```bash
 # Extract a table from Oracle SDE to S3
