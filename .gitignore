@@ -133,3 +133,6 @@ schemas/
 
 # Build
 build/
+
+# JSON
+*.json

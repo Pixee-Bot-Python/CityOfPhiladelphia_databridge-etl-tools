@@ -51,12 +51,21 @@ def cartoupdate(table_name,
 @click.option('--table_schema')
 @click.option('--connection_string')
 @click.option('--s3_bucket')
-def load(table_name, table_schema, connection_string, s3_bucket):
+@click.option('--json_schema_s3_key')
+@click.option('--csv_s3_key')
+def load(table_name, 
+         table_schema, 
+         connection_string, 
+         s3_bucket, 
+         json_schema_s3_key, 
+         csv_s3_key):
     postgres = Postgres(
         table_name=table_name,
         table_schema=table_schema,
         connection_string=connection_string,
-        s3_bucket=s3_bucket)
+        s3_bucket=s3_bucket,
+        json_schema_s3_key=json_schema_s3_key,
+        csv_s3_key=csv_s3_key)
     postgres.run_workflow()
 
 if __name__ == '__main__':

@@ -139,7 +139,10 @@ class Carto():
     @property
     def json_schema_file_name(self):
         # This expects the schema to be in a subfolder on S3
-        json_schema_file_name = self.json_schema_s3_key.split('/')[1]
+        if ('/') in self.json_schema_s3_key:
+            json_schema_file_name = self.json_schema_s3_key.split('/')[1]
+        else:
+            json_schema_file_name = self.json_schema_s3_key
         return json_schema_file_name
 
     @property

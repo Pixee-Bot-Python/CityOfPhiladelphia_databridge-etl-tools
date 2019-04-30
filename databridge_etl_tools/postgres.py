@@ -1,26 +1,105 @@
+import csv
+import logging
+import sys
 import os
+import json
 
 import psycopg2
+import boto3
 import petl as etl
 import geopetl
 
-from .abstract import BaseClient
-
+csv.field_size_limit(sys.maxsize)
 
 TEST = os.environ.get('TEST', False)
-DATABRIDGE_PREFIX = 'databridge'
 
-class Postgres(BaseClient):
+DATA_TYPE_MAP = {
+    'string':           'text',
+    'number':           'numeric',
+    'float':            'numeric',
+    'double precision': 'numeric',
+    'integer':          'integer',
+    'boolean':          'boolean',
+    'object':           'jsonb',
+    'array':            'jsonb',
+    'date':             'date',
+    'time':             'time',
+    'datetime':         'date',
+    'geom':             'geometry',
+    'geometry':         'geometry'
+}
 
-    def __init__(self, connection_string, table_name, table_schema, s3_bucket, select_users=None):
+GEOM_TYPE_MAP = {
+    'point':           'Point',
+    'line':            'Linestring',
+    'polygon':         'MultiPolygon',
+    'multipolygon':    'MultiPolygon',
+    'multilinestring': 'MultiLineString',
+    'geometry':        'Geometry',
+}
 
-        super(Postgres, self).__init__(
-            connection_string=connection_string,
-            table_name=table_name,
-            table_schema=table_schema,
-            s3_bucket=s3_bucket,
-            select_users=select_users
-        )
+class Postgres():
+
+    _conn = None
+    _logger = None
+    _schema = None
+    _geom_field = None
+    _geom_srid = None
+
+    def __init__(self, 
+                 table_name, 
+                 table_schema, 
+                 connection_string, 
+                 s3_bucket, 
+                 json_schema_s3_key, 
+                 csv_s3_key):
+        self.table_name = table_name
+        self.table_schema = table_schema
+        self.connection_string = connection_string
+        self.s3_bucket = s3_bucket
+        self.json_schema_s3_key = json_schema_s3_key
+        self.csv_s3_key = csv_s3_key
+
+    @property
+    def table_schema_name(self):
+        # schema.table
+        return '{}.{}'.format(self.table_schema, self.table_name)
+
+    @property
+    def csv_path(self):
+        csv_file_name = self.table_name
+        # On Windows, save to current directory
+        if os.name == 'nt':
+            csv_path = '{}.csv'.format(csv_file_name)
+        # On Linux, save to tmp folder
+        else:
+            csv_path = '/tmp/{}_{}.csv'.format(csv_file_name)
+        return csv_path
+
+    @property
+    def temp_csv_path(self):
+        temp_csv_path = self.csv_path.replace('.csv', '_t.csv')
+        return temp_csv_path
+
+    @property
+    def json_schema_file_name(self):
+        # This expects the schema to be in a subfolder on S3
+        if ('/') in self.json_schema_s3_key:
+            json_schema_file_name = self.json_schema_s3_key.split('/')[1]
+        else:
+            json_schema_file_name = self.json_schema_s3_key
+        return json_schema_file_name
+
+    @property
+    def json_schema_path(self):
+        # On Windows, save to current directory
+        if os.name == 'nt':
+            json_schema_path = self.json_schema_file_name
+        # On Linux, save to tmp folder
+        else:
+            json_schema_directory = os.path.join('tmp')
+            json_schema_path = os.path.join(json_schema_directory, self.json_schema_file_name)
+        return json_schema_path
 
     @property
     def conn(self):
@@ -32,11 +111,69 @@ class Postgres(BaseClient):
         return self._conn
 
     @property
-    def databridge_table_schema(self):
-        # Drop the gis_ prefix
-        table_schema = self.table_schema.replace('gis_', '')
-        _databridge_table_schema = '{}.{}_{}'.format(table_schema, DATABRIDGE_PREFIX, self.table_name)
-        return _databridge_table_schema
+    def geom_field(self):
+        if self._geom_field is None:
+            with open(self.json_schema_path) as json_file:
+                schema = json.load(json_file).get('fields', None)
+                if not schema:
+                    self.logger.error('Json schema malformatted...')
+                    raise
+                for scheme in schema:
+                    scheme_type = DATA_TYPE_MAP.get(scheme['type'].lower(), scheme['type'])
+                    if scheme_type == 'geometry':
+                        geom_field = scheme.get('name', None)
+                        self._geom_field = geom_field
+        return self._geom_field
+
+    @property
+    def geom_srid(self):
+        if self._geom_srid is None:
+            for scheme in self.schema:
+                scheme_type = DATA_TYPE_MAP.get(scheme['type'].lower(), scheme['type'])
+                if scheme_type == 'geometry':
+                    geom_srid = scheme.get('name', None)
+                    self._geom_srid = geom_srid
+        return self._geom_srid
+
+    @property
+    def logger(self):
+       if self._logger is None:
+           logger = logging.getLogger(__name__)
+           logger.setLevel(logging.INFO)
+           sh = logging.StreamHandler(sys.stdout)
+           logger.addHandler(sh)
+           self._logger = logger
+       return self._logger
+
+    def execute_sql(self, stmt, fetch=None):
+        self.logger.info('Executing: {}'.format(stmt))
+
+        with self.conn.cursor() as cursor:
+            cursor.execute(stmt)
+
+            if fetch == 'one':
+                result = cursor.fetchone()
+                return result
+
+            elif fetch == 'many':
+                result = cursor.fetchmany()
+                return result
+
+    def get_json_schema_from_s3(self):
+        self.logger.info('Fetching json schema: s3://{}/{}'.format(self.s3_bucket, self.json_schema_s3_key))
+
+        s3 = boto3.resource('s3')
+        s3.Object(self.s3_bucket, self.json_schema_s3_key).download_file(self.json_schema_path)
+
+        self.logger.info('Json schema successfully downloaded.\n'.format(self.s3_bucket, self.json_schema_s3_key))
+
+    def get_csv_from_s3(self):
+        self.logger.info('Fetching csv s3://{}/{}'.format(self.s3_bucket, self.csv_s3_key))
+
+        s3 = boto3.resource('s3')
+        s3.Object(self.s3_bucket, self.csv_s3_key).download_file(self.csv_path)
+
+        self.logger.info('CSV successfully downloaded.\n'.format(self.s3_bucket, self.csv_s3_key))
 
     def create_indexes(self, table_name):
         self.logger.info('Creating indexes on {}: {}'.format(self.temp_table_name, self.index_fields))
@@ -49,27 +186,6 @@ class Postgres(BaseClient):
 
     def extract(self):
         raise NotImplementedError
-
-    # def create_table(self):
-    #     self.logger.info('Creating temp table...')
-    #     stmt = '''DROP TABLE IF EXISTS {table_name}; 
-    #                 CREATE TABLE {table_name} ({schema}, etl_read_timestamp timestamp with time zone);'''.format(table_name=self.temp_table_name,
-    #                                                                 schema=self.schema)
-    #     self.execute_sql(stmt)
-    #     check_table_sql = "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = '{}');".format(self.temp_table_name)
-    #     response = self.execute_sql(check_table_sql, fetch='many')
-    #     exists = response[0]
-
-    #     if not exists:
-    #         message = '{} - Could not create table'.format(self.temp_table_name)
-    #         self.logger.error(message)
-    #         raise Exception(message)
-
-    #     if self.index_fields:
-    #         self.logger.info("Indexing fields: {}".format(self.index_fields))
-    #         self.create_indexes()
-
-    #     self.logger.info('Temp table created successfully.\n')
 
     def write(self):
         self.get_csv_from_s3()
@@ -84,10 +200,10 @@ class Postgres(BaseClient):
             else:
                 str_header += field
 
-        self.logger.info('Writing to table: {}...'.format(self.databridge_table_schema))
+        self.logger.info('Writing to table: {}...'.format(self.table_schema_name))
         # format geom field:
-        if self.geom_field and geom_srid:
-            rows = rows.convert(geom_field,
+        if self.geom_field and self.geom_srid:
+            rows = rows.convert(self.geom_field,
                                 lambda c: 'SRID={srid};{geom}'.format(srid=geom_srid, geom=c) if c else '') \
 
         write_file = self.temp_csv_path
@@ -96,10 +212,10 @@ class Postgres(BaseClient):
         with open(write_file, 'r') as f:
             with self.conn.cursor() as cursor:
                 copy_stmt = "COPY {table_name} ({header}) FROM STDIN WITH (FORMAT csv, HEADER true)".format(
-                            table_name=self.databridge_table_schema, header=str_header)
+                            table_name=self.table_schema_name, header=str_header)
                 cursor.copy_expert(copy_stmt, f)
 
-        check_load_stmt = "SELECT COUNT(*) FROM {table_name}".format(table_name=self.databridge_table_schema)
+        check_load_stmt = "SELECT COUNT(*) FROM {table_name}".format(table_name=self.table_schema_name)
         response = self.execute_sql(check_load_stmt, fetch='one')
 
         self.logger.info('Postgres Write Successful: {} rows imported.\n'.format(response[0]))
@@ -119,7 +235,7 @@ class Postgres(BaseClient):
     # def verify_count(self):
     #     self.logger.info('Verifying row count...')
 
-    #     data = self.execute_sql('SELECT count(*) FROM "{}";'.format(self.databridge_table_schema), fetch='many')
+    #     data = self.execute_sql('SELECT count(*) FROM "{}";'.format(self.table_schema_name), fetch='many')
     #     num_rows_in_table = data[0][0]
     #     num_rows_inserted = num_rows_in_table  # for now until inserts/upserts are implemented
     #     # Postgres doesn't count the header
@@ -140,13 +256,13 @@ class Postgres(BaseClient):
     #     self.logger.info('Row count verified.\n')
 
     def vacuum_analyze(self):
-        self.logger.info('Vacuum analyzing table: {}'.format(self.databridge_table_schema))
+        self.logger.info('Vacuum analyzing table: {}'.format(self.table_schema_name))
 
         # An autocommit connection is needed for vacuuming for psycopg2
         # https://stackoverflow.com/questions/1017463/postgresql-how-to-run-vacuum-from-code-outside-transaction-block
         old_isolation_level = self.conn.isolation_level
         self.conn.set_isolation_level(psycopg2.extensions.ISOLATION_LEVEL_AUTOCOMMIT)
-        self.execute_sql('VACUUM ANALYZE "{}";'.format(self.databridge_table_schema))
+        self.execute_sql('VACUUM ANALYZE {};'.format(self.table_schema_name))
         self.conn.set_isolation_level(old_isolation_level)
         
         self.logger.info('Vacuum analyze complete.\n')
@@ -162,9 +278,10 @@ class Postgres(BaseClient):
             self.logger.info('THIS IS A TEST RUN, PRODUCTION TABLES WILL NOT BE AFFECTED!\n')
         try:
             self.write()
+            self.conn.commit()
             self.vacuum_analyze()
             self.logger.info('Done!')
         except Exception as e:
             self.logger.error('Workflow failed...')
-            # self.cleanup()
+            self.conn.rollback()
             raise e

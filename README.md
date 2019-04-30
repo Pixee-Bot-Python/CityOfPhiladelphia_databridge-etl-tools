@@ -15,16 +15,20 @@ databridge_etl_tools extract \
 # Load a table from S3 to Carto
 databridge_etl_tools cartoupdate \
     --table_name li_appeals_type \
-    --table_schema gis_lni \
     --connection_string carto://user:apikey \
-    --s3_bucket s3_bucket
+    --s3_bucket s3_bucket \
+    --json_schema_s3_key json_schema_s3_key\
+    --csv_s3_key csv_s3_key\
+    --select_users select_users
 
 # Load a table from S3 to Postgres
 databridge_etl_tools load \
     --table_name li_appeals_type \
     --table_schema gis_lni \
     --connection-string postgresql://user:password@host:port/db_name \
-    --s3_bucket s3_bucket
+    --s3_bucket s3_bucket \
+    --json_schema_s3_key json_schema_s3_key\
+    --csv_s3_key csv_s3_key
 ```
 
 ## Installation
