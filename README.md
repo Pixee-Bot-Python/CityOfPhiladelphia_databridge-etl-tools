@@ -8,8 +8,9 @@ Command line tools to extract and load SQL and Carto tables.
 databridge_etl_tools extract \
     --table_name li_appeals_type \
     --table_schema gis_lni \
-    --connection_string user/password@db_alias
+    --connection_string user/password@db_alias \
     --s3_bucket s3_bucket
+    --s3_key s3_key
 
 # Load a table from S3 to Carto
 databridge_etl_tools cartoupdate \
