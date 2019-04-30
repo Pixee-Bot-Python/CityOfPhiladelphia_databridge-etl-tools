@@ -1,23 +1,39 @@
+import logging
+import sys
 import os
 
 import cx_Oracle
+import boto3
 import petl as etl
 import geopetl
 
-from .abstract import BaseClient
 
+class Oracle():
 
-class Oracle(BaseClient):
+    _conn = None
+    _logger = None
 
     def __init__(self, connection_string, table_name, table_schema, s3_bucket, s3_key):
+        self.connection_string = connection_string
+        self.table_name = table_name
+        self.table_schema = table_schema
+        self.s3_bucket = s3_bucket
+        self.s3_key = s3_key
 
-        super(Oracle, self).__init__(
-            connection_string=connection_string,
-            table_name=table_name,
-            table_schema=table_schema,
-            s3_bucket=s3_bucket,
-            s3_key=s3_key
-        )
+    @property
+    def schema_table_name(self):
+        schema_table_name = '{}.{}'.format(self.table_schema, self.table_name)
+        return schema_table_name
+
+    @property
+    def logger(self):
+       if self._logger is None:
+           logger = logging.getLogger(__name__)
+           logger.setLevel(logging.INFO)
+           sh = logging.StreamHandler(sys.stdout)
+           logger.addHandler(sh)
+           self._logger = logger
+       return self._logger
 
     @property
     def conn(self):
@@ -27,6 +43,25 @@ class Oracle(BaseClient):
             self._conn = conn
             self.logger.info('Connected to database.')
         return self._conn
+
+    @property
+    def csv_path(self):
+        csv_file_name = self.table_name
+        # On Windows, save to current directory
+        if os.name == 'nt':
+            csv_path = '{}.csv'.format(csv_file_name)
+        # On Linux, save to tmp folder
+        else:
+            csv_path = '/tmp/{}_{}.csv'.format(csv_file_name)
+        return csv_path
+
+    def load_csv_to_s3(self):
+        self.logger.info('Starting load to s3: {}'.format(self.s3_key))
+
+        s3 = boto3.resource('s3')
+        s3.Object(self.s3_bucket, self.s3_key).put(Body=open(self.csv_path, 'rb'))
+        
+        self.logger.info('Successfully loaded to s3: {}'.format(self.s3_key))
 
     def extract(self):
         self.logger.info('Starting extract from {}'.format(self.schema_table_name))

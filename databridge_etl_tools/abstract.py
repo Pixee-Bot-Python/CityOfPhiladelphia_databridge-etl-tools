@@ -37,8 +37,6 @@ GEOM_TYPE_MAP = {
 
 class BaseClient(ABC):
 
-    _conn = None
-    _logger = None
     _geom_field = None
     _geom_srid = None
     _schema = None
@@ -61,11 +59,6 @@ class BaseClient(ABC):
         self.select_users = select_users
 
     @property
-    def schema_table_name(self):
-        schema_table_name = '{}.{}'.format(self.table_schema, self.table_name)
-        return schema_table_name
-
-    @property
     def temp_table_name(self):
         if not self.table_name:
             self.logger.error("Can't get table name, exiting...")
@@ -78,30 +71,9 @@ class BaseClient(ABC):
         pass
 
     @property
-    def csv_path(self):
-        csv_file_name = self.table_name
-        # On Windows, save to current directory
-        if os.name == 'nt':
-            csv_path = '{}.csv'.format(csv_file_name)
-        # On Linux, save to tmp folder
-        else:
-            csv_path = '/tmp/{}_{}.csv'.format(csv_file_name)
-        return csv_path
-
-    @property
     def temp_csv_path(self):
         temp_csv_path = self.csv_path.replace('.csv', '_t.csv')
         return temp_csv_path
-
-    @property
-    def logger(self):
-       if self._logger is None:
-           logger = logging.getLogger(__name__)
-           logger.setLevel(logging.INFO)
-           sh = logging.StreamHandler(sys.stdout)
-           logger.addHandler(sh)
-           self._logger = logger
-       return self._logger
 
     @property
     def json_schema_file_name(self):
@@ -181,14 +153,6 @@ class BaseClient(ABC):
                     geom_srid = scheme.get('name', None)
                     self._geom_srid = geom_srid
         return self._geom_srid
-
-    def load_csv_to_s3(self):
-        self.logger.info('Starting load to s3: {}'.format(self.s3_key))
-
-        s3 = boto3.resource('s3')
-        s3.Object(self.s3_bucket, self.s3_key).put(Body=open(self.csv_path, 'rb'))
-        
-        self.logger.info('Successfully loaded to s3: {}'.format(self.s3_key))
         
     def get_csv_from_s3(self):
         self.logger.info('Fetching csv s3://{}/{}'.format(self.s3_bucket, self.s3_key))
