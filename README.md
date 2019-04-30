@@ -24,7 +24,7 @@ databridge_etl_tools cartoupdate \
 # Load a table from S3 to Postgres
 databridge_etl_tools load \
     --table_name li_appeals_type \
-    --table_schema gis_lni \
+    --table_schema lni \
     --connection-string postgresql://user:password@host:port/db_name \
     --s3_bucket s3_bucket \
     --json_schema_s3_key json_schema_s3_key\
@@ -39,7 +39,7 @@ databridge_etl_tools load \
 | --s3_bucket          | The S3 bucket to fetch or load to                                       |
 | --json_schema_s3_key | The S3 key for the JSON schema file                                     |
 | --csv_s3_key         | The S3 key for the CSV file                                             |
-| --select_users       | The Carto users to grant select access to                               |
+| --select_users       | The Carto users to grant select access to (comma separated ie. public,tileuser)                              |
 
 ## Installation
 ```bash
