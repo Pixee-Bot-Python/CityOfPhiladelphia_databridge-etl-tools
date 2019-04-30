@@ -252,6 +252,9 @@ class Carto():
 
         self.logger.info('Temp table created successfully.\n')
 
+    def extract(self):
+        raise NotImplementedError
+
     def write(self):
         self.get_csv_from_s3()
         rows = etl.fromcsv(self.csv_path, encoding='latin-1') \
