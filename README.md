@@ -2,11 +2,15 @@
 
 Command line tools to extract and load SQL and Carto tables.
 
-## Requirements
+## Requirements (w/o Docker)
 - Python 3.5 +
 - Pip
 - Oracle 11g Client
 - Postgres
+
+## Requirements (w/ Docker)
+- Docker
+- Access to citygeo-oracle-instant-client S3 bucket
 
 ## Usage
 ```bash
