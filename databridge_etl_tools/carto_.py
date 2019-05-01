@@ -202,11 +202,16 @@ class Carto():
     @property
     def geom_srid(self):
         if self._geom_srid is None:
-            for scheme in self.schema:
-                scheme_type = DATA_TYPE_MAP.get(scheme['type'].lower(), scheme['type'])
-                if scheme_type == 'geometry':
-                    geom_srid = scheme.get('name', None)
-                    self._geom_srid = geom_srid
+            with open(self.json_schema_path) as json_file:
+                schema = json.load(json_file).get('fields', None)
+                if not schema:
+                    self.logger.error('Json schema malformatted...')
+                    raise
+                for scheme in schema:
+                    scheme_type = DATA_TYPE_MAP.get(scheme['type'].lower(), scheme['type'])
+                    if scheme_type == 'geometry':
+                        geom_srid = scheme.get('srid', None)
+                        self._geom_srid = geom_srid
         return self._geom_srid
 
     def get_json_schema_from_s3(self):
