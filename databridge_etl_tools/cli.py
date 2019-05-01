@@ -31,19 +31,22 @@ def extract(table_name, table_schema, connection_string, s3_bucket, s3_key):
 @click.option('--json_schema_s3_key')
 @click.option('--csv_s3_key')
 @click.option('--select_users')
+@click.option('--index_fields')
 def cartoupdate(table_name, 
                 connection_string, 
                 s3_bucket, 
                 json_schema_s3_key, 
                 csv_s3_key, 
-                select_users):
+                select_users,
+                index_fields):
     carto = Carto(
         table_name=table_name,
         connection_string=connection_string,
         s3_bucket=s3_bucket,
         json_schema_s3_key=json_schema_s3_key,
         csv_s3_key=csv_s3_key,
-        select_users=select_users)
+        select_users=select_users,
+        index_fields=index_fields)
     carto.run_workflow()
 
 @main.command()
