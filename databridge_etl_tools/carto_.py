@@ -160,7 +160,7 @@ class Carto():
         if self._schema is None:
             self.get_json_schema_from_s3()
 
-            with open(self.json_schema_file_name) as json_file:
+            with open(self.json_schema_path) as json_file:
                 schema = json.load(json_file).get('fields', '')
                 if not schema:
                     logger.error('Json schema malformatted...')
