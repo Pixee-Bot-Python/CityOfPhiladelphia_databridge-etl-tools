@@ -96,7 +96,7 @@ class Postgres():
             json_schema_path = self.json_schema_file_name
         # On Linux, save to tmp folder
         else:
-            json_schema_directory = os.path.join('tmp')
+            json_schema_directory = os.path.join('/tmp')
             json_schema_path = os.path.join(json_schema_directory, self.json_schema_file_name)
         return json_schema_path
 
