@@ -30,7 +30,7 @@ DATA_TYPE_MAP = {
     'array':            'jsonb',
     'date':             'date',
     'time':             'time',
-    'datetime':         'date',
+    'datetime':         'timestamp',
     'geom':             'geometry',
     'geometry':         'geometry'
 }
@@ -343,9 +343,9 @@ class Carto():
 
     def swap_table(self):
         stmt = 'BEGIN;' + \
-                'ALTER TABLE "{}" RENAME TO "{}_old";'.format(self.table_name, self.table_name) + \
+                'ALTER TABLE IF EXISTS "{}" RENAME TO "{}_old";'.format(self.table_name, self.table_name) + \
                 'ALTER TABLE "{}" RENAME TO "{}";'.format(self.temp_table_name, self.table_name) + \
-                'DROP TABLE "{}_old" cascade;'.format(self.table_name) + \
+                'DROP TABLE IF EXISTS "{}_old" cascade;'.format(self.table_name) + \
                 self.generate_select_grants() + \
                 'COMMIT;'
         self.logger.info('Swapping temporary and production tables...')
