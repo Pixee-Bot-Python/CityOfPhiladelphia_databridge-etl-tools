@@ -29,7 +29,8 @@ databridge_etl_tools cartoupdate \
     --s3_bucket s3_bucket \
     --json_schema_s3_key json_schema_s3_key\
     --csv_s3_key csv_s3_key \
-    --select_users select_users
+    --select_users select_users \
+    --index_fields index_fields
 
 # Load a table from S3 to Postgres
 databridge_etl_tools load \
@@ -51,6 +52,7 @@ databridge_etl_tools load \
 | --json_schema_s3_key | The S3 key to fetch a JSON schema file                                  |
 | --csv_s3_key         | The S3 key to fetch a CSV file                                          |
 | --select_users       | The Carto users to grant select access to (comma separated ie. public,tileuser)                              |
+| --index_fields       | The fields to index in the created table                                |
 
 ## Installation
 ```bash
