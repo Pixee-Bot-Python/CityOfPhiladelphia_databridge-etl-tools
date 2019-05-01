@@ -270,9 +270,9 @@ class Carto():
 
         self.logger.info('Writing to temp table...')
         # format geom field:
-        if self.geom_field and geom_srid:
-            rows = rows.convert(geom_field,
-                                lambda c: 'SRID={srid};{geom}'.format(srid=geom_srid, geom=c) if c else '')
+        if self.geom_field and self.geom_srid:
+            rows = rows.convert(self.geom_field,
+                                lambda c: 'SRID={srid};{geom}'.format(srid=self.geom_srid, geom=c) if c else '')
         write_file = self.temp_csv_path
         rows.tocsv(write_file)
         q = "COPY {table_name} ({header}) FROM STDIN WITH (FORMAT csv, HEADER true)".format(
