@@ -208,13 +208,7 @@ class Postgres():
         self.logger.info('CSV successfully downloaded.\n'.format(self.s3_bucket, self.csv_s3_key))
 
     def create_indexes(self, table_name):
-        self.logger.info('Creating indexes on {}: {}'.format(self.temp_table_name, self.index_fields))
-        stmt = ''
-        for index_field in self.indexes_fields:
-            stmt += 'CREATE INDEX {table}_{field} ON "{table}" ("{field}");\n'.format(table=self.temp_table_name,
-                                                                                        field=self.index_field)
-        self.execute_sql(stmt)
-        self.logger.info('Indexes created successfully.\n')
+        raise NotImplementedError
 
     def extract(self):
         raise NotImplementedError
