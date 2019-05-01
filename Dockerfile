@@ -18,6 +18,8 @@ ENV LD_LIBRARY_PATH=$ORACLE_HOME/lib
 ENV PATH=$ORACLE_HOME/bin:$PATH
 ENV HOSTALIASES=/tmp/HOSTALIASES
 
+COPY requirements.worker.txt /requirements.worker.txt
+
 RUN set -ex \
     && buildDeps=' \
         python3-dev \
@@ -28,11 +30,11 @@ RUN set -ex \
         build-essential \
         libblas-dev \
         liblapack-dev \
-        libpq-dev \
     ' \
     && apt-get update -yqq \
     && apt-get install -yqq --no-install-recommends \
         $buildDeps \
+        libpq-dev \
         python3 \
         python3-pip \
         netbase \
@@ -58,7 +60,18 @@ RUN set -ex \
     && python3 -m pip install -U pip \
     && pip3 install -U setuptools \
     && pip3 install Cython \
-    && pip3 install -e git+https://github.com/CityOfPhiladelphia/databridge-etl-tools#egg=databridge_etl_tools \
+       awscli==1.16.140 \
+       boto3==1.7.84 \
+       carto==1.4.0 \
+       click==7.0 \
+       cryptography==2.6.1 \
+       cx-Oracle==7.0.0 \
+       -e git+https://github.com/CityOfPhiladelphia/geopetl.git@b7c854c3dd3853abf32731f5dc1b707ea9ecae23#egg=geopetl \
+       petl==1.2.0 \
+       psycopg2==2.8.1 \
+       pyasn1==0.4.5 \
+       pyodbc==4.0.26 \
+       pytz==2015.7 \
     && apt-get remove --purge -yqq $buildDeps \
     && apt-get clean \
     && rm -rf \
@@ -91,6 +104,11 @@ COPY scripts/entrypoint.sh /entrypoint.sh
 
 RUN chmod +x /entrypoint.sh
 
+# Cache bust
+ENV updated-adds-on 5-1-2019_5
+RUN pip3 install git+https://github.com/CityOfPhiladelphia/databridge-etl-tools#egg=databridge_etl_tools
+
 USER worker
 ENTRYPOINT ["/entrypoint.sh"]
 #CMD ["/bin/bash"] 
+
