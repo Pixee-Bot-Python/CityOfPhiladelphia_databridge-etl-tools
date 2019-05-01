@@ -188,6 +188,7 @@ class Postgres():
 
     def write(self):
         self.get_csv_from_s3()
+        self.get_json_schema_from_s3()
         rows = etl.fromcsv(self.csv_path, encoding='latin-1')
         header = rows[0]
         str_header = ''
