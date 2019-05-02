@@ -31,6 +31,7 @@ setup(
     extras_require={
         'dev': [
             'moto==1.3.8',
+            'pytest==4.4.1',
         ]
     }
     entry_points={
