@@ -70,3 +70,8 @@ python -m databridge_etl_tools load \
     --json_schema_s3_key json_schema_s3_key \
     --csv_s3_key csv_s3_key
 ```
+
+## Run tests
+```bash
+python test.py
+```
