@@ -58,3 +58,15 @@ databridge_etl_tools load \
 ```bash
 pip install git+https://github.com/CityOfPhiladelphia/databridge-etl-tools#egg=databridge_etl_tools
 ```
+
+## Development
+To manually test while developing, the package can be entered using the -m module flag (due to the presence of the `__main__.py` file)
+```bash
+python -m databridge_etl_tools load \
+    --table_name li_appeals_type \
+    --table_schema lni \
+    --connection-string postgresql://user:password@host:port/db_name \
+    --s3_bucket s3_bucket \
+    --json_schema_s3_key json_schema_s3_key \
+    --csv_s3_key csv_s3_key
+```
