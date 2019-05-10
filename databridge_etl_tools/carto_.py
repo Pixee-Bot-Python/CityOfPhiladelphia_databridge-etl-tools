@@ -275,8 +275,11 @@ class Carto():
 
     def write(self):
         self.get_csv_from_s3()
-        rows = etl.fromcsv(self.csv_path, encoding='latin-1') \
-                    .cutout('etl_read_timestamp')
+        rows = etl.fromcsv(self.csv_path, encoding='latin-1')
+
+        if 'etl_read_timestamp' in etl.header(rows):
+            rows = rows.cutout('etl_read_timestamp')
+
         header = rows[0]
         str_header = ''
         num_fields = len(header)
