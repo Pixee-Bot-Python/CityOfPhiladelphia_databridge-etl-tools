@@ -18,8 +18,6 @@ ENV LD_LIBRARY_PATH=$ORACLE_HOME/lib
 ENV PATH=$ORACLE_HOME/bin:$PATH
 ENV HOSTALIASES=/tmp/HOSTALIASES
 
-COPY requirements.worker.txt /requirements.worker.txt
-
 RUN set -ex \
     && buildDeps=' \
         python3-dev \
