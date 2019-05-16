@@ -7,16 +7,22 @@ addons:
       - python-virtualenv
       - python3-dev
       - build-essential
-      - awscli
 
-install: python setup.py install
+install: 
+  - python setup.py install
+  - pip install awscli
 
 script:
   - echo "no tests!" # put testing scripts here once they're written
+  - chmod +x .travis/build_lambda.sh && .travis/build_lambda.sh
 
 deploy:
-  - provider: script
-    script: chmod +x .travis/deploy_lambda.sh && .travis/deploy_lambda.sh
-    skip_cleanup: true
+  - provider: s3
+    access_key_id: $AWS_ACCESS_KEY_ID
+    secret_access_key: $AWS_SECRET_ACCESS_KEY
+    bucket: 'citygeo-airflow-databridge2'
     on:
       branch: lambda
+    skip_cleanup: true
+    local-dir: dist
+    upload-dir: lambda
