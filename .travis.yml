@@ -22,7 +22,13 @@ deploy:
     secret_access_key: $AWS_SECRET_ACCESS_KEY
     bucket: 'citygeo-airflow-databridge2'
     on:
-      branch: lambda
+      branch: master
     skip_cleanup: true
     local-dir: dist
     upload-dir: lambda
+  - provider: lambda
+    function_name: "databridge-etl-tools"
+    region: "us-east-1"
+    role: "arn:aws:iam::$AWS_ACCOUNT_ID:role/airflow-lambda"
+    runtime: "python3.7"
+    handler_name: "function.handler"
