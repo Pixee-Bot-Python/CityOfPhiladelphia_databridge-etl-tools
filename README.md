@@ -58,7 +58,7 @@ databridge_etl_tools load \
 
 ## Installation
 ```bash
-pip install git+https://github.com/CityOfPhiladelphia/databridge-etl-tools#egg=databridge_etl_tools
+pip install git+https://github.com/CityOfPhiladelphia/databridge-etl-tools#egg=databridge_etl_tools --process-dependency-links
 ```
 
 ## Development
@@ -77,3 +77,6 @@ python -m databridge_etl_tools load \
 ```bash
 python test.py
 ```
+
+## Deployment
+When a commit is made to master, Travis CI bundles the code and its dependencies into a zip file, loads it to S3, and then publishes a new version of a lambda function using that updated zip file in S3.
