@@ -14,7 +14,7 @@ install:
 
 script:
   - echo "no tests!" # put testing scripts here once they're written
-  - chmod +x .travis/build_lambda.sh && .travis/build_lambda.sh
+  - chmod +x .travis/build_lambda.sh .travis/deploy_lambda.sh && .travis/build_lambda.sh
 
 deploy:
   - provider: s3
@@ -26,12 +26,7 @@ deploy:
     skip_cleanup: true
     local-dir: dist
     upload-dir: lambda
-  - provider: lambda
-    function_name: "databridge-etl-tools"
-    region: "us-east-1"
-    role: "arn:aws:iam::$AWS_ACCOUNT_ID:role/airflow-lambda"
+  - provider: script
+    script: bash .travis/deploy_lambda.sh
     on:
       branch: master
-    runtime: "python3.7"
-    module_name: "index"
-    handler_name: "handler"
