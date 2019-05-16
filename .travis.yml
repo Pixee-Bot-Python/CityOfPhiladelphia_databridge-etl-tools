@@ -31,4 +31,5 @@ deploy:
     region: "us-east-1"
     role: "arn:aws:iam::$AWS_ACCOUNT_ID:role/airflow-lambda"
     runtime: "python3.7"
-    handler_name: "function.handler"
+    module_name: "function"
+    handler_name: "handler"
