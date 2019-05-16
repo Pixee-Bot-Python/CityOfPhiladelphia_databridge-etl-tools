@@ -11,7 +11,7 @@ def handler(event, context):
 
 	logger.info('Received event: ' + event)
 
-	command = event['Records'][0]['command']
+	command = event
     logger.info(command)
 
     command_name = command['command_name']
