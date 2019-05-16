@@ -10,4 +10,4 @@ zip -r $TRAVIS_BUILD_DIR/dist/databridge-etl-tools.zip .
 
 echo "Zip together previous zip file and lambda function"
 cd $TRAVIS_BUILD_DIR/lambda
-zip -g $TRAVIS_BUILD_DIR/dist/databridge-etl-tools.zip function.py
+zip -g $TRAVIS_BUILD_DIR/dist/databridge-etl-tools.zip index.py

@@ -30,6 +30,8 @@ deploy:
     function_name: "databridge-etl-tools"
     region: "us-east-1"
     role: "arn:aws:iam::$AWS_ACCOUNT_ID:role/airflow-lambda"
+    on:
+      branch: master
     runtime: "python3.7"
-    module_name: "function"
+    module_name: "index"
     handler_name: "handler"
