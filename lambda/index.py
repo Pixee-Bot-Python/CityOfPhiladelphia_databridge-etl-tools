@@ -25,7 +25,7 @@ def handler(event, context):
             s3_bucket=command['s3_bucket'], 
             s3_key=command['s3_key']
         )
-    elif command_name == 'carto_update'
+    elif command_name == 'carto_update':
         carto_update(
             table_name=command['table_name'],
             connection_string=command['connection_string'],
