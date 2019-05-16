@@ -1,3 +1,5 @@
+[![Build Status](https://travis-ci.com/CityOfPhiladelphia/databridge-etl-tools.svg?branch=master)](https://travis-ci.com/CityOfPhiladelphia/databridge-etl-tools)
+
 # databridge-etl-tools
 
 Command line tools to extract and load SQL and Carto tables.
