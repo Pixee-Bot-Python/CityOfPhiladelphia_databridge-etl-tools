@@ -7,14 +7,20 @@ addons:
       - python-virtualenv
       - python3-dev
       - build-essential
+      - unzip
+      - libpq-dev
+
+before_install:
+  - chmod +x .travis/*.sh
+  - .travis/before_install.sh
 
 install: 
+  # setuptools didn't play nicely with git dependencies so we'll have to just install from github
   - pip install git+https://github.com/CityOfPhiladelphia/databridge-etl-tools#egg=databridge_etl_tools --process-dependency-links
-  - pip install awscli
 
 script:
   - echo "no tests!" # put testing scripts here once they're written
-  - chmod +x .travis/build_lambda.sh .travis/deploy_lambda.sh && .travis/build_lambda.sh
+  - .travis/build_lambda.sh
 
 deploy:
   - provider: s3
@@ -27,6 +33,7 @@ deploy:
     local-dir: dist
     upload-dir: lambda
   - provider: script
-    script: bash .travis/deploy_lambda.sh
+    script: .travis/deploy_lambda.sh
     on:
       branch: master
+    skip_cleanup: true

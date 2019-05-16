@@ -1,6 +1,6 @@
 import logging
 
-from databridge_etl_tools.cli import extract, cartoupdate, load
+from databridge_etl_tools.cli import cartoupdate, load
 
 
 def handler(event, context):
@@ -17,15 +17,7 @@ def handler(event, context):
     command_name = command['command_name']
     logger.info(command_name)
 
-    if command_name == 'extract':
-        extract(
-            table_name=command['table_name'], 
-            table_schema=command['table_schema'], 
-            connection_string=command['connection_string'], 
-            s3_bucket=command['s3_bucket'], 
-            s3_key=command['s3_key']
-        )
-    elif command_name == 'carto_update':
+    if command_name == 'carto_update':
         carto_update(
             table_name=command['table_name'],
             connection_string=command['connection_string'],
