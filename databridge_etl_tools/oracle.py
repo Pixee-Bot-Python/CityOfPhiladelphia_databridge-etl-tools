@@ -2,7 +2,6 @@ import logging
 import sys
 import os
 
-import cx_Oracle
 import boto3
 import petl as etl
 import geopetl
@@ -28,6 +27,10 @@ class Oracle():
     @property
     def conn(self):
         if self._conn is None:
+            try:
+                import cx_Oracle
+            except ImportError:
+                self.logger.error("cx_Oracle wasn't found... Did you install it as well as the oracle instant client?")
             self.logger.info('Trying to connect to Oracle database...')
             conn = cx_Oracle.connect(self.connection_string)
             self._conn = conn
