@@ -6,7 +6,7 @@ cd $TRAVIS_BUILD_DIR
 
 mkdir dist
 
-echo "Zip up site-packages"
+echo "Zip up site-packages, excluding non-compiled psycopg2 files to avoid confusing python imports"
 cd /home/travis/virtualenv/python3.5.6/lib/python3.5/site-packages/
 zip -r $TRAVIS_BUILD_DIR/dist/databridge-etl-tools.zip . -x psycopg2/**\* psycopg2_binary-2.8.2.dist-info/**\
 

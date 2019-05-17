@@ -11,7 +11,7 @@ def handler(event, context):
     sh = logging.StreamHandler(sys.stdout)
     logger.addHandler(sh)
 
-    logger.info('Received event: ' + event)
+    logger.info('Received event: ' + str(event))
 
     command = event
     logger.info(command)
