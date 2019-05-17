@@ -14,12 +14,9 @@ def handler(event, context):
     logger.info('Received event: ' + str(event))
 
     command = event
-    logger.info(command)
+    command_name = event['command_name']
 
-    command_name = command['command_name']
-    logger.info(command_name)
-
-    if command_name == 'carto_update':
+    if command_name == 'cartoupdate':
         carto = Carto(
             table_name=command['table_name'],
             connection_string=command['connection_string'],
@@ -27,7 +24,7 @@ def handler(event, context):
             json_schema_s3_key=command['json_schema_s3_key'],
             csv_s3_key=command['csv_s3_key'],
             select_users=command['select_users'],
-            index_fields=command['index_fields']
+            index_fields=None
         )
         carto.run_workflow()
     elif command_name == 'load':
