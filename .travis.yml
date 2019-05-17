@@ -16,7 +16,7 @@ before_install:
 
 install: 
   # setuptools didn't play nicely with git dependencies so we'll have to just install from github
-  - pip install git+https://github.com/CityOfPhiladelphia/databridge-etl-tools#egg=databridge_etl_tools --process-dependency-links
+  - pip install git+https://github.com/CityOfPhiladelphia/databridge-etl-tools#egg=databridge_etl_tools[carto,postgres]
 
 script:
   - echo "no tests!" # put testing scripts here once they're written

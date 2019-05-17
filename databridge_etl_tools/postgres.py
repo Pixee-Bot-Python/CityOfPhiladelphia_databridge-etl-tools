@@ -6,8 +6,6 @@ import json
 
 import psycopg2
 import boto3
-import petl as etl
-import geopetl
 
 
 csv.field_size_limit(sys.maxsize)

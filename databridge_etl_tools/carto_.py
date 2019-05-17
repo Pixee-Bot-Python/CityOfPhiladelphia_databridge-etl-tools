@@ -9,8 +9,6 @@ from carto.sql import SQLClient
 from carto.auth import APIKeyAuthClient
 from carto.exceptions import CartoException
 import boto3
-import petl as etl
-import geopetl
 import requests
 
 
