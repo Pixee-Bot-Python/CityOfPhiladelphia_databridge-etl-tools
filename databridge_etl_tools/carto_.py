@@ -10,6 +10,7 @@ from carto.auth import APIKeyAuthClient
 from carto.exceptions import CartoException
 import boto3
 import requests
+import petl as etl
 
 
 csv.field_size_limit(sys.maxsize)

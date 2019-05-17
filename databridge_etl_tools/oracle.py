@@ -4,7 +4,6 @@ import os
 
 import boto3
 import petl as etl
-import geopetl
 
 
 class Oracle():
@@ -68,6 +67,7 @@ class Oracle():
 
     def extract(self):
         self.logger.info('Starting extract from {}'.format(self.schema_table_name))
+        import geopetl
 
         etl.fromoraclesde(self.conn, self.schema_table_name, timestamp=True) \
            .tocsv(self.csv_path, encoding='latin-1')
