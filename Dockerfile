@@ -55,7 +55,6 @@ RUN set -ex \
     && locale-gen \
     && update-locale LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 \
     && useradd -ms /bin/bash worker \ 
-    && python3 -m pip install -U pip \
     && pip3 install -U setuptools \
     && pip3 install Cython \
        awscli==1.16.140 \
@@ -80,22 +79,14 @@ RUN set -ex \
         /usr/share/doc \
         /usr/share/doc-base
 
+COPY oracle-instantclient12.1-basiclite-12.1.0.2.0-1.x86_64.rpm oracle-instantclient12.1-devel-12.1.0.2.0-1.x86_64.rpm ./
+
 # instant basic-lite instant oracle client
-RUN set -ex \
-    && aws s3api get-object \
-           --bucket citygeo-oracle-instant-client \
-           --key oracle-instantclient12.1-basiclite-12.1.0.2.0-1.x86_64.rpm \
-                 oracle-instantclient12.1-basiclite-12.1.0.2.0-1.x86_64.rpm \
-    && alien -i oracle-instantclient12.1-basiclite-12.1.0.2.0-1.x86_64.rpm \
+RUN alien -i oracle-instantclient12.1-basiclite-12.1.0.2.0-1.x86_64.rpm \
     && rm oracle-instantclient12.1-basiclite-12.1.0.2.0-1.x86_64.rpm
 
 # instant oracle-sdk
-RUN set -ex \
-    && aws s3api get-object \
-           --bucket citygeo-oracle-instant-client \ 
-           --key oracle-instantclient12.1-devel-12.1.0.2.0-1.x86_64.rpm \
-                 oracle-instantclient12.1-devel-12.1.0.2.0-1.x86_64.rpm \
-    && alien -i oracle-instantclient12.1-devel-12.1.0.2.0-1.x86_64.rpm \
+RUN alien -i oracle-instantclient12.1-devel-12.1.0.2.0-1.x86_64.rpm \
     && rm oracle-instantclient12.1-devel-12.1.0.2.0-1.x86_64.rpm
 
 COPY scripts/entrypoint.sh /entrypoint.sh
