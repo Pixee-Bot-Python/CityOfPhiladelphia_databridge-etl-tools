@@ -1,3 +1,5 @@
+sudo: required
+
 language: python
 python: "3.5"
 
@@ -9,6 +11,9 @@ addons:
       - build-essential
       - unzip
       - subversion
+
+services:
+  - docker
 
 before_install:
   - chmod +x .travis/*.sh
@@ -34,6 +39,11 @@ deploy:
     upload-dir: lambda
   - provider: script
     script: .travis/deploy_lambda.sh
+    on:
+      branch: master
+    skip_cleanup: true
+  - provider: script
+    script: .travis/deploy_ecr.sh
     on:
       branch: master
     skip_cleanup: true

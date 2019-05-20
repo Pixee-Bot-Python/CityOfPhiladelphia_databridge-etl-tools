@@ -24,7 +24,7 @@ def handler(event, context):
             json_schema_s3_key=command['json_schema_s3_key'],
             csv_s3_key=command['csv_s3_key'],
             select_users=command['select_users'],
-            index_fields=None
+            index_fields=None #TODO: UPDATE THIS
         )
         carto.run_workflow()
     elif command_name == 'load':
