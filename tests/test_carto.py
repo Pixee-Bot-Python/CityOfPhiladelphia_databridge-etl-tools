@@ -2,7 +2,6 @@ import pytest
 import os
 
 from databridge_etl_tools.carto_ import Carto
-
 from .constants import (
     S3_BUCKET, 
     POINT_JSON_SCHEMA, POLYGON_JSON_SCHEMA, 

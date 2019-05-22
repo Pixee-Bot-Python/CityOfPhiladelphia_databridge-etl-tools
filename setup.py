@@ -31,6 +31,7 @@ setup(
         'dev': [
             'moto==1.3.8',
             'pytest==4.4.1',
+            'requests-mock==1.6.0'
         ]
     },
     dependency_links=[

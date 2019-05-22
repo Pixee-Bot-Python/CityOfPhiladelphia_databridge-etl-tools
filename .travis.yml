@@ -1,11 +1,7 @@
-sudo: required
+sudo: required # Needed for ecr
 
 language: python
 python: "3.5"
-
-env:
-  # Needed to avoid bug with Travis using moto https://github.com/spulec/moto/issues/1771
-  - BOTO_CONFIG /dev/null
 
 addons:
   apt:
@@ -29,6 +25,8 @@ install:
   - pip install git+https://github.com/CityOfPhiladelphia/databridge-etl-tools#egg=databridge_etl_tools[carto,postgres,dev]
 
 script:
+  # Needed to avoid bug with Travis using moto https://github.com/spulec/moto/issues/1771
+  - export BOTO_CONFIG=/dev/null
   - .travis/run_tests.sh
   - .travis/build_lambda.sh
 
