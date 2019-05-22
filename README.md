@@ -2,7 +2,10 @@
 
 # databridge-etl-tools
 
-Command line tools to extract and load SQL and Carto tables.
+Command line tools to extract and load SQL and Carto tables using [JSON Table Schema](http://frictionlessdata.io/guides/json-table-schema/).
+
+## Overview
+Use this tool to extract data from an Oracle SDE database, load it to S3, and then load it to PostGIS or Carto from S3. In order for this to work, a JSON table schema for the table you are working with needs to reside in S3.
 
 ## Requirements (w/o Docker)
 - Python 3.5 +
