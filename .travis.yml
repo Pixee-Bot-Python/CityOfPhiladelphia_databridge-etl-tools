@@ -3,6 +3,10 @@ sudo: required
 language: python
 python: "3.5"
 
+env:
+  # Needed to avoid bug with Travis using moto https://github.com/spulec/moto/issues/1771
+  - BOTO_CONFIG /dev/null
+
 addons:
   apt:
     packages:
@@ -13,6 +17,7 @@ addons:
       - subversion
 
 services:
+  # Needed for ecr
   - docker
 
 before_install:
@@ -21,10 +26,10 @@ before_install:
 
 install: 
   # setuptools didn't play nicely with git dependencies so we'll have to just install from github
-  - pip install git+https://github.com/CityOfPhiladelphia/databridge-etl-tools#egg=databridge_etl_tools[carto,postgres]
+  - pip install git+https://github.com/CityOfPhiladelphia/databridge-etl-tools#egg=databridge_etl_tools[carto,postgres,dev]
 
 script:
-  - echo "no tests!" # put testing scripts here once they're written
+  - .travis/run_tests.sh
   - .travis/build_lambda.sh
 
 deploy:

@@ -78,7 +78,7 @@ python -m databridge_etl_tools load \
 
 ## Run tests
 ```bash
-python test.py
+source scripts/run_tests.sh
 ```
 
 ## Deployment
