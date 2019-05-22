@@ -8,7 +8,6 @@ from .constants import S3_BUCKET
 from databridge_etl_tools.oracle import Oracle
 
 
-#CONNECTION_STRING = os.environ['TEST_ORACLE_CONNECTION_STRING']
 CONNECTION_STRING = 'connection_string'
 TABLE_NAME        = 'table_name'
 TABLE_SCHEMA      = 'schema'

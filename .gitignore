@@ -125,14 +125,5 @@ dmypy.json
 # VS Code
 .vscode/
 
-# Schemas directory
-schemas/
-
-# CSVs
-*.csv
-
 # Build
 build/
-
-# JSON
-*.json

@@ -1,0 +1,33 @@
+{
+  "primaryKey": [
+    "objectid"
+  ],
+  "fields": [
+    {
+      "name": "objectid",
+      "constraints": {
+        "required": true
+      },
+      "type": "numeric"
+    },
+    {
+      "name": "textfield",
+      "type": "text"
+    },
+    {
+      "name": "datefield",
+      "format": "fmt:%Y-%m-%d %H:%M:%S",
+      "type": "date"
+    },
+    {
+      "name": "numericfield",
+      "type": "numeric"
+    },
+    {
+      "name": "shape",
+      "type": "geometry",
+      "geometry_type": "multipolygon",
+      "srid": 2272
+    }
+  ]
+}
