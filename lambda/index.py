@@ -29,12 +29,18 @@ def handler(event, context):
         carto.run_workflow()
     elif command_name == 'load':
         postgres = Postgres(
-            table_name=table_name,
-            table_schema=table_schema,
-            connection_string=connection_string,
-            s3_bucket=s3_bucket,
-            json_schema_s3_key=json_schema_s3_key,
-            csv_s3_key=csv_s3_key)
+            table_name=command['table_name'],
+            table_schema=command['table_schema'],
+            connection_string=command['connection_string'],
+            s3_bucket=command['s3_bucket'],
+            json_schema_s3_key=command['json_schema_s3_key'],
+            csv_s3_key=command['csv_s3_key']
+        )
         postgres.run_workflow()
+    elif command_name == 'extract':
+        raise NotImplementedError('Not implemented due to the Oracle client being too large to fit on lambda.')
+    else:
+        log.error('Command not recognized!')
+        raise
 
     logger.info('Process completed!')
