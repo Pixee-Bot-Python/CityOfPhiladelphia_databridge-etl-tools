@@ -8,6 +8,7 @@ addons:
     packages:
       - python-virtualenv
       - python3-dev
+      - python-psycopg2
       - build-essential
       - unzip
       - subversion
@@ -24,7 +25,7 @@ before_install:
         export ENVIRONMENT="prod"
       fi
   - chmod +x .travis/*.sh
-  - .travis/before_install.sh
+  - pip install awscli
 
 install: 
   - pip install git+https://github.com/CityOfPhiladelphia/databridge-etl-tools.git@$TRAVIS_BRANCH#egg=databridge_etl_tools[carto,postgres,dev]
@@ -33,6 +34,7 @@ script:
   # Needed to avoid bug with Travis using moto https://github.com/spulec/moto/issues/1771
   - export BOTO_CONFIG=/dev/null
   - .travis/run_tests.sh
+  - .travis/get_psycopg2.sh
   - .travis/build_lambda.sh
 
 deploy:
