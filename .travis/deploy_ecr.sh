@@ -14,7 +14,7 @@ aws s3api get-object \
     --key oracle-instantclient12.1-devel-12.1.0.2.0-1.x86_64.rpm \
         oracle-instantclient12.1-devel-12.1.0.2.0-1.x86_64.rpm
 
-REPO_NAME=airflow-databridge-etl-tools-worker
+REPO_NAME=airflow-databridge-etl-tools-worker-$ENVIRONMENT
 
 eval $(aws ecr get-login --no-include-email --region us-east-1)
 docker build -t $REPO_NAME .
