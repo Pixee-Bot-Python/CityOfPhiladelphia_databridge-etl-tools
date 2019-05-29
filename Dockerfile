@@ -63,7 +63,7 @@ RUN set -ex \
        click==7.0 \
        cryptography==2.6.1 \
        cx-Oracle==7.0.0 \
-       -e git+https://github.com/CityOfPhiladelphia/geopetl.git@b7c854c3dd3853abf32731f5dc1b707ea9ecae23#egg=geopetl \
+       -e git+https://github.com/CityOfPhiladelphia/geopetl.git@57222e39902c43f4121cdb5b4b6058bf048d84d7#egg=geopetl \
        petl==1.2.0 \
        psycopg2==2.8.1 \
        pyasn1==0.4.5 \
@@ -95,7 +95,9 @@ RUN chmod +x /entrypoint.sh
 
 # Cache bust
 ENV updated-adds-on 5-1-2019_5
-RUN pip3 install git+https://github.com/CityOfPhiladelphia/databridge-etl-tools#egg=databridge_etl_tools[carto,oracle,postgres] --process-dependency-links
+COPY databridge_etl_tools /databridge_etl_tools
+COPY setup.py /setup.py
+RUN pip3 install -e .
 
 USER worker
 ENTRYPOINT ["/entrypoint.sh"]
