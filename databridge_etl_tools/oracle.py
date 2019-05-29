@@ -69,7 +69,7 @@ class Oracle():
         self.logger.info('Starting extract from {}'.format(self.schema_table_name))
         import geopetl
 
-        etl.fromoraclesde(self.conn, self.schema_table_name, timestamp=True) \
+        etl.fromoraclesde(self.conn, self.schema_table_name) \
            .tocsv(self.csv_path, encoding='latin-1')
 
         self.load_csv_to_s3()
