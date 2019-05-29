@@ -27,7 +27,7 @@ before_install:
   - .travis/before_install.sh
 
 install: 
-  - pip install -e .[carto,postgres,dev]
+  - pip install git+https://github.com/CityOfPhiladelphia/databridge-etl-tools.git@$TRAVIS_BRANCH#egg=databridge_etl_tools[carto,postgres,dev]
 
 script:
   # Needed to avoid bug with Travis using moto https://github.com/spulec/moto/issues/1771
