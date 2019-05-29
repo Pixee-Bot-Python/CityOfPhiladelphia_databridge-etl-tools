@@ -3,7 +3,7 @@
 from distutils.core import setup
 
 setup(
-    name='Databridge ETL Tools',
+    name='databridge_etl_tools',
     version='0.1.0',
     packages=['databridge_etl_tools',],
     install_requires=[
