@@ -30,6 +30,7 @@ DATA_TYPE_MAP = {
 GEOM_TYPE_MAP = {
     'point':           'Point',
     'line':            'Linestring',
+    'linestring':      'Linestring',
     'polygon':         'MultiPolygon',
     'multipolygon':    'MultiPolygon',
     'multilinestring': 'MultiLineString',
