@@ -354,6 +354,14 @@ class Carto():
         self.execute_sql(stmt)
         self.logger.info('Temporary tables dropped successfully.\n')
 
+        self.logger.info('Attempting to drop temp files...')
+
+        for f in [self.csv_path, self.temp_csv_path, self.json_schema_path]:
+            if os.path.isfile(f):
+                os.remove(f)
+
+        self.logger.info('Successfully removed temp files.')
+
     def swap_table(self):
         stmt = 'BEGIN;' + \
                 'ALTER TABLE IF EXISTS "{}" RENAME TO "{}_old";'.format(self.table_name, self.table_name) + \
@@ -376,5 +384,6 @@ class Carto():
             self.logger.info('Done!')
         except Exception as e:
             self.logger.error('Workflow failed, reverting...')
-            self.cleanup()
             raise e
+        finally:
+            self.cleanup()

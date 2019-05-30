@@ -294,10 +294,13 @@ class Postgres():
         self.logger.info('Vacuum analyze complete.\n')
 
     def cleanup(self):
-        self.logger.info('Attempting to drop any temporary tables: {}'.format(self.temp_table_name))
-        stmt = '''DROP TABLE IF EXISTS {} cascade'''.format(self.temp_table_name)
-        self.execute_sql(stmt)
-        self.logger.info('Temporary tables dropped successfully.\n')
+        self.logger.info('Attempting to drop temp files...')
+        
+        for f in [self.csv_path, self.temp_csv_path, self.json_schema_path]:
+            if os.path.isfile(f):
+                os.remove(f)
+
+        self.logger.info('Successfully removed temp files.')
 
     def run_workflow(self):
         try:
@@ -309,3 +312,5 @@ class Postgres():
             self.logger.error('Workflow failed...')
             self.conn.rollback()
             raise e
+        finally:
+            self.cleanup()
