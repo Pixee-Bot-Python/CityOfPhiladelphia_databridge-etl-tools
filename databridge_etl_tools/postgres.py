@@ -12,19 +12,21 @@ import petl as etl
 csv.field_size_limit(sys.maxsize)
 
 DATA_TYPE_MAP = {
-    'string':           'text',
-    'number':           'numeric',
-    'float':            'numeric',
-    'double precision': 'numeric',
-    'integer':          'integer',
-    'boolean':          'boolean',
-    'object':           'jsonb',
-    'array':            'jsonb',
-    'date':             'date',
-    'time':             'time',
-    'datetime':         'date',
-    'geom':             'geometry',
-    'geometry':         'geometry'
+    'string':                      'text',
+    'number':                      'numeric',
+    'float':                       'numeric',
+    'double precision':            'numeric',
+    'integer':                     'integer',
+    'boolean':                     'boolean',
+    'object':                      'jsonb',
+    'array':                       'jsonb',
+    'date':                        'date',
+    'time':                        'time',
+    'datetime':                    'timestamp without time zone',
+    'timestamp without time zone': 'timestamp without time zone',
+    'timestamp with time zone':    'timestamp with time zone',
+    'geom':                        'geometry',
+    'geometry':                    'geometry'
 }
 
 GEOM_TYPE_MAP = {
@@ -215,7 +217,7 @@ class Postgres():
 
     def write(self):
         self.get_csv_from_s3()
-        self.get_json_schema_from_s3()
+        # self.get_json_schema_from_s3()
         rows = etl.fromcsv(self.csv_path, encoding='latin-1')
         header = rows[0]
         str_header = ''
@@ -228,10 +230,6 @@ class Postgres():
                 str_header += field
 
         self.logger.info('Writing to table: {}...'.format(self.table_schema_name))
-        # format geom field:
-        if self.geom_field and self.geom_srid:
-            rows = rows.convert(self.geom_field,
-                                lambda c: 'SRID={srid};{geom}'.format(srid=self.geom_srid, geom=c) if c else '') \
 
         write_file = self.temp_csv_path
         rows.tocsv(write_file, write_header=False)
@@ -248,16 +246,19 @@ class Postgres():
         self.logger.info('Postgres Write Successful: {} rows imported.\n'.format(response[0]))
 
     def get_geom_field(self):
-        with open(json_schema_path) as json_file:
-            schema = json.load(json_file).get('fields', '')
-            if not schema:
-                self.logger.error('json schema malformatted...')
-                raise
-            for scheme in schema:
-                scheme_type = mapping.get(scheme['type'].lower(), scheme['type'])
-                if scheme_type == 'geometry':
-                    geom_srid = scheme.get('srid', '')
-                    geom_field = scheme.get('name', '')
+        """Not currently implemented. Relying on csv to be extracted by geopetl fromoraclesde with geom_with_srid = True"""
+        # with open(self.json_schema_path) as json_file:
+        #     schema = json.load(json_file).get('fields', '')
+        #     if not schema:
+        #         self.logger.error('json schema malformatted...')
+        #         raise
+        #     for scheme in schema:
+        #         scheme_type = DATA_TYPE_MAP.get(scheme['type'].lower(), scheme['type'])
+        #         if scheme_type == 'geometry':
+        #             geom_srid = scheme.get('srid', '')
+        #             geom_field = scheme.get('name', '')
+        #
+        raise NotImplementedError
 
     # def verify_count(self):
     #     self.logger.info('Verifying row count...')
