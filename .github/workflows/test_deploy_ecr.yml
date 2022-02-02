@@ -56,10 +56,11 @@ jobs:
     # NOTE: normally the docker container runs as 'worker' but
     # in order to setup our testing venv we need root permissions
     # hence we run the tests as 'root' user or '-u 0'
-    - name: Build, start docker container, and run pytests
-      run: |
-          docker build -t airflow-dbtools-testing .
-          docker run -u 0 -it --name dbtools airflow-dbtools-testing '/run_tests.sh'
+    - name: Build docker container
+      run: docker build -t airflow-dbtools-testing .
+
+    - name: Start docker container and run pytests
+      run: docker run -u 0 --name dbtools airflow-dbtools-testing '/run_tests.sh'
 
     # https://github.com/aws-actions/amazon-ecr-login
     - name: Login to Amazon ECR
