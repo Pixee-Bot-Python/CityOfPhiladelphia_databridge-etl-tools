@@ -60,7 +60,9 @@ RUN sed -i 's/^# en_US.UTF-8 UTF-8$/en_US.UTF-8 UTF-8/g' /etc/locale.gen \
     && useradd -ms /bin/bash worker
 
 # pip stuff
-RUN pip3 install -U setuptools \
+RUN pip3 install --upgrade pip \
+    && pip3 install setuptools-rust \
+    && pip3 install -U setuptools \
     && pip3 install -e git+https://github.com/CityOfPhiladelphia/geopetl.git@b80a38cf1dae2cec9ce2c619281cc513795bf608#egg=geopetl \
                    Cython==0.29.27 \
                    awscli==1.22.46 \
@@ -97,17 +99,15 @@ RUN alien -i oracle-instantclient12.1-devel-12.1.0.2.0-1.x86_64.rpm \
     && rm oracle-instantclient12.1-devel-12.1.0.2.0-1.x86_64.rpm
 
 COPY scripts/entrypoint.sh /entrypoint.sh
-COPY scripts/run_tests_v2.sh /run_tests.sh
-COPY tests /tests/
+COPY tests/ tests/
 
 RUN chmod +x /entrypoint.sh
-RUN chmod +x /run_tests.sh
 
 # Cache bust
 ENV updated-adds-on 5-1-2019_5
 COPY databridge_etl_tools /databridge_etl_tools
 COPY setup.py /setup.py
-RUN pip3 install -e .
+RUN pip3 install -e .[postgres,oracle,carto,dev]
 
 USER worker
 ENTRYPOINT ["/entrypoint.sh"]

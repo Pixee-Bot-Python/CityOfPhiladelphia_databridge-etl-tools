@@ -60,7 +60,7 @@ jobs:
       run: docker build -t airflow-dbtools-testing .
 
     - name: Start docker container and run pytests
-      run: docker run -u 0 --name dbtools airflow-dbtools-testing '/run_tests.sh'
+      run: docker run --rm --name dbtools airflow-dbtools-testing pytest tests
 
     # https://github.com/aws-actions/amazon-ecr-login
     - name: Login to Amazon ECR
