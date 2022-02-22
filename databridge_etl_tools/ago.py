@@ -1,8 +1,10 @@
 import os
 import sys
+from time import sleep
 import logging
 import zipfile
 import click
+import petl as etl
 from arcgis import GIS
 
 
@@ -10,6 +12,8 @@ class AGO():
     _logger = None
     _org = None
     _item = None
+    _item_geom = None
+    _item_fields = None
 
     def __init__(self,
                  ago_org_url,
@@ -29,6 +33,7 @@ class AGO():
         self.export_format = kwargs.get('export_format', None)
         self.export_zipped = kwargs.get('export_zipped', False)
         self.export_dir_path = kwargs.get('export_dir_path', os.getcwd() + '\\' + self.item_name.replace(' ', '_'))
+        self.csv_path = kwargs.get('csv_path', None)
 
 
     @property
@@ -76,6 +81,30 @@ class AGO():
         return self._item
 
 
+    @property
+    def item_tables(self):
+        return self.item.tables
+
+    @property
+    def item_layers(self):
+        return self.item.layers
+
+    @property
+    def item_geom(self):
+        if self._item_geom is None:
+            if self.item_tables and type(self.item_tables) is list:
+                self._item_geom = 'False'
+            elif self.item_layers and type(self.item_layers) is list:
+                self._item_geom = 'True'
+        return self._item_geom
+
+    @property
+    def item_fields(self):
+        if self._item_fields is None:
+            self._item_fields = self.item_tables[0].properties.fields if self.item_geom == 'False' else self.item_layers[0].properties.fields
+        return self._item_fields
+
+
     def unzip(self):
         # get path to zipfile:
         zip_path = ''
@@ -91,8 +120,9 @@ class AGO():
     def export(self):
         # TODO: delete any existing files in export_dir_path
         # test parameters
-        parameters = {"layers" : [ { "id" : 0, "out_sr": 2272 } ] }
-        result = self.item.export(f'{self.item.title}', self.export_format, parameters=parameters, enforce_fld_vis=True, wait=True)
+        # parameters = {"layers" : [ { "id" : 0, "out_sr": 2272 } ] }
+        # result = self.item.export(f'{self.item.title}', self.export_format, parameters=parameters, enforce_fld_vis=True, wait=True)
+        result = self.item.export(f'{self.item.title}', self.export_format, enforce_fld_vis=True, wait=True)
         result.download(self.export_dir_path)
         # Delete the item after it downloads to save on space
         result.delete()
@@ -102,8 +132,35 @@ class AGO():
 
 
     def update(self):
-        print("Updating is not yet implemented...")
-        raise NotImplementedError
+        print(vars(self.item))
+        if self.item_geom == 'True':
+            from arcgis.features import FeatureLayerCollection
+            flayer_collection = FeatureLayerCollection.fromitem(self.item)
+            # call the overwrite() method which can be accessed using the manager property
+            flayer_collection.manager.overwrite(self.csv_path)
+        elif self.item_geom == 'False':
+            table = self.item_tables[0]
+            print("Truncating table")
+            table.manager.truncate()  # truncate table
+            count = table.query(return_count_only=True)
+            print('count after truncate: ', count)
+            assert count == 0
+            rows = etl.fromcsv(self.csv_path, encoding='utf-8')
+            row_dicts = rows.dicts()
+            batch_size = 1000
+            adds = []
+            for i, row in enumerate(row_dicts):
+                adds.append({"attributes": row})
+                if len(adds) % batch_size == 0:
+                    print("Adding batch...")
+                    sleep(1)
+                    table.edit_features(adds, rollback_on_failure=True)
+                    adds = []
+            if adds:
+                table.edit_features(adds, rollback_on_failure=True)
+            count = table.query(return_count_only=True)
+            print('count after batch adds: ', count)
+            # file_remove(self.csv_path)
 
 
     def append(self):
@@ -130,6 +187,21 @@ def cli():
 def export_ago_item(ago_org_url, ago_user, ago_password, item_name, item_type, export_format=None):
     ago = AGO(ago_org_url,ago_user,ago_password,item_name,item_type,export_format=export_format)
     ago.export()
+
+
+@cli.command('update')
+@click.option('--ago_org_url')
+@click.option('--ago_user')
+@click.option('--ago_password')
+@click.option('--item_name')
+@click.option('--item_type')
+@click.option('--csv_path',
+              default="",
+              help='''The path to the csv file with the data for updating the AGO item.''')
+def update_ago_item(ago_org_url, ago_user, ago_password, item_name, item_type, csv_path=None):
+    ago = AGO(ago_org_url, ago_user, ago_password, item_name, item_type, csv_path=csv_path)
+    ago.update()
+    # print("item fields: ", ago.item_fields)
 
 
 if __name__ == '__main__':
