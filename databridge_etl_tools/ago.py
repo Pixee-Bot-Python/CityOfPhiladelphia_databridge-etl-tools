@@ -5,35 +5,40 @@ import logging
 import zipfile
 import click
 import petl as etl
+import boto3
 from arcgis import GIS
+from arcgis.features import FeatureLayerCollection
 
 
 class AGO():
     _logger = None
     _org = None
     _item = None
-    _item_geom = None
+    _geometric = None
     _item_fields = None
 
     def __init__(self,
                  ago_org_url,
                  ago_user,
-                 ago_password,
-                 item_name,
-                 item_type,
+                 ago_pw,
+                 ago_item_name,
+                 s3_bucket,
+                 csv_s3_key,
                  **kwargs
                  ):
         self.ago_org_url = ago_org_url
         self.ago_user = ago_user
-        self.ago_password = ago_password
-        self.item_name = item_name
-        self.item_type = item_type
+        self.ago_password = ago_pw
+        self.item_name = ago_item_name
+        self.s3_bucket = s3_bucket
+        self.csv_s3_key = csv_s3_key
         self.proxy_host = kwargs.get('proxy_host', None)
         self.proxy_port = kwargs.get('proxy_port', None)
         self.export_format = kwargs.get('export_format', None)
         self.export_zipped = kwargs.get('export_zipped', False)
         self.export_dir_path = kwargs.get('export_dir_path', os.getcwd() + '\\' + self.item_name.replace(' ', '_'))
-        self.csv_path = kwargs.get('csv_path', None)
+        # unimportant since this will be run in AWS batch
+        self.csv_path = '/home/worker/temp.csv'
 
 
     @property
@@ -66,43 +71,57 @@ class AGO():
         return self._org
 
 
+    '''Find the AGO object that we can perform actions on, sends requests to it's AGS endpoint in AGO.'''
     @property
     def item(self):
         if self._item is None:
             try:
-                items = self.org.content.search(f'''owner:"{self.ago_user}" AND title:"{self.item_name}" AND type:"{self.item_type}"''')
+                # "Feature Service" seems to pull up both spatial and table items in AGO
+                items = self.org.content.search(f'''owner:"{self.ago_user}" AND title:"{self.item_name}" AND type:"Feature Service"''')
                 for item in items:
                     if item.title == self.item_name:
                         self._item = item
                         return self._item
             except Exception as e:
-                self.logger.error(f'Failed searching for item owned by {self.ago_user} with title: {self.item_name} and type: {self.item_type}')
+                self.logger.error(f'Failed searching for item owned by {self.ago_user} with title: {self.item_name} and type:"Feature Service"')
                 raise e
         return self._item
 
 
+    '''Get the item object that we can operate on Can be in either "tables" or "layers"
+    but either way operations on it are the same.'''
     @property
-    def item_tables(self):
-        return self.item.tables
+    def layer_object(self):
+        self._layer_object = None
+        if self.item.tables:
+            if self.item.tables[0]:
+                self._layer_object = self.item.tables[0]
+        elif self.item.layers:
+            if self.item.layers[0]:
+                self._layer_object = self.item.layers[0]
+        if self._layer_object is None:
+            raise AssertionError('Could not locate our feature layer/table item in returned AGO object')
+        return self._layer_object
 
-    @property
-    def item_layers(self):
-        return self.item.layers
 
-    @property
-    def item_geom(self):
-        if self._item_geom is None:
-            if self.item_tables and type(self.item_tables) is list:
-                self._item_geom = 'False'
-            elif self.item_layers and type(self.item_layers) is list:
-                self._item_geom = 'True'
-        return self._item_geom
-
+    '''Fields of the dataset in AGO'''
     @property
     def item_fields(self):
-        if self._item_fields is None:
-            self._item_fields = self.item_tables[0].properties.fields if self.item_geom == 'False' else self.item_layers[0].properties.fields
+        self._item_fields = layer_object.properties.fields
         return self._item_fields
+
+
+    '''Boolean telling us whether the item is geometric or just a table?'''
+    @property
+    def geometric(self):
+        geometry_type = None
+        try:
+            geometry_type = self.layer_object.geometryType
+        except:
+            self._geometric = False
+        if geometry_type:
+            self._geometric = True
+        return self._geometric
 
 
     def unzip(self):
@@ -131,78 +150,188 @@ class AGO():
             self.unzip()
 
 
-    def update(self):
+    '''
+    Based off docs I believe this will only work with fgdbs or sd file
+    or with non-spatial CSV files: https://developers.arcgis.com/python/sample-notebooks/overwriting-feature-layers
+    '''
+    def overwrite(self):
+        if self.geometric == 'True':
+            raise NotImplementedError('Overwrite with CSVs only works for non-spatial datasets.')
         print(vars(self.item))
-        if self.item_geom == 'True':
-            from arcgis.features import FeatureLayerCollection
-            flayer_collection = FeatureLayerCollection.fromitem(self.item)
-            # call the overwrite() method which can be accessed using the manager property
-            flayer_collection.manager.overwrite(self.csv_path)
-        elif self.item_geom == 'False':
-            table = self.item_tables[0]
-            print("Truncating table")
-            table.manager.truncate()  # truncate table
-            count = table.query(return_count_only=True)
-            print('count after truncate: ', count)
-            assert count == 0
-            rows = etl.fromcsv(self.csv_path, encoding='utf-8')
-            row_dicts = rows.dicts()
-            batch_size = 1000
-            adds = []
+        flayer_collection = FeatureLayerCollection.fromitem(self.item)
+        # call the overwrite() method which can be accessed using the manager property
+        flayer_collection.manager.overwrite(self.csv_path)
+
+
+    def truncate(self):
+        self.layer_object.manager.truncate()
+        count = self.layer_object.query(return_count_only=True)
+        print('count after truncate: ', count)
+        assert count == 0
+
+    def get_csv_from_s3(self):
+        self.logger.info('Fetching csv s3://{}/{}'.format(self.s3_bucket, self.csv_s3_key))
+
+        s3 = boto3.resource('s3')
+        s3.Object(self.s3_bucket, self.csv_s3_key).download_file(self.csv_path)
+
+        self.logger.info('CSV successfully downloaded.\n'.format(self.s3_bucket, self.csv_s3_key))
+
+    @property
+    def point_transformer(self):
+        self._point_transformer = pyproj.Transformer.from_crs(f'epsg:{in_srid}',
+                                                  f'epsg:{out_srid}',
+                                                  always_xy=True)
+        return self._point_transformer
+
+    @property
+    def polygon_transformer(self):
+        # reference for polygon projection: https://gis.stackexchange.com/a/328642
+        self._polygon_transformer = pyproj.Transformer.from_proj(
+            pyproj.Proj(init=f'epsg:{in_srid}'),  # source coordinate system
+            pyproj.Proj(init=f'epsg:{out_srid}'))  # destination coordinate system
+        return self._polygon_transformer
+
+
+    ''' Helper function to help format spatial fields properly for AGO '''
+    def project_and_format_shape(self, transformer, wkt_shape):
+        # Note: list of coordinates for polygons are called "rings" for some reason
+        def format_ring(poly):
+            if projection:
+                transformed = self.shapely_transformer(transformer.transform, poly)
+                xlist = list(transformed.exterior.xy[0])
+                ylist = list(transformed.exterior.xy[1])
+                coords = [list(x) for x in zip(xlist, ylist)]
+                return coords
+            else:
+                xlist = list(poly.exterior.xy[0])
+                ylist = list(poly.exterior.xy[1])
+                coords = [list(x) for x in zip(xlist, ylist)]
+                return coords
+        def format_path(line):
+            if projection:
+                transformed = self.shapely_transformer(transformer.transform, line)
+                xlist = list(transformed.coords.xy[0])
+                ylist = list(transformed.coords.xy[1])
+                coords = [list(x) for x in zip(xlist, ylist)]
+                return coords
+            else:
+                xlist = list(line.coords.xy[0])
+                ylist = list(line.coords.xy[1])
+                coords = [list(x) for x in zip(xlist, ylist)]
+                return coords
+        if 'POINT' in wkt_shape:
+            pt = shapely.wkt.loads(wkt_shape)
+            if projection:
+                x, y = point_transformer.transform(pt.x, pt.y)
+                return x, y
+            else:
+                return pt.x, pt.y
+        elif 'MULTIPOLYGON' in wkt_shape:
+            multipoly = shapely.wkt.loads(wkt_shape)
+            assert multipoly.is_valid
+            print("Polygons in multipoly: ", len(multipoly))
+            list_of_rings = []
+            for poly in multipoly:
+                assert poly.is_valid
+                # reference for polygon projection: https://gis.stackexchange.com/a/328642
+                ring = format_ring(poly)
+                list_of_rings.append(ring)
+            return list_of_rings
+        elif 'POLYGON' in wkt_shape:
+            poly = shapely.wkt.loads(wkt_shape)
+            assert poly.is_valid
+            ring = format_ring(poly)
+            return ring
+        elif 'LINESTRING' in wkt_shape:
+            path = shapely.wkt.loads(wkt_shape)
+            path = format_path(path)
+            return path
+        else:
+            raise NotImplementedError('Shape unrecognized.')
+
+
+    ''' Do not perform project, simply extract and return our coords lists.'''
+    def return_coords_only(self,wkt_shape):
+        poly = shapely.wkt.loads(wkt_shape)
+        return poly.exterior.xy[0], poly.exterior.xy[1]
+
+
+    def append(self):
+        rows = etl.fromcsv(self.csv_path, encoding='latin-1')
+        row_dicts = rows.dicts()
+        batch_size = 5000
+        adds = []
+        if self.geometric is False:
             for i, row in enumerate(row_dicts):
                 adds.append({"attributes": row})
                 if len(adds) % batch_size == 0:
                     print("Adding batch...")
                     sleep(1)
-                    table.edit_features(adds, rollback_on_failure=True)
+                    self.layer_object.edit_features(adds, rollback_on_failure=True)
                     adds = []
             if adds:
-                table.edit_features(adds, rollback_on_failure=True)
-            count = table.query(return_count_only=True)
-            print('count after batch adds: ', count)
-            # file_remove(self.csv_path)
+                self.layer_object.edit_features(adds, rollback_on_failure=True)
+        elif self.geometric is True:
+            for i, row in enumerate(row_dicts):
+                # remove the shape field so we can replace it with SHAPE with the spatial reference key
+                # and also store in 'wkt' var (well known text) so we can project it
+                wkt = row.pop('shape')
+                # For different types we can consult this for the proper json format:
+                # https://developers.arcgis.com/documentation/common-data-types/geometry-objects.htm
+                if 'POINT' in wkt:
+                    projected_x, projected_y = self.project_and_format_shape(point_transformer, wkt)
+                elif 'MULTIPOINT' in wkt:
+                    raise NotImplementedError("MULTIPOINTs not implemented yet..")
+                elif 'MULTIPOLYGON' in wkt:
+                    rings = self.project_and_format_shape(self.polygon_transformer, wkt)
+                    geom_dict = {"rings": rings,
+                                 "spatial_reference": {"wkid": 102100, "latestWkid": 3857}
+                                 }
+                    row_to_append = {"attributes": row,
+                                     "geometry": geom_dict
+                                     }
+                elif 'POLYGON' in wkt:
+                    #xlist, ylist = return_coords_only(wkt)
+                    ring = self.project_and_format_shape(self.polygon_transformer, wkt)
+                    geom_dict = {"rings": [ring],
+                                 "spatial_reference": {"wkid": 102100, "latestWkid": 3857}
+                                 }
+                    row_to_append = {"attributes": row,
+                                     "geometry": geom_dict
+                                     }
+                elif 'LINESTRING' in wkt:
+                    paths = self.project_and_format_shape(self.polygon_transformer, wkt)
+                    geom_dict = {"paths": [paths],
+                                 "spatial_reference": {"wkid": 102100, "latestWkid": 3857}
+                                 }
+                    row_to_append = {"attributes": row,
+                                     "geometry": geom_dict
+                                     }
+                adds.append(row_to_append)
+
+                batch_size = 3000
+                # Where we actually append the rows to the dataset in AGO
+                if len(adds) % batch_size == 0:
+                    print(f'Adding batch of {len(adds)}, at row #: {i}...')
+                    count += 1
+                    sleep(1)
+                    self.layer_object.edit_features(adds=adds)
+                    adds = []
+            # add leftover rows outside the loop if they don't add up to 3000
+            if adds:
+                print(f'Adding batch of {len(adds)}, at row #: {i}...')
+                self.layer_object.edit_features(adds=adds) 
 
 
-    def append(self):
-        print("Updating is not yet implemented...")
-        raise NotImplementedError
-
+        count = self.layer_object.query(return_count_only=True)
+        print('count after batch adds: ', count)
+        assert count != 0
 
 
 @click.group()
 def cli():
     pass
-
-@cli.command('export')
-@click.option('--ago_org_url')
-@click.option('--ago_user')
-@click.option('--ago_password')
-@click.option('--item_name')
-@click.option('--item_type')
-@click.option('--export_format',
-              default="CSV",
-              help='''The output format for the export. 
-                    Values: Shapefile | CSV | File Geodatabase | Feature Collection | GeoJson | Scene Package | KML | Excel
-                    ''')
-def export_ago_item(ago_org_url, ago_user, ago_password, item_name, item_type, export_format=None):
-    ago = AGO(ago_org_url,ago_user,ago_password,item_name,item_type,export_format=export_format)
-    ago.export()
-
-
-@cli.command('update')
-@click.option('--ago_org_url')
-@click.option('--ago_user')
-@click.option('--ago_password')
-@click.option('--item_name')
-@click.option('--item_type')
-@click.option('--csv_path',
-              default="",
-              help='''The path to the csv file with the data for updating the AGO item.''')
-def update_ago_item(ago_org_url, ago_user, ago_password, item_name, item_type, csv_path=None):
-    ago = AGO(ago_org_url, ago_user, ago_password, item_name, item_type, csv_path=csv_path)
-    ago.update()
-    # print("item fields: ", ago.item_fields)
-
 
 if __name__ == '__main__':
     cli()

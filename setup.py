@@ -25,6 +25,10 @@ setup(
         'urllib3==1.24.2'
     ],
     extras_require={
+        'ago': [
+                'arcgis==1.8.5.post3',
+                'urllib3<1.26'
+                ],
         'carto': ['carto==1.4.0'],
         'oracle': ['cx_Oracle==7.1.3'],
         'postgres': ['psycopg2-binary==2.8.2'],

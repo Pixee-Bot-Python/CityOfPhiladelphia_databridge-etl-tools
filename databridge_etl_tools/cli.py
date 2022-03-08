@@ -3,6 +3,7 @@ import click
 from .oracle import Oracle
 from .carto_ import Carto
 from .postgres import Postgres
+from .ago import AGO
 
 
 @click.group()
@@ -70,6 +71,54 @@ def load(table_name,
         json_schema_s3_key=json_schema_s3_key,
         csv_s3_key=csv_s3_key)
     postgres.run_workflow()
+
+@main.command()
+@click.option('--ago_org_url')
+@click.option('--ago_user')
+@click.option('--ago_pw')
+@click.option('--ago_item_name')
+@click.option('--s3_bucket')
+@click.option('--csv_s3_key')
+def ago_truncate_append(
+        ago_org_url,
+        ago_user,
+        ago_pw,
+        ago_item_name,
+        s3_bucket, 
+        csv_s3_key):
+    ago = AGO(
+        ago_org_url=ago_org_url,
+        ago_user=ago_user,
+        ago_pw=ago_pw,
+        ago_item_name=ago_item_name,
+        s3_bucket=s3_bucket,
+        csv_s3_key=csv_s3_key)
+    ago.get_csv_from_s3()
+    ago.truncate()
+    ago.append()
+
+@main.command()
+@click.option('--ago_org_url')
+@click.option('--ago_user')
+@click.option('--ago_pw')
+@click.option('--ago_item_name')
+@click.option('--s3_bucket')
+@click.option('--csv_s3_key')
+def ago_export(
+        ago_org_url,
+        ago_user,
+        ago_pw,
+        ago_item_name,
+        s3_bucket, 
+        csv_s3_key):
+    ago = AGO(
+        ago_org_url=ago_org_url,
+        ago_user=ago_user,
+        ago_pw=ago_pw,
+        ago_item_name=ago_item_name,
+        s3_bucket=s3_bucket,
+        csv_s3_key=csv_s3_key)
+    ago.export()
 
 if __name__ == '__main__':
     main()
