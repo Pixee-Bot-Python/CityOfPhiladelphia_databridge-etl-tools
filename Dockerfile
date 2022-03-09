@@ -1,4 +1,5 @@
-FROM python:3.6.15-slim-bullseye
+#FROM python:3.6.15-slim-bullseye
+FROM python:3.7.12-slim-buster
 
 # Never prompts the user for choices on installation/configuration of packages
 ENV DEBIAN_FRONTEND noninteractive
@@ -63,19 +64,15 @@ RUN pip3 install --upgrade pip \
     && pip3 install setuptools-rust \
     && pip3 install -U setuptools \
     && pip3 install -e git+https://github.com/CityOfPhiladelphia/geopetl.git@b80a38cf1dae2cec9ce2c619281cc513795bf608#egg=geopetl \
-                   Cython==0.29.27 \
-                   awscli==1.22.46 \
-                   boto3==1.20.46 \
-                   carto==1.11.3 \
-                   click==8.0.3 \
-                   cryptography \
-                   cx-Oracle \
-                   petl==1.7.4 \
-                   psycopg2==2.9.3 \
+                   Cython==0.29.28 \
+                   awscli==1.22.70 \
+                   boto3==1.21.15 \
+                   click==8.0.4 \
+                   cryptography==36.0.1 \
+                   petl==1.7.8 \
                    pyasn1==0.4.8 \
                    pyodbc==4.0.32 \
                    pytz==2021.3
-
 
 
 # Cleanup
@@ -88,7 +85,6 @@ RUN apt-get remove --purge -yqq $buildDeps \
         /usr/share/man \
         /usr/share/doc \
         /usr/share/doc-base
-
 
 # instant basic-lite instant oracle client
 COPY oracle-instantclient12.1-basiclite-12.1.0.2.0-1.x86_64.rpm oracle-instantclient12.1-devel-12.1.0.2.0-1.x86_64.rpm ./

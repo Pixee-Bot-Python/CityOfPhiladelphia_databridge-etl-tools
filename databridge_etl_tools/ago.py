@@ -1,11 +1,13 @@
 import os
 import sys
-from time import sleep
 import logging
 import zipfile
 import click
 import petl as etl
 import boto3
+import pyproj
+import shapely.wkt
+from shapely.ops import transform as shapely_transformer
 from arcgis import GIS
 from arcgis.features import FeatureLayerCollection
 
@@ -16,6 +18,12 @@ class AGO():
     _item = None
     _geometric = None
     _item_fields = None
+    _layer_object = None
+    _ago_srid = None
+    _projection = None
+    _geometric = None
+    _point_transformer = None
+    _polygon_transformer = None
 
     def __init__(self,
                  ago_org_url,
@@ -24,6 +32,7 @@ class AGO():
                  ago_item_name,
                  s3_bucket,
                  csv_s3_key,
+                 in_srid,
                  **kwargs
                  ):
         self.ago_org_url = ago_org_url
@@ -32,6 +41,7 @@ class AGO():
         self.item_name = ago_item_name
         self.s3_bucket = s3_bucket
         self.csv_s3_key = csv_s3_key
+        self.in_srid = in_srid
         self.proxy_host = kwargs.get('proxy_host', None)
         self.proxy_port = kwargs.get('proxy_port', None)
         self.export_format = kwargs.get('export_format', None)
@@ -71,7 +81,8 @@ class AGO():
         return self._org
 
 
-    '''Find the AGO object that we can perform actions on, sends requests to it's AGS endpoint in AGO.'''
+    '''Find the AGO object that we can perform actions on, sends requests to it's AGS endpoint in AGO.
+    Contains lots of attributes we'll need to access throughout this script.'''
     @property
     def item(self):
         if self._item is None:
@@ -92,16 +103,33 @@ class AGO():
     but either way operations on it are the same.'''
     @property
     def layer_object(self):
-        self._layer_object = None
-        if self.item.tables:
-            if self.item.tables[0]:
-                self._layer_object = self.item.tables[0]
-        elif self.item.layers:
-            if self.item.layers[0]:
-                self._layer_object = self.item.layers[0]
         if self._layer_object is None:
-            raise AssertionError('Could not locate our feature layer/table item in returned AGO object')
+            self.logger.info(f'AGO item url and id: {self.item.url}, {self.item.id}')
+            # Necessary to "get" our item after searching for it, as the returned
+            # objects don't have equivalent attributes.
+            feature_layer_item = self.org.content.get(self.item.id)
+            if feature_layer_item.tables:
+                if feature_layer_item.tables[0]:
+                    self._layer_object = feature_layer_item.tables[0]
+            elif feature_layer_item.layers:
+                if feature_layer_item.layers[0]:
+                    self._layer_object = feature_layer_item.layers[0]
+            if self._layer_object is None:
+                raise AssertionError('Could not locate our feature layer/table item in returned AGO object')
         return self._layer_object
+
+
+    '''detect the SRID of the dataset in AGO, we'll need it for formatting the rows we'll upload to AGO.
+    record both the standard SRID (latestwkid) and ESRI's made up on (wkid) into a tuple.
+    so for example for our standard PA state plane one, latestWkid = 2272 and wkid = 102729
+    We'll need both of these.'''
+    @property
+    def ago_srid(self):
+        if self._ago_srid is None:
+            # Don't ask why the SRID is all the way down here..
+            assert self.layer_object.container.properties.initialExtent.spatialReference is not None
+            self._ago_srid = (self.layer_object.container.properties.initialExtent.spatialReference['wkid'],self.layer_object.container.properties.initialExtent.spatialReference['latestWkid'])
+        return self._ago_srid
 
 
     '''Fields of the dataset in AGO'''
@@ -114,14 +142,32 @@ class AGO():
     '''Boolean telling us whether the item is geometric or just a table?'''
     @property
     def geometric(self):
-        geometry_type = None
-        try:
-            geometry_type = self.layer_object.geometryType
-        except:
-            self._geometric = False
-        if geometry_type:
-            self._geometric = True
+        if self._geometric is None:
+            self.logger.info('Determining geometric?...')
+            is_geometric = None
+            try:
+                is_geometric = self.layer_object.properties.hasGeometryProperties
+            except:
+                self._geometric = False
+            if is_geometric:
+                geometry_type = self.layer_object.properties.geometryType
+                self._geometric = True
+                self.logger.info(f'Item detected as geometric, type: {geometry_type}')
         return self._geometric
+
+
+    '''Decide if we need to project our shape field. If the SRID in AGO is set
+    to what our source dataset is currently, we don't need to project.'''
+    @property
+    def projection(self):
+        if self._projection is None:
+            if self.in_srid == self.ago_srid[1]:
+                self.logger.info(f'source SRID detected as same as AGO srid, not projecting. source: {self.in_srid}, ago: {self.ago_srid[1]}')
+                self._projection = False
+            else:
+                self.logger.info(f'Shapes will be projected. source: {self.in_srid}, ago: {self.ago_srid[1]}')
+                self._projection = True
+        return self._projection
 
 
     def unzip(self):
@@ -134,20 +180,6 @@ class AGO():
         # Unzip:
         with zipfile.ZipFile(zip_path, 'r') as zip_ref:
             zip_ref.extractall(self.export_dir_path)
-
-
-    def export(self):
-        # TODO: delete any existing files in export_dir_path
-        # test parameters
-        # parameters = {"layers" : [ { "id" : 0, "out_sr": 2272 } ] }
-        # result = self.item.export(f'{self.item.title}', self.export_format, parameters=parameters, enforce_fld_vis=True, wait=True)
-        result = self.item.export(f'{self.item.title}', self.export_format, enforce_fld_vis=True, wait=True)
-        result.download(self.export_dir_path)
-        # Delete the item after it downloads to save on space
-        result.delete()
-        # unzip, unless argument export_zipped = True
-        if not self.export_zipped:
-            self.unzip()
 
 
     '''
@@ -166,7 +198,7 @@ class AGO():
     def truncate(self):
         self.layer_object.manager.truncate()
         count = self.layer_object.query(return_count_only=True)
-        print('count after truncate: ', count)
+        self.logger.info('count after truncate: ' + str(count))
         assert count == 0
 
     def get_csv_from_s3(self):
@@ -179,17 +211,19 @@ class AGO():
 
     @property
     def point_transformer(self):
-        self._point_transformer = pyproj.Transformer.from_crs(f'epsg:{in_srid}',
-                                                  f'epsg:{out_srid}',
-                                                  always_xy=True)
+        if self._point_transformer is None:
+            self._point_transformer = pyproj.Transformer.from_crs(f'epsg:{self.in_srid}',
+                                                      f'epsg:{self.ago_srid[1]}',
+                                                      always_xy=True)
         return self._point_transformer
 
     @property
     def polygon_transformer(self):
         # reference for polygon projection: https://gis.stackexchange.com/a/328642
-        self._polygon_transformer = pyproj.Transformer.from_proj(
-            pyproj.Proj(init=f'epsg:{in_srid}'),  # source coordinate system
-            pyproj.Proj(init=f'epsg:{out_srid}'))  # destination coordinate system
+        if self._polygon_transformer is None:
+            self._polygon_transformer = pyproj.Transformer.from_proj(
+                pyproj.Proj(init=f'epsg:{self.in_srid}'),  # source coordinate system
+                pyproj.Proj(init=f'epsg:{self.ago_srid[1]}'))  # destination coordinate system
         return self._polygon_transformer
 
 
@@ -197,8 +231,8 @@ class AGO():
     def project_and_format_shape(self, transformer, wkt_shape):
         # Note: list of coordinates for polygons are called "rings" for some reason
         def format_ring(poly):
-            if projection:
-                transformed = self.shapely_transformer(transformer.transform, poly)
+            if self.projection:
+                transformed = shapely_transformer(transformer.transform, poly)
                 xlist = list(transformed.exterior.xy[0])
                 ylist = list(transformed.exterior.xy[1])
                 coords = [list(x) for x in zip(xlist, ylist)]
@@ -209,8 +243,8 @@ class AGO():
                 coords = [list(x) for x in zip(xlist, ylist)]
                 return coords
         def format_path(line):
-            if projection:
-                transformed = self.shapely_transformer(transformer.transform, line)
+            if self.projection:
+                transformed = shapely_transformer(transformer.transform, line)
                 xlist = list(transformed.coords.xy[0])
                 ylist = list(transformed.coords.xy[1])
                 coords = [list(x) for x in zip(xlist, ylist)]
@@ -222,7 +256,7 @@ class AGO():
                 return coords
         if 'POINT' in wkt_shape:
             pt = shapely.wkt.loads(wkt_shape)
-            if projection:
+            if self.projection:
                 x, y = point_transformer.transform(pt.x, pt.y)
                 return x, y
             else:
@@ -230,7 +264,6 @@ class AGO():
         elif 'MULTIPOLYGON' in wkt_shape:
             multipoly = shapely.wkt.loads(wkt_shape)
             assert multipoly.is_valid
-            print("Polygons in multipoly: ", len(multipoly))
             list_of_rings = []
             for poly in multipoly:
                 assert poly.is_valid
@@ -266,11 +299,11 @@ class AGO():
             for i, row in enumerate(row_dicts):
                 adds.append({"attributes": row})
                 if len(adds) % batch_size == 0:
-                    print("Adding batch...")
-                    sleep(1)
+                    self.logger.info(f'Adding batch of {len(adds)}, at row #: {i}...')
                     self.layer_object.edit_features(adds, rollback_on_failure=True)
                     adds = []
             if adds:
+                self.logger.info(f'Adding last batch of {len(adds)}, at row #: {i}...')
                 self.layer_object.edit_features(adds, rollback_on_failure=True)
         elif self.geometric is True:
             for i, row in enumerate(row_dicts):
@@ -280,53 +313,69 @@ class AGO():
                 # For different types we can consult this for the proper json format:
                 # https://developers.arcgis.com/documentation/common-data-types/geometry-objects.htm
                 if 'POINT' in wkt:
-                    projected_x, projected_y = self.project_and_format_shape(point_transformer, wkt)
+                    projected_x, projected_y = self.project_and_format_shape(self.point_transformer, wkt)
                 elif 'MULTIPOINT' in wkt:
                     raise NotImplementedError("MULTIPOINTs not implemented yet..")
                 elif 'MULTIPOLYGON' in wkt:
-                    rings = self.project_and_format_shape(self.polygon_transformer, wkt)
+                    rings = self.project_and_format_shape(self.point_transformer, wkt)
                     geom_dict = {"rings": rings,
-                                 "spatial_reference": {"wkid": 102100, "latestWkid": 3857}
+                                 "spatial_reference": {"wkid": self.ago_srid[0], "latestWkid": self.ago_srid[1]}
                                  }
                     row_to_append = {"attributes": row,
                                      "geometry": geom_dict
                                      }
                 elif 'POLYGON' in wkt:
                     #xlist, ylist = return_coords_only(wkt)
-                    ring = self.project_and_format_shape(self.polygon_transformer, wkt)
+                    ring = self.project_and_format_shape(self.point_transformer, wkt)
                     geom_dict = {"rings": [ring],
-                                 "spatial_reference": {"wkid": 102100, "latestWkid": 3857}
+                                 "spatial_reference": {"wkid": self.ago_srid[0], "latestWkid": self.ago_srid[1]}
                                  }
                     row_to_append = {"attributes": row,
                                      "geometry": geom_dict
                                      }
                 elif 'LINESTRING' in wkt:
-                    paths = self.project_and_format_shape(self.polygon_transformer, wkt)
+                    paths = self.project_and_format_shape(self.point_transformer, wkt)
                     geom_dict = {"paths": [paths],
-                                 "spatial_reference": {"wkid": 102100, "latestWkid": 3857}
+                                 "spatial_reference": {"wkid": self.ago_srid[0], "latestWkid": self.ago_srid[1]}
                                  }
                     row_to_append = {"attributes": row,
                                      "geometry": geom_dict
                                      }
                 adds.append(row_to_append)
 
-                batch_size = 3000
+                batch_size = 1000
                 # Where we actually append the rows to the dataset in AGO
                 if len(adds) % batch_size == 0:
-                    print(f'Adding batch of {len(adds)}, at row #: {i}...')
-                    count += 1
-                    sleep(1)
+                    self.logger.info(f'Adding batch of {len(adds)}, at row #: {i}...')
+                    self.logger.info(f'Example row: {adds[0]}')
                     self.layer_object.edit_features(adds=adds)
+                    self.logger.info('Batch added.')
                     adds = []
             # add leftover rows outside the loop if they don't add up to 3000
             if adds:
-                print(f'Adding batch of {len(adds)}, at row #: {i}...')
+                self.logger.info(f'Adding last batch of {len(adds)}, at row #: {i}...')
+                self.logger.info(f'Example row: {adds[0]}')
                 self.layer_object.edit_features(adds=adds) 
+                self.logger.info('Batch added.')
 
 
         count = self.layer_object.query(return_count_only=True)
-        print('count after batch adds: ', count)
+        self.logger.info(f'count after batch adds: {str(count)}')
         assert count != 0
+
+
+    def export(self):
+        # TODO: delete any existing files in export_dir_path
+        # test parameters
+        # parameters = {"layers" : [ { "id" : 0, "out_sr": 2272 } ] }
+        # result = self.item.export(f'{self.item.title}', self.export_format, parameters=parameters, enforce_fld_vis=True, wait=True)
+        result = self.item.export(f'{self.item.title}', self.export_format, enforce_fld_vis=True, wait=True)
+        result.download(self.export_dir_path)
+        # Delete the item after it downloads to save on space
+        result.delete()
+        # unzip, unless argument export_zipped = True
+        if not self.export_zipped:
+            self.unzip()
 
 
 @click.group()
