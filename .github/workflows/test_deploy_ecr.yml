@@ -4,7 +4,6 @@ on:
   push:
     branch:
       - roland-testing-2-2-22
-      - ago
 
 concurrency:
   group: testing_environment

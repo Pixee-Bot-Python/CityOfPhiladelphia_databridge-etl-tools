@@ -2,18 +2,15 @@
 #FROM python:3.6.15-slim-bullseye
 FROM python:3.7.12-slim-buster
 
-
 # Never prompts the user for choices on installation/configuration of packages
 ENV DEBIAN_FRONTEND noninteractive
 ENV TERM linux
 
-# Define en_US.
-ENV LANGUAGE en_US.UTF-8
-ENV LANG en_US.UTF-8
-ENV LC_ALL en_US.UTF-8
-ENV LC_CTYPE en_US.UTF-8
-ENV LC_MESSAGES en_US.UTF-8
-ENV LC_ALL  en_US.UTF-8
+# Solve annoying locale problems in docker
+# C.UTF-8 should have better availablility then the default
+# we like to use, "en_US.UTF-8"
+ENV LANG C.UTF-8
+ENV LC_ALL C.UTF-8
 
 # Oracle
 ENV ORACLE_HOME=/usr/lib/oracle/12.1/client64
