@@ -260,28 +260,28 @@ class Postgres():
         #
         raise NotImplementedError
 
-    # def verify_count(self):
-    #     self.logger.info('Verifying row count...')
+    def verify_count(self):
+        self.logger.info('Verifying row count...')
 
-    #     data = self.execute_sql('SELECT count(*) FROM "{}";'.format(self.table_schema_name), fetch='many')
-    #     num_rows_in_table = data[0][0]
-    #     num_rows_inserted = num_rows_in_table  # for now until inserts/upserts are implemented
-    #     # Postgres doesn't count the header
-    #     num_rows_expected = self._num_rows_in_upload_file - 1
-    #     message = '{} - expected rows: {} inserted rows: {}.'.format(
-    #         self.temp_table_name,
-    #         num_rows_expected,
-    #         num_rows_inserted
-    #     )
-    #     self.logger.info(message)
-    #     if num_rows_in_table != num_rows_expected:
-    #         self.logger.error('Did not insert all rows, reverting...')
-    #         stmt = 'BEGIN;' + \
-    #                 'DROP TABLE if exists "{}" cascade;'.format(self.temp_table_name) + \
-    #                 'COMMIT;'
-    #         self.execute_sql(stmt)
-    #         exit(1)
-    #     self.logger.info('Row count verified.\n')
+        data = self.execute_sql('SELECT count(*) FROM {};'.format(self.table_schema_name), fetch='many')
+        num_rows_in_table = data[0][0]
+        num_rows_inserted = num_rows_in_table  # for now until inserts/upserts are implemented
+        # Postgres doesn't count the header
+        num_rows_expected = self._num_rows_in_upload_file - 1
+        message = '{} - expected rows: {} inserted rows: {}.'.format(
+            self.table_schema_name,
+            num_rows_expected,
+            num_rows_inserted
+        )
+        self.logger.info(message)
+        if num_rows_in_table != num_rows_expected:
+            self.logger.error('Did not insert all rows, reverting...')
+            stmt = 'BEGIN;' + \
+                    'DROP TABLE if exists {} cascade;'.format(self.table_schema_name) + \
+                    'COMMIT;'
+            self.execute_sql(stmt)
+            exit(1)
+        self.logger.info('Row count verified.\n')
 
     def vacuum_analyze(self):
         self.logger.info('Vacuum analyzing table: {}'.format(self.table_schema_name))
@@ -308,6 +308,7 @@ class Postgres():
         try:
             self.write()
             self.conn.commit()
+            self.verify_count()
             self.vacuum_analyze()
             self.logger.info('Done!')
         except Exception as e:

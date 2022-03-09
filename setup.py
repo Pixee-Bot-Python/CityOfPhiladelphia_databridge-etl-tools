@@ -4,7 +4,7 @@ from distutils.core import setup
 
 setup(
     name='databridge_etl_tools',
-    version='0.1.0',
+    version='0.2.0',
     packages=['databridge_etl_tools',],
     install_requires=[
         'boto3==1.21.15',
@@ -40,6 +40,7 @@ setup(
             'requests-mock==1.9.3'
         ]
     },
+    # TEMPORARY! using commmit id from victor's shapes_and_worklfows_2
     dependency_links=[
         'https://github.com/CityOfPhiladelphia/geopetl/tarball/b80a38cf1dae2cec9ce2c619281cc513795bf608'
     ],

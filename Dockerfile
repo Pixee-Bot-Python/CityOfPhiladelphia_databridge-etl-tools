@@ -1,5 +1,7 @@
+#FROM ubuntu:16.04
 #FROM python:3.6.15-slim-bullseye
 FROM python:3.7.12-slim-buster
+
 
 # Never prompts the user for choices on installation/configuration of packages
 ENV DEBIAN_FRONTEND noninteractive
@@ -75,7 +77,6 @@ RUN pip3 install --upgrade pip \
                    pytz==2021.3 \
                    wheel
 
-
 # Cleanup
 RUN apt-get remove --purge -yqq $buildDeps \
     && apt-get clean \
@@ -98,6 +99,7 @@ RUN alien -i oracle-instantclient12.1-devel-12.1.0.2.0-1.x86_64.rpm \
 
 COPY scripts/entrypoint.sh /entrypoint.sh
 COPY tests/ tests/
+
 RUN chmod +x /entrypoint.sh
 
 # Cache bust
@@ -107,8 +109,6 @@ COPY databridge_etl_tools /databridge_etl_tools
 RUN python -m compileall /databridge_etl_tools
 COPY setup.py /setup.py
 RUN pip3 install -e .[postgres,oracle,carto,dev]
-RUN pip3 install -e .[ago]
-
 
 USER worker
 ENTRYPOINT ["/entrypoint.sh"]
