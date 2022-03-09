@@ -7,31 +7,37 @@ setup(
     version='0.2.0',
     packages=['databridge_etl_tools',],
     install_requires=[
-        'boto3==1.20.46',
-        'botocore==1.23.46',
+        'boto3==1.21.15',
+        'botocore==1.24.15',
         'certifi==2021.10.8',
         'chardet==4.0.0',
-        'click==8.0.3',
+        'click==8.0.4',
         'docutils==0.15.2',
         'future==0.18.2',
         'idna==3.3',
         'jmespath==0.10.0',
-        'petl==1.7.4',
+        'petl==1.7.8',
         'pyrestcli==0.6.11',
         'python-dateutil==2.8.2',
         'requests==2.27.1',
+        's3transfer==0.5.2',
         'six==1.16.0',
-        'urllib3==1.26.8'
+        'Shapely==1.8.1.post1'
     ],
     extras_require={
+        'ago': [
+                'arcgis==2.0.0',
+                'Shapely==1.8.1.post1',
+                'pyproj<=3.2.1'
+                ],
         'carto': ['carto==1.11.3'],
         'oracle': ['cx_Oracle==8.3.0'],
-        'postgres': ['psycopg2-binary==2.9.3'],
+        'postgres': ['psycopg2-binary==2.9.3',
+                    'psycopg2==2.9.3'],
         'dev': [
-            'moto==3.0.1',
-            'pytest',
-            'requests-mock',
-            'mock'
+            'moto==3.0.7',
+            'pytest==7.0.1',
+            'requests-mock==1.9.3'
         ]
     },
     # TEMPORARY! using commmit id from victor's shapes_and_worklfows_2
