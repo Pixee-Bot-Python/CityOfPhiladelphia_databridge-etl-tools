@@ -16,6 +16,7 @@ setup(
         'future==0.18.2',
         'idna==3.3',
         'jmespath==0.10.0',
+        'mock==4.0.3',
         'petl==1.7.8',
         'pyrestcli==0.6.11',
         'python-dateutil==2.8.2',

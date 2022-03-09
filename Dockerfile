@@ -104,8 +104,9 @@ ENV updated-adds-on 5-1-2019_5
 COPY databridge_etl_tools /databridge_etl_tools
 # Python syntax check
 RUN python -m compileall /databridge_etl_tools
+
 COPY setup.py /setup.py
-RUN pip3 install -e .[postgres,oracle,carto,dev]
+RUN pip3 install -e .[ago,postgres,oracle,carto,dev]
 
 USER worker
 ENTRYPOINT ["/entrypoint.sh"]
