@@ -5,6 +5,7 @@ import zipfile
 import click
 import petl as etl
 import boto3
+import botocore
 import pyproj
 import shapely.wkt
 from shapely.ops import transform as shapely_transformer
@@ -22,8 +23,7 @@ class AGO():
     _ago_srid = None
     _projection = None
     _geometric = None
-    _point_transformer = None
-    _polygon_transformer = None
+    _transformer = None
 
     def __init__(self,
                  ago_org_url,
@@ -144,15 +144,19 @@ class AGO():
     def geometric(self):
         if self._geometric is None:
             self.logger.info('Determining geometric?...')
-            is_geometric = None
+            geometry_type = None
             try:
-                is_geometric = self.layer_object.properties.hasGeometryProperties
+                # Note, initially wanted to use hasGeometryProperties but it seems like it doesn't
+                # show up for point layers. geometryType is more reliable I think?
+                #is_geometric = self.layer_object.properties.hasGeometryProperties
+                geometry_type = self.layer_object.properties.geometryType
             except:
                 self._geometric = False
-            if is_geometric:
-                geometry_type = self.layer_object.properties.geometryType
+            if geometry_type:
                 self._geometric = True
                 self.logger.info(f'Item detected as geometric, type: {geometry_type}')
+            else:
+                self.logger.info(f'Item is not geometric.')
         return self._geometric
 
 
@@ -205,34 +209,31 @@ class AGO():
         self.logger.info('Fetching csv s3://{}/{}'.format(self.s3_bucket, self.csv_s3_key))
 
         s3 = boto3.resource('s3')
-        s3.Object(self.s3_bucket, self.csv_s3_key).download_file(self.csv_path)
+        try:
+            s3.Object(self.s3_bucket, self.csv_s3_key).download_file(self.csv_path)
+        except botocore.exceptions.ClientError as e:
+            if e.response['Error']['Code'] == "404":
+                raise AssertionError(f'CSV file doesnt appear to exist in S3! key: {self.csv_s3_key}')
+            else:
+                raise e
 
         self.logger.info('CSV successfully downloaded.\n'.format(self.s3_bucket, self.csv_s3_key))
 
+    '''transformer needs to be defined outside of our row loop to speed up projections.'''
     @property
-    def point_transformer(self):
-        if self._point_transformer is None:
-            self._point_transformer = pyproj.Transformer.from_crs(f'epsg:{self.in_srid}',
+    def transformer(self):
+        if self._transformer is None:
+            self._transformer = pyproj.Transformer.from_crs(f'epsg:{self.in_srid}',
                                                       f'epsg:{self.ago_srid[1]}',
                                                       always_xy=True)
-        return self._point_transformer
-
-    @property
-    def polygon_transformer(self):
-        # reference for polygon projection: https://gis.stackexchange.com/a/328642
-        if self._polygon_transformer is None:
-            self._polygon_transformer = pyproj.Transformer.from_proj(
-                pyproj.Proj(init=f'epsg:{self.in_srid}'),  # source coordinate system
-                pyproj.Proj(init=f'epsg:{self.ago_srid[1]}'))  # destination coordinate system
-        return self._polygon_transformer
-
+        return self._transformer
 
     ''' Helper function to help format spatial fields properly for AGO '''
-    def project_and_format_shape(self, transformer, wkt_shape):
+    def project_and_format_shape(self, wkt_shape):
         # Note: list of coordinates for polygons are called "rings" for some reason
         def format_ring(poly):
             if self.projection:
-                transformed = shapely_transformer(transformer.transform, poly)
+                transformed = shapely_transformer(self.transformer.transform, poly)
                 xlist = list(transformed.exterior.xy[0])
                 ylist = list(transformed.exterior.xy[1])
                 coords = [list(x) for x in zip(xlist, ylist)]
@@ -244,7 +245,7 @@ class AGO():
                 return coords
         def format_path(line):
             if self.projection:
-                transformed = shapely_transformer(transformer.transform, line)
+                transformed = shapely_transformer(self.transformer.transform, line)
                 xlist = list(transformed.coords.xy[0])
                 ylist = list(transformed.coords.xy[1])
                 coords = [list(x) for x in zip(xlist, ylist)]
@@ -257,7 +258,7 @@ class AGO():
         if 'POINT' in wkt_shape:
             pt = shapely.wkt.loads(wkt_shape)
             if self.projection:
-                x, y = point_transformer.transform(pt.x, pt.y)
+                x, y = self.transformer.transform(pt.x, pt.y)
                 return x, y
             else:
                 return pt.x, pt.y
@@ -313,11 +314,20 @@ class AGO():
                 # For different types we can consult this for the proper json format:
                 # https://developers.arcgis.com/documentation/common-data-types/geometry-objects.htm
                 if 'POINT' in wkt:
-                    projected_x, projected_y = self.project_and_format_shape(self.point_transformer, wkt)
+                    projected_x, projected_y = self.project_and_format_shape(wkt)
+                                   # Format our row, following the docs on this one, see section "In [18]":
+                    # https://developers.arcgis.com/python/sample-notebooks/updating-features-in-a-feature-layer/
+                    # create our formatted point geometry
+                    geom_dict = {"x": projected_x,
+                                 "y": projected_y,
+                                 "spatial_reference": {"wkid": 102100, "latestWkid": 3857}
+                                 }
+                    row_to_append = {"attributes": row,
+                                     "geometry": geom_dict}
                 elif 'MULTIPOINT' in wkt:
                     raise NotImplementedError("MULTIPOINTs not implemented yet..")
                 elif 'MULTIPOLYGON' in wkt:
-                    rings = self.project_and_format_shape(self.point_transformer, wkt)
+                    rings = self.project_and_format_shape(wkt)
                     geom_dict = {"rings": rings,
                                  "spatial_reference": {"wkid": self.ago_srid[0], "latestWkid": self.ago_srid[1]}
                                  }
@@ -326,7 +336,7 @@ class AGO():
                                      }
                 elif 'POLYGON' in wkt:
                     #xlist, ylist = return_coords_only(wkt)
-                    ring = self.project_and_format_shape(self.point_transformer, wkt)
+                    ring = self.project_and_format_shape(wkt)
                     geom_dict = {"rings": [ring],
                                  "spatial_reference": {"wkid": self.ago_srid[0], "latestWkid": self.ago_srid[1]}
                                  }
@@ -334,7 +344,7 @@ class AGO():
                                      "geometry": geom_dict
                                      }
                 elif 'LINESTRING' in wkt:
-                    paths = self.project_and_format_shape(self.point_transformer, wkt)
+                    paths = self.project_and_format_shape(wkt)
                     geom_dict = {"paths": [paths],
                                  "spatial_reference": {"wkid": self.ago_srid[0], "latestWkid": self.ago_srid[1]}
                                  }

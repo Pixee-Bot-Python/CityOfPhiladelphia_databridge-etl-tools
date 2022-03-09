@@ -72,7 +72,8 @@ RUN pip3 install --upgrade pip \
                    petl==1.7.8 \
                    pyasn1==0.4.8 \
                    pyodbc==4.0.32 \
-                   pytz==2021.3
+                   pytz==2021.3 \
+                   wheel
 
 
 # Cleanup
@@ -105,7 +106,8 @@ COPY databridge_etl_tools /databridge_etl_tools
 # Python syntax check
 RUN python -m compileall /databridge_etl_tools
 COPY setup.py /setup.py
-RUN pip3 install -e .[ago,postgres,oracle,carto,dev]
+RUN pip3 install -e .[postgres,oracle,carto,dev]
+RUN pip3 install -e .[ago]
 
 
 USER worker
