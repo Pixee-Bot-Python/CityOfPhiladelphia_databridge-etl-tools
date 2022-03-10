@@ -16,7 +16,7 @@ def main():
 @click.option('--connection_string')
 @click.option('--s3_bucket')
 @click.option('--s3_key')
-def extract(table_name, table_schema, connection_string, s3_bucket, s3_key):
+def oracle_extract(table_name, table_schema, connection_string, s3_bucket, s3_key):
     oracle = Oracle(
         table_name=table_name,
         table_schema=table_schema,
@@ -24,6 +24,7 @@ def extract(table_name, table_schema, connection_string, s3_bucket, s3_key):
         s3_bucket=s3_bucket,
         s3_key=s3_key)
     oracle.extract()
+
 
 @main.command()
 @click.option('--table_name')
@@ -50,6 +51,7 @@ def cartoupdate(table_name,
         index_fields=index_fields)
     carto.run_workflow()
 
+
 @main.command()
 @click.option('--table_name')
 @click.option('--table_schema')
@@ -57,7 +59,7 @@ def cartoupdate(table_name,
 @click.option('--s3_bucket')
 @click.option('--json_schema_s3_key')
 @click.option('--csv_s3_key')
-def load(table_name, 
+def postgres_load(table_name, 
          table_schema, 
          connection_string, 
          s3_bucket, 
@@ -70,7 +72,26 @@ def load(table_name,
         s3_bucket=s3_bucket,
         json_schema_s3_key=json_schema_s3_key,
         csv_s3_key=csv_s3_key)
-    postgres.run_workflow()
+    postgres.load()
+
+
+@main.command()
+@click.option('--table_name')
+@click.option('--table_schema')
+@click.option('--connection_string')
+@click.option('--s3_bucket')
+@click.option('--json_schema_s3_key', default=None, required=False)
+@click.option('--csv_s3_key')
+def postgres_extract(table_name, table_schema, connection_string, s3_bucket, json_schema_s3_key, csv_s3_key):
+    postgres = Postgres(
+        table_name=table_name,
+        table_schema=table_schema,
+        connection_string=connection_string,
+        s3_bucket=s3_bucket,
+        json_schema_s3_key=json_schema_s3_key,
+        csv_s3_key=csv_s3_key)
+    postgres.extract()
+
 
 @main.command()
 @click.option('--ago_org_url')
@@ -100,6 +121,7 @@ def ago_truncate_append(
     ago.truncate()
     ago.append()
 
+
 @main.command()
 @click.option('--ago_org_url')
 @click.option('--ago_user')
@@ -122,6 +144,7 @@ def ago_export(
         s3_bucket=s3_bucket,
         csv_s3_key=csv_s3_key)
     ago.export()
+
 
 if __name__ == '__main__':
     main()

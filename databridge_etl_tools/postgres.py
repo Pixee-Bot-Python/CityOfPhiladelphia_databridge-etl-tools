@@ -6,6 +6,7 @@ import json
 
 import psycopg2
 import boto3
+import geopetl
 import petl as etl
 
 
@@ -212,8 +213,6 @@ class Postgres():
     def create_indexes(self, table_name):
         raise NotImplementedError
 
-    def extract(self):
-        raise NotImplementedError
 
     def write(self):
         self.get_csv_from_s3()
@@ -281,7 +280,7 @@ class Postgres():
                     'COMMIT;'
             self.execute_sql(stmt)
             exit(1)
-        self.logger.info('Row count verified.\n')
+        self.logger.info(f'Row count verified: {csv_count} == {postgres_table_count}\n')
 
     def vacuum_analyze(self):
         self.logger.info('Vacuum analyzing table: {}'.format(self.table_schema_name))
@@ -304,7 +303,8 @@ class Postgres():
 
         self.logger.info('Successfully removed temp files.')
 
-    def run_workflow(self):
+
+    def load(self):
         try:
             self.write()
             self.conn.commit()
@@ -317,3 +317,32 @@ class Postgres():
             raise e
         finally:
             self.cleanup()
+
+
+    def load_csv_to_s3(self):
+        self.logger.info('Starting load to s3: {}'.format(self.csv_s3_key))
+
+        s3 = boto3.resource('s3')
+        s3.Object(self.s3_bucket, self.csv_s3_key).put(Body=open(self.csv_path, 'rb'))
+        
+        self.logger.info('Successfully loaded to s3: {}'.format(self.csv_s3_key))
+
+
+    def extract_verify_row_count(self):
+        with open(self.csv_path, 'r') as file:
+            for csv_count, line in enumerate(file):
+                pass
+        data = self.execute_sql('SELECT count(*) FROM {};'.format(self.table_schema_name), fetch='many')
+        postgres_table_count = data[0][0]
+        self.logger.info(f'Asserting counts match up: {csv_count} == {postgres_table_count}')
+        assert csv_count == postgres_table_count
+
+
+    def extract(self):
+        rows = etl.frompostgis(self.conn, self.table_schema_name)
+        # Dump to our CSV temp file
+        print('Extracting csv...')
+        rows.tocsv(self.csv_path, 'utf-8')
+        self.extract_verify_row_count()
+        self.load_csv_to_s3()
+

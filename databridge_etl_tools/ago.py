@@ -154,9 +154,9 @@ class AGO():
                 self._geometric = False
             if geometry_type:
                 self._geometric = True
-                self.logger.info(f'Item detected as geometric, type: {geometry_type}')
+                self.logger.info(f'Item detected as geometric, type: {geometry_type}\n')
             else:
-                self.logger.info(f'Item is not geometric.')
+                self.logger.info(f'Item is not geometric.\n')
         return self._geometric
 
 
@@ -166,10 +166,10 @@ class AGO():
     def projection(self):
         if self._projection is None:
             if self.in_srid == self.ago_srid[1]:
-                self.logger.info(f'source SRID detected as same as AGO srid, not projecting. source: {self.in_srid}, ago: {self.ago_srid[1]}')
+                self.logger.info(f'source SRID detected as same as AGO srid, not projecting. source: {self.in_srid}, ago: {self.ago_srid[1]}\n')
                 self._projection = False
             else:
-                self.logger.info(f'Shapes will be projected. source: {self.in_srid}, ago: {self.ago_srid[1]}')
+                self.logger.info(f'Shapes will be projected. source: {self.in_srid}, ago: {self.ago_srid[1]}\n')
                 self._projection = True
         return self._projection
 
@@ -192,7 +192,7 @@ class AGO():
     '''
     def overwrite(self):
         if self.geometric == 'True':
-            raise NotImplementedError('Overwrite with CSVs only works for non-spatial datasets.')
+            raise NotImplementedError('Overwrite with CSVs only works for non-spatial datasets (maybe?)')
         print(vars(self.item))
         flayer_collection = FeatureLayerCollection.fromitem(self.item)
         # call the overwrite() method which can be accessed using the manager property
@@ -204,6 +204,7 @@ class AGO():
         count = self.layer_object.query(return_count_only=True)
         self.logger.info('count after truncate: ' + str(count))
         assert count == 0
+
 
     def get_csv_from_s3(self):
         self.logger.info('Fetching csv s3://{}/{}'.format(self.s3_bucket, self.csv_s3_key))
@@ -219,6 +220,7 @@ class AGO():
 
         self.logger.info('CSV successfully downloaded.\n'.format(self.s3_bucket, self.csv_s3_key))
 
+
     '''transformer needs to be defined outside of our row loop to speed up projections.'''
     @property
     def transformer(self):
@@ -227,6 +229,7 @@ class AGO():
                                                       f'epsg:{self.ago_srid[1]}',
                                                       always_xy=True)
         return self._transformer
+
 
     ''' Helper function to help format spatial fields properly for AGO '''
     def project_and_format_shape(self, wkt_shape):
@@ -302,10 +305,12 @@ class AGO():
                 if len(adds) % batch_size == 0:
                     self.logger.info(f'Adding batch of {len(adds)}, at row #: {i}...')
                     self.layer_object.edit_features(adds, rollback_on_failure=True)
+                    self.logger.info('Batch added.\n')
                     adds = []
             if adds:
                 self.logger.info(f'Adding last batch of {len(adds)}, at row #: {i}...')
                 self.layer_object.edit_features(adds, rollback_on_failure=True)
+                    self.logger.info('Batch added.\n')
         elif self.geometric is True:
             for i, row in enumerate(row_dicts):
                 # remove the shape field so we can replace it with SHAPE with the spatial reference key
@@ -359,14 +364,14 @@ class AGO():
                     self.logger.info(f'Adding batch of {len(adds)}, at row #: {i}...')
                     self.logger.info(f'Example row: {adds[0]}')
                     self.layer_object.edit_features(adds=adds)
-                    self.logger.info('Batch added.')
+                    self.logger.info('Batch added.\n')
                     adds = []
             # add leftover rows outside the loop if they don't add up to 3000
             if adds:
                 self.logger.info(f'Adding last batch of {len(adds)}, at row #: {i}...')
                 self.logger.info(f'Example row: {adds[0]}')
                 self.layer_object.edit_features(adds=adds) 
-                self.logger.info('Batch added.')
+                self.logger.info('Batch added.\n')
 
 
         count = self.layer_object.query(return_count_only=True)
