@@ -339,7 +339,7 @@ class Postgres():
 
 
     def extract(self):
-        rows = etl.frompostgis(self.conn, self.table_schema_name)
+        rows = etl.frompostgis(self.conn, self.table_schema_name, geom_with_srid=True)
         # Dump to our CSV temp file
         print('Extracting csv...')
         rows.tocsv(self.csv_path, 'utf-8')

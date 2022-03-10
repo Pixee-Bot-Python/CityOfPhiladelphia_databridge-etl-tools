@@ -43,7 +43,7 @@ setup(
     },
     # TEMPORARY! using commmit id from victor's shapes_and_worklfows_2
     dependency_links=[
-        'https://github.com/CityOfPhiladelphia/geopetl/tarball/b80a38cf1dae2cec9ce2c619281cc513795bf608'
+        'https://github.com/CityOfPhiladelphia/geopetl/tarball/07fc22b4c92d1fe4e3d47a954c1dd36cccaaeb6d'
     ],
     entry_points={
         'console_scripts': [

@@ -32,7 +32,6 @@ class AGO():
                  ago_item_name,
                  s3_bucket,
                  csv_s3_key,
-                 in_srid,
                  **kwargs
                  ):
         self.ago_org_url = ago_org_url
@@ -41,7 +40,7 @@ class AGO():
         self.item_name = ago_item_name
         self.s3_bucket = s3_bucket
         self.csv_s3_key = csv_s3_key
-        self.in_srid = in_srid
+        self.in_srid = None
         self.proxy_host = kwargs.get('proxy_host', None)
         self.proxy_port = kwargs.get('proxy_port', None)
         self.export_format = kwargs.get('export_format', None)
@@ -92,6 +91,7 @@ class AGO():
                 for item in items:
                     if item.title == self.item_name:
                         self._item = item
+                        self.logger.info(f'Found item, url and id: {self.item.url}, {self.item.id}')
                         return self._item
             except Exception as e:
                 self.logger.error(f'Failed searching for item owned by {self.ago_user} with title: {self.item_name} and type:"Feature Service"')
@@ -104,7 +104,6 @@ class AGO():
     @property
     def layer_object(self):
         if self._layer_object is None:
-            self.logger.info(f'AGO item url and id: {self.item.url}, {self.item.id}')
             # Necessary to "get" our item after searching for it, as the returned
             # objects don't have equivalent attributes.
             feature_layer_item = self.org.content.get(self.item.id)
@@ -310,12 +309,17 @@ class AGO():
             if adds:
                 self.logger.info(f'Adding last batch of {len(adds)}, at row #: {i}...')
                 self.layer_object.edit_features(adds, rollback_on_failure=True)
-                    self.logger.info('Batch added.\n')
+                self.logger.info('Batch added.\n')
         elif self.geometric is True:
             for i, row in enumerate(row_dicts):
                 # remove the shape field so we can replace it with SHAPE with the spatial reference key
                 # and also store in 'wkt' var (well known text) so we can project it
                 wkt = row.pop('shape')
+                if 'SRID=' not in wkt:
+                    raise AssertionError("SRID not found in shape row! Please export your dataset with 'geom_with_srid=True'.")
+                if self.in_srid == None:
+                    self.in_srid = wkt.split(';')[0].strip("SRID=")
+                wkt = wkt.split(';')[1]
                 # For different types we can consult this for the proper json format:
                 # https://developers.arcgis.com/documentation/common-data-types/geometry-objects.htm
                 if 'POINT' in wkt:
