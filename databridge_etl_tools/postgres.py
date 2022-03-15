@@ -280,7 +280,6 @@ class Postgres():
                     'COMMIT;'
             self.execute_sql(stmt)
             exit(1)
-        self.logger.info(f'Row count verified: {csv_count} == {postgres_table_count}\n')
 
     def vacuum_analyze(self):
         self.logger.info('Vacuum analyzing table: {}'.format(self.table_schema_name))
