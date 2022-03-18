@@ -93,6 +93,8 @@ def postgres_extract(table_name, table_schema, connection_string, s3_bucket, jso
     postgres.extract()
 
 
+#@click.option('--in_srid', type=click.INT, default=0, required=False)
+
 @main.command()
 @click.option('--ago_org_url')
 @click.option('--ago_user')
@@ -100,23 +102,20 @@ def postgres_extract(table_name, table_schema, connection_string, s3_bucket, jso
 @click.option('--ago_item_name')
 @click.option('--s3_bucket')
 @click.option('--csv_s3_key')
-@click.option('--in_srid', type=click.INT, default=0, required=False)
 def ago_truncate_append(
         ago_org_url,
         ago_user,
         ago_pw,
         ago_item_name,
         s3_bucket, 
-        csv_s3_key,
-        in_srid):
+        csv_s3_key):
     ago = AGO(
         ago_org_url=ago_org_url,
         ago_user=ago_user,
         ago_pw=ago_pw,
         ago_item_name=ago_item_name,
         s3_bucket=s3_bucket,
-        csv_s3_key=csv_s3_key,
-        in_srid=in_srid)
+        csv_s3_key=csv_s3_key)
     ago.get_csv_from_s3()
     ago.truncate()
     ago.append()
