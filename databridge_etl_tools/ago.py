@@ -66,12 +66,18 @@ class AGO():
         if self._org is None:
             self.logger.info(f'Making connection to AGO account at {self.ago_org_url} with user {self.ago_user} ...')
             try:
-                self._org = GIS(self.ago_org_url,
-                                self.ago_user,
-                                self.ago_password,
-                                proxy_host=self.proxy_host,
-                                proxy_port=self.proxy_port,
-                                verify_cert=False)
+                if self.proxy_host is None:
+                    self._org = GIS(self.ago_org_url,
+                                    self.ago_user,
+                                    self.ago_password,
+                                    verify_cert=False)
+                else:
+                    self._org = GIS(self.ago_org_url,
+                                    self.ago_user,
+                                    self.ago_password,
+                                    proxy_host=self.proxy_host,
+                                    proxy_port=self.proxy_port,
+                                    verify_cert=False)
 
                 self.logger.info('Connected to AGO.\n')
             except Exception as e:
@@ -365,22 +371,88 @@ class AGO():
                 batch_size = 1000
                 # Where we actually append the rows to the dataset in AGO
                 if len(adds) % batch_size == 0:
-                    self.logger.info(f'Adding batch of {len(adds)}, at row #: {i}...')
+                    self.logger.info(f'Adding batch of {len(adds)}, at row #: {i+1}...')
                     self.logger.info(f'Example row: {adds[0]}')
-                    self.layer_object.edit_features(adds=adds)
+                    self.add_features(adds, i)
                     self.logger.info('Batch added.\n')
                     adds = []
             # add leftover rows outside the loop if they don't add up to 3000
             if adds:
-                self.logger.info(f'Adding last batch of {len(adds)}, at row #: {i}...')
+                self.logger.info(f'Adding last batch of {len(adds)}, at row #: {i+1}...')
                 self.logger.info(f'Example row: {adds[0]}')
-                self.layer_object.edit_features(adds=adds) 
+                self.add_features(adds, i)
                 self.logger.info('Batch added.\n')
 
 
         count = self.layer_object.query(return_count_only=True)
         self.logger.info(f'count after batch adds: {str(count)}')
         assert count != 0
+
+
+    '''
+    Complicated function to wrap the edit_features arcgis function so we can handle AGO failing
+    It will handle either:
+    1. A reported rollback from AGO (1003) and try one more time,
+    2. An AGO timeout, which can still be successful which we'll verify with a row count.
+    '''
+    def add_features(self, adds, on_row):
+
+        '''
+        If we receieve a vague object back from AGO and it contains an error code of 1003
+        docs: https://community.esri.com/t5/arcgis-api-for-python-questions/how-can-i-test-if-there-was-a-rollback/td-p/1057433
+        '''
+        def is_rolled_back(result):
+            for element in result["addResults"]:
+                if "error" in element and element["error"]["code"] == 1003:
+                    return True
+                elif "error" in element and element["error"]["code"] != 1003:
+                    raise Exception(f'Got this error returned from AGO (unhandled error): {element["error"]}')
+            return False
+
+        '''If we receive a timeout, verify the count. It will sometimes have actually successfully added.'''
+        def verify_count(on_row):
+            count = self.layer_object.query(return_count_only=True)
+            self.logger.info(f'Received a timeout, comparing row count {on_row+1} to {count} to see if we can continue')
+            if int(on_row)+1 == int(count):
+                return True
+            else:
+                self.logger.info('Counts dont match after AGO timeout...')
+                return False
+
+        success = False
+        # save our result outside the while loop
+        result = None
+        while success is False:
+            # Is it still rolled back after a retry?
+            if result is not None:
+                if is_rolled_back(result):
+                    raise Exception("Retry on rollback didn't work.")
+
+            # Add the batch
+            try:
+                result = self.layer_object.edit_features(adds=adds, rollback_on_failure=True)
+            except Exception as e:
+                if '504' in str(e):
+                    sleep(5)
+                    if verify_count(on_row):
+                        success = True
+                    else:
+                        raise e
+
+            if is_rolled_back(result):
+                self.logger.info("Results rolled back, retrying our batch adds....")
+                try:
+                    result = self.layer_object.edit_features(adds=adds, rollback_on_failure=True)
+                except Exception as e:
+                    if '504' in str(e):
+                        if verify_count(on_row):
+                            success = True
+                        else:
+                            raise e
+            # If we didn't get rolled back, batch of adds successfully added.
+            else:
+                success = True
+
 
 
     def export(self):
