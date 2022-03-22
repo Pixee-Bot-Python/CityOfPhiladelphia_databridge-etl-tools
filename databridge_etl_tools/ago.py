@@ -164,11 +164,11 @@ class AGO():
     @property
     def projection(self):
         if self._projection is None:
-            if self.in_srid == self.ago_srid[1]:
+            if str(self.in_srid) == str(self.ago_srid[1]):
                 self.logger.info(f'source SRID detected as same as AGO srid, not projecting. source: {self.in_srid}, ago: {self.ago_srid[1]}\n')
                 self._projection = False
             else:
-                self.logger.info(f'Shapes will be projected. source: {self.in_srid}, ago: {self.ago_srid[1]}\n')
+                self.logger.info(f'Shapes will be projected. source: "{self.in_srid}", ago: "{self.ago_srid[1]}"\n')
                 self._projection = True
         return self._projection
 
