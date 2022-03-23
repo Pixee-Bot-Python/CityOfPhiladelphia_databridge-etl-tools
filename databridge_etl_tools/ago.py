@@ -11,6 +11,7 @@ import shapely.wkt
 from shapely.ops import transform as shapely_transformer
 from arcgis import GIS
 from arcgis.features import FeatureLayerCollection
+from time import sleep
 
 
 class AGO():
