@@ -11,7 +11,7 @@ import shapely.wkt
 from shapely.ops import transform as shapely_transformer
 from arcgis import GIS
 from arcgis.features import FeatureLayerCollection
-from time import sleep
+from time import sleep, time
 
 
 class AGO():
@@ -374,7 +374,9 @@ class AGO():
                 if len(adds) % batch_size == 0:
                     self.logger.info(f'Adding batch of {len(adds)}, at row #: {i+1}...')
                     self.logger.info(f'Example row: {adds[0]}')
+                    start = time()
                     self.add_features(adds, i)
+                    print(f'Duration: {time() - start}')
                     self.logger.info('Batch added.\n')
                     adds = []
             # add leftover rows outside the loop if they don't add up to 3000
@@ -434,9 +436,12 @@ class AGO():
                 result = self.layer_object.edit_features(adds=adds, rollback_on_failure=True)
             except Exception as e:
                 if '504' in str(e):
+                    # let's try ignoring timeouts for now, it seems the count catches up eventually
+                    continue
                     sleep(5)
                     if verify_count(on_row):
                         success = True
+                        continue
                     else:
                         raise e
 
@@ -446,8 +451,11 @@ class AGO():
                     result = self.layer_object.edit_features(adds=adds, rollback_on_failure=True)
                 except Exception as e:
                     if '504' in str(e):
+                        # let's try ignoring timeouts for now, it seems the count catches up eventually
+                        continue
                         if verify_count(on_row):
                             success = True
+                            continue
                         else:
                             raise e
             # If we didn't get rolled back, batch of adds successfully added.
