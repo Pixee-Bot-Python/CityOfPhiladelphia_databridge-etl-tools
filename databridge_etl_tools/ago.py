@@ -8,6 +8,8 @@ import boto3
 import botocore
 import pyproj
 import shapely.wkt
+import numpy as np
+from threading import Thread
 from shapely.ops import transform as shapely_transformer
 from arcgis import GIS
 from arcgis.features import FeatureLayerCollection
@@ -369,22 +371,46 @@ class AGO():
                                      }
                 adds.append(row_to_append)
 
-                batch_size = 1000
-                # Where we actually append the rows to the dataset in AGO
+                batch_size = 5000
                 if len(adds) % batch_size == 0:
                     self.logger.info(f'Adding batch of {len(adds)}, at row #: {i+1}...')
-                    self.logger.info(f'Example row: {adds[0]}')
                     start = time()
-                    self.add_features(adds, i)
-                    print(f'Duration: {time() - start}')
+                    split_batches = np.array_split(adds,5)
+                    # Where we actually append the rows to the dataset in AGO
+                    #self.add_features(batch, i)
+                    #self.logger.info(f'Example row: {batch[0]}')
+                    t1 = Thread(target=self.add_features,
+                                args=(list(split_batches[0]), i))
+                    t2 = Thread(target=self.add_features,
+                                args=(list(split_batches[1]), i))
+                    t3 = Thread(target=self.add_features,
+                                args=(list(split_batches[2]), i))
+                    t4 = Thread(target=self.add_features,
+                                args=(list(split_batches[3]), i))
+                    t5 = Thread(target=self.add_features,
+                                args=(list(split_batches[4]), i))
+                    t1.start()
+                    t2.start()
+                    t3.start()
+                    t4.start()
+                    t5.start()
+
+                    t1.join()
+                    t2.join()
+                    t3.join()
+                    t4.join()
+                    t5.join()
                     self.logger.info('Batch added.\n')
                     adds = []
-            # add leftover rows outside the loop if they don't add up to 3000
+                    print(f'Duration: {time() - start}')
+            # add leftover rows outside the loop if they don't add up to 4000
             if adds:
+                start = time()
                 self.logger.info(f'Adding last batch of {len(adds)}, at row #: {i+1}...')
                 self.logger.info(f'Example row: {adds[0]}')
                 self.add_features(adds, i)
                 self.logger.info('Batch added.\n')
+                print(f'Duration: {time() - start}')
 
 
         count = self.layer_object.query(return_count_only=True)
