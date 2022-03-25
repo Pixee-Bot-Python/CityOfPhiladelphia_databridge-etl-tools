@@ -101,17 +101,19 @@ RUN chmod +x /entrypoint.sh
 
 # Cache bust
 ENV updated-adds-on 5-1-2019_5
+
 COPY databridge_etl_tools /databridge_etl_tools
 # Python syntax check
 RUN python -m compileall /databridge_etl_tools
 
 COPY setup.py /setup.py
-RUN pip3 install -e .[ago,oracle,carto,dev]
-RUN pip3 install -e .[postgres]
+RUN pip3 install -e .[ago,carto,oracle,postgres,dev]
 # For some reason our latest commit wasn't being installed in setup.py, so install it here instead for now.
 RUN pip3 install -e git+https://github.com/CityOfPhiladelphia/geopetl.git@07fc22b4c92d1fe4e3d47a954c1dd36cccaaeb6d#egg=geopetl
 
-USER worker
-ENTRYPOINT ["/entrypoint.sh"]
-#CMD ["/bin/bash"] 
+# Quick hack to fix CSV dump issue from Oracle
+RUN   sed -i "s|MAX_NUM_POINTS_IN_GEOM_FOR_CHAR_CONVERSION_IN_DB = 150|MAX_NUM_POINTS_IN_GEOM_FOR_CHAR_CONVERSION_IN_DB = 100|g" /src/geopetl/geopetl/oracle_sde.py
 
+USER worker
+
+ENTRYPOINT ["/entrypoint.sh"]

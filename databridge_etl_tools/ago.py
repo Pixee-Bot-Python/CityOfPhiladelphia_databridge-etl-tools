@@ -8,6 +8,9 @@ import boto3
 import botocore
 import pyproj
 import shapely.wkt
+import numpy as np
+from pprint import pprint
+from threading import Thread
 from shapely.ops import transform as shapely_transformer
 from arcgis import GIS
 from arcgis.features import FeatureLayerCollection
@@ -87,10 +90,10 @@ class AGO():
         return self._org
 
 
-    '''Find the AGO object that we can perform actions on, sends requests to it's AGS endpoint in AGO.
-    Contains lots of attributes we'll need to access throughout this script.'''
     @property
     def item(self):
+        '''Find the AGO object that we can perform actions on, sends requests to it's AGS endpoint in AGO.
+        Contains lots of attributes we'll need to access throughout this script.'''
         if self._item is None:
             try:
                 # "Feature Service" seems to pull up both spatial and table items in AGO
@@ -106,10 +109,10 @@ class AGO():
         return self._item
 
 
-    '''Get the item object that we can operate on Can be in either "tables" or "layers"
-    but either way operations on it are the same.'''
     @property
     def layer_object(self):
+        '''Get the item object that we can operate on Can be in either "tables" or "layers"
+        but either way operations on it are the same.'''
         if self._layer_object is None:
             # Necessary to "get" our item after searching for it, as the returned
             # objects don't have equivalent attributes.
@@ -125,12 +128,12 @@ class AGO():
         return self._layer_object
 
 
-    '''detect the SRID of the dataset in AGO, we'll need it for formatting the rows we'll upload to AGO.
-    record both the standard SRID (latestwkid) and ESRI's made up on (wkid) into a tuple.
-    so for example for our standard PA state plane one, latestWkid = 2272 and wkid = 102729
-    We'll need both of these.'''
     @property
     def ago_srid(self):
+        '''detect the SRID of the dataset in AGO, we'll need it for formatting the rows we'll upload to AGO.
+        record both the standard SRID (latestwkid) and ESRI's made up on (wkid) into a tuple.
+        so for example for our standard PA state plane one, latestWkid = 2272 and wkid = 102729
+        We'll need both of these.'''
         if self._ago_srid is None:
             # Don't ask why the SRID is all the way down here..
             assert self.layer_object.container.properties.initialExtent.spatialReference is not None
@@ -138,16 +141,16 @@ class AGO():
         return self._ago_srid
 
 
-    '''Fields of the dataset in AGO'''
     @property
     def item_fields(self):
+        '''Fields of the dataset in AGO'''
         self._item_fields = layer_object.properties.fields
         return self._item_fields
 
 
-    '''Boolean telling us whether the item is geometric or just a table?'''
     @property
     def geometric(self):
+        '''Boolean telling us whether the item is geometric or just a table?'''
         if self._geometric is None:
             self.logger.info('Determining geometric?...')
             geometry_type = None
@@ -166,10 +169,10 @@ class AGO():
         return self._geometric
 
 
-    '''Decide if we need to project our shape field. If the SRID in AGO is set
-    to what our source dataset is currently, we don't need to project.'''
     @property
     def projection(self):
+        '''Decide if we need to project our shape field. If the SRID in AGO is set
+        to what our source dataset is currently, we don't need to project.'''
         if self._projection is None:
             if str(self.in_srid) == str(self.ago_srid[1]):
                 self.logger.info(f'source SRID detected as same as AGO srid, not projecting. source: {self.in_srid}, ago: {self.ago_srid[1]}\n')
@@ -192,11 +195,11 @@ class AGO():
             zip_ref.extractall(self.export_dir_path)
 
 
-    '''
-    Based off docs I believe this will only work with fgdbs or sd file
-    or with non-spatial CSV files: https://developers.arcgis.com/python/sample-notebooks/overwriting-feature-layers
-    '''
     def overwrite(self):
+        '''
+        Based off docs I believe this will only work with fgdbs or sd file
+        or with non-spatial CSV files: https://developers.arcgis.com/python/sample-notebooks/overwriting-feature-layers
+        '''
         if self.geometric == 'True':
             raise NotImplementedError('Overwrite with CSVs only works for non-spatial datasets (maybe?)')
         print(vars(self.item))
@@ -227,9 +230,9 @@ class AGO():
         self.logger.info('CSV successfully downloaded.\n'.format(self.s3_bucket, self.csv_s3_key))
 
 
-    '''transformer needs to be defined outside of our row loop to speed up projections.'''
     @property
     def transformer(self):
+        '''transformer needs to be defined outside of our row loop to speed up projections.'''
         if self._transformer is None:
             self._transformer = pyproj.Transformer.from_crs(f'epsg:{self.in_srid}',
                                                       f'epsg:{self.ago_srid[1]}',
@@ -237,8 +240,8 @@ class AGO():
         return self._transformer
 
 
-    ''' Helper function to help format spatial fields properly for AGO '''
     def project_and_format_shape(self, wkt_shape):
+        ''' Helper function to help format spatial fields properly for AGO '''
         # Note: list of coordinates for polygons are called "rings" for some reason
         def format_ring(poly):
             if self.projection:
@@ -294,16 +297,16 @@ class AGO():
             raise NotImplementedError('Shape unrecognized.')
 
 
-    ''' Do not perform project, simply extract and return our coords lists.'''
     def return_coords_only(self,wkt_shape):
+        ''' Do not perform project, simply extract and return our coords lists.'''
         poly = shapely.wkt.loads(wkt_shape)
         return poly.exterior.xy[0], poly.exterior.xy[1]
 
 
     def append(self):
         rows = etl.fromcsv(self.csv_path, encoding='latin-1')
+        self._num_rows_in_upload_file = rows.nrows()
         row_dicts = rows.dicts()
-        batch_size = 5000
         adds = []
         if self.geometric is False:
             for i, row in enumerate(row_dicts):
@@ -369,42 +372,70 @@ class AGO():
                                      }
                 adds.append(row_to_append)
 
-                batch_size = 1000
-                # Where we actually append the rows to the dataset in AGO
+                batch_size = 5000
                 if len(adds) % batch_size == 0:
                     self.logger.info(f'Adding batch of {len(adds)}, at row #: {i+1}...')
-                    self.logger.info(f'Example row: {adds[0]}')
                     start = time()
-                    self.add_features(adds, i)
-                    print(f'Duration: {time() - start}')
-                    self.logger.info('Batch added.\n')
+                    split_batches = np.array_split(adds,5)
+                    # Where we actually append the rows to the dataset in AGO
+                    #self.add_features(batch, i)
+                    #self.logger.info(f'Example row: {batch[0]}')
+                    t1 = Thread(target=self.add_features,
+                                args=(list(split_batches[0]), i))
+                    t2 = Thread(target=self.add_features,
+                                args=(list(split_batches[1]), i))
+                    t3 = Thread(target=self.add_features,
+                                args=(list(split_batches[2]), i))
+                    t4 = Thread(target=self.add_features,
+                                args=(list(split_batches[3]), i))
+                    t5 = Thread(target=self.add_features,
+                                args=(list(split_batches[4]), i))
+                    t1.start()
+                    t2.start()
+                    t3.start()
+                    t4.start()
+                    t5.start()
+
+                    t1.join()
+                    t2.join()
+                    t3.join()
+                    t4.join()
+                    t5.join()
+                    self.logger.info('Batch added.')
                     adds = []
-            # add leftover rows outside the loop if they don't add up to 3000
+                    print(f'Duration: {time() - start}\n')
+            # add leftover rows outside the loop if they don't add up to 4000
             if adds:
+                start = time()
                 self.logger.info(f'Adding last batch of {len(adds)}, at row #: {i+1}...')
                 self.logger.info(f'Example row: {adds[0]}')
                 self.add_features(adds, i)
                 self.logger.info('Batch added.\n')
+                print(f'Duration: {time() - start}')
 
 
-        count = self.layer_object.query(return_count_only=True)
-        self.logger.info(f'count after batch adds: {str(count)}')
-        assert count != 0
+        ago_count = self.layer_object.query(return_count_only=True)
+        self.logger.info(f'count after batch adds: {str(ago_count)}')
+        assert ago_count != 0
 
 
-    '''
-    Complicated function to wrap the edit_features arcgis function so we can handle AGO failing
-    It will handle either:
-    1. A reported rollback from AGO (1003) and try one more time,
-    2. An AGO timeout, which can still be successful which we'll verify with a row count.
-    '''
     def add_features(self, adds, on_row):
-
         '''
-        If we receieve a vague object back from AGO and it contains an error code of 1003
-        docs: https://community.esri.com/t5/arcgis-api-for-python-questions/how-can-i-test-if-there-was-a-rollback/td-p/1057433
+        Complicated function to wrap the edit_features arcgis function so we can handle AGO failing
+        It will handle either:
+        1. A reported rollback from AGO (1003) and try one more time,
+        2. An AGO timeout, which can still be successful which we'll verify with a row count.
         '''
         def is_rolled_back(result):
+            '''
+            If we receieve a vague object back from AGO and it contains an error code of 1003
+            docs:
+            https://community.esri.com/t5/arcgis-api-for-python-questions/how-can-i-test-if-there-was-a-rollback/td-p/1057433
+            '''
+            if result["addResults"] is None:
+                self.logger.info('Returned result not what we expected, assuming success.')
+                self.logger.info(f'Returned object: {pprint(result)}')
+                return True
             for element in result["addResults"]:
                 if "error" in element and element["error"]["code"] == 1003:
                     return True
@@ -412,8 +443,8 @@ class AGO():
                     raise Exception(f'Got this error returned from AGO (unhandled error): {element["error"]}')
             return False
 
-        '''If we receive a timeout, verify the count. It will sometimes have actually successfully added.'''
         def verify_count(on_row):
+            '''If we receive a timeout, verify the count. It will sometimes have actually successfully added.'''
             count = self.layer_object.query(return_count_only=True)
             self.logger.info(f'Received a timeout, comparing row count {on_row+1} to {count} to see if we can continue')
             if int(on_row)+1 == int(count):
@@ -462,6 +493,11 @@ class AGO():
             else:
                 success = True
 
+
+    def verify_count(self):
+        ago_count = self.layer_object.query(return_count_only=True)
+        assert self._num_rows_in_upload_file == ago_count
+        self.logger.info(f'CSV count matches AGO dataset, AGO: {str(ago_count)}, CSV: {str(self._num_rows_in_upload_file)}')
 
 
     def export(self):
