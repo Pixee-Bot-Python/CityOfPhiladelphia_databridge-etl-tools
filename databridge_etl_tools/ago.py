@@ -390,17 +390,37 @@ class AGO():
                                 args=(list(split_batches[3]), i))
                     t5 = Thread(target=self.add_features,
                                 args=(list(split_batches[4]), i))
+                    t6 = Thread(target=self.add_features,
+                                args=(list(split_batches[5]), i))
+                    t7 = Thread(target=self.add_features,
+                                args=(list(split_batches[6]), i))
+                    t8 = Thread(target=self.add_features,
+                                args=(list(split_batches[7]), i))
+                    t9 = Thread(target=self.add_features,
+                                args=(list(split_batches[8]), i))
+                    t10 = Thread(target=self.add_features,
+                                args=(list(split_batches[9]), i))
                     t1.start()
                     t2.start()
                     t3.start()
                     t4.start()
                     t5.start()
+                    t6.start()
+                    t7.start()
+                    t8.start()
+                    t9.start()
+                    t10.start()
 
                     t1.join()
                     t2.join()
                     t3.join()
                     t4.join()
                     t5.join()
+                    t6.join()
+                    t7.join()
+                    t8.join()
+                    t9.join()
+                    t10.join()
                     self.logger.info('Batch added.')
                     adds = []
                     print(f'Duration: {time() - start}\n')
