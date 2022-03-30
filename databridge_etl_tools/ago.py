@@ -372,11 +372,11 @@ class AGO():
                                      }
                 adds.append(row_to_append)
 
-                batch_size = 5000
+                batch_size = 10000
                 if len(adds) % batch_size == 0:
                     self.logger.info(f'Adding batch of {len(adds)}, at row #: {i+1}...')
                     start = time()
-                    split_batches = np.array_split(adds,5)
+                    split_batches = np.array_split(adds,10)
                     # Where we actually append the rows to the dataset in AGO
                     #self.add_features(batch, i)
                     #self.logger.info(f'Example row: {batch[0]}')
