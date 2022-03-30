@@ -43,8 +43,10 @@ setup(
         ]
     },
     # TEMPORARY! using commmit id from victor's shapes_and_worklfows_2
+    # Updating to a new one to handle gdb_geomattr_data fields
     dependency_links=[
-        'https://github.com/CityOfPhiladelphia/geopetl/tarball/07fc22b4c92d1fe4e3d47a954c1dd36cccaaeb6d'
+        #'https://github.com/CityOfPhiladelphia/geopetl/tarball/07fc22b4c92d1fe4e3d47a954c1dd36cccaaeb6d'
+        'https://github.com/CityOfPhiladelphia/geopetl/tarball/f4d3cd5571908fe6c51096f67c002b26a7f732c3'
     ],
     entry_points={
         'console_scripts': [
