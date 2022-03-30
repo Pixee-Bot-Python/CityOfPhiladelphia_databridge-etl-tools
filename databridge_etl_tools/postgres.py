@@ -54,13 +54,13 @@ class Postgres():
                  connection_string, 
                  s3_bucket, 
                  json_schema_s3_key, 
-                 csv_s3_key):
+                 s3_key):
         self.table_name = table_name
         self.table_schema = table_schema
         self.connection_string = connection_string
         self.s3_bucket = s3_bucket
         self.json_schema_s3_key = json_schema_s3_key
-        self.csv_s3_key = csv_s3_key
+        self.s3_key = s3_key
 
     @property
     def table_schema_name(self):
@@ -203,12 +203,12 @@ class Postgres():
         self.logger.info('Json schema successfully downloaded.\n'.format(self.s3_bucket, self.json_schema_s3_key))
 
     def get_csv_from_s3(self):
-        self.logger.info('Fetching csv s3://{}/{}'.format(self.s3_bucket, self.csv_s3_key))
+        self.logger.info('Fetching csv s3://{}/{}'.format(self.s3_bucket, self.s3_key))
 
         s3 = boto3.resource('s3')
-        s3.Object(self.s3_bucket, self.csv_s3_key).download_file(self.csv_path)
+        s3.Object(self.s3_bucket, self.s3_key).download_file(self.csv_path)
 
-        self.logger.info('CSV successfully downloaded.\n'.format(self.s3_bucket, self.csv_s3_key))
+        self.logger.info('CSV successfully downloaded.\n'.format(self.s3_bucket, self.s3_key))
 
     def create_indexes(self, table_name):
         raise NotImplementedError
@@ -319,12 +319,12 @@ class Postgres():
 
 
     def load_csv_to_s3(self):
-        self.logger.info('Starting load to s3: {}'.format(self.csv_s3_key))
+        self.logger.info('Starting load to s3: {}'.format(self.s3_key))
 
         s3 = boto3.resource('s3')
-        s3.Object(self.s3_bucket, self.csv_s3_key).put(Body=open(self.csv_path, 'rb'))
+        s3.Object(self.s3_bucket, self.s3_key).put(Body=open(self.csv_path, 'rb'))
         
-        self.logger.info('Successfully loaded to s3: {}'.format(self.csv_s3_key))
+        self.logger.info('Successfully loaded to s3: {}'.format(self.s3_key))
 
 
     def extract_verify_row_count(self):

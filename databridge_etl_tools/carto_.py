@@ -59,14 +59,14 @@ class Carto():
                  table_name, 
                  s3_bucket, 
                  json_schema_s3_key,
-                 csv_s3_key,
+                 s3_key,
                  select_users,
                  index_fields=None):
         self.connection_string = connection_string
         self.table_name = table_name
         self.s3_bucket = s3_bucket
         self.json_schema_s3_key = json_schema_s3_key
-        self.csv_s3_key = csv_s3_key
+        self.s3_key = s3_key
         self.select_users = select_users
         self.index_fields = index_fields
 
@@ -223,12 +223,12 @@ class Carto():
         self.logger.info('Json schema successfully downloaded.\n'.format(self.s3_bucket, self.json_schema_s3_key))
 
     def get_csv_from_s3(self):
-        self.logger.info('Fetching csv s3://{}/{}'.format(self.s3_bucket, self.csv_s3_key))
+        self.logger.info('Fetching csv s3://{}/{}'.format(self.s3_bucket, self.s3_key))
 
         s3 = boto3.resource('s3')
-        s3.Object(self.s3_bucket, self.csv_s3_key).download_file(self.csv_path)
+        s3.Object(self.s3_bucket, self.s3_key).download_file(self.csv_path)
 
-        self.logger.info('CSV successfully downloaded.\n'.format(self.s3_bucket, self.csv_s3_key))
+        self.logger.info('CSV successfully downloaded.\n'.format(self.s3_bucket, self.s3_key))
 
     def execute_sql(self, stmt, fetch='many'):
         self.logger.info('Executing: {}'.format(stmt))

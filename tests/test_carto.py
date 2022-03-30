@@ -13,7 +13,7 @@ CONNECTION_STRING            = 'carto://user:apikey'
 TABLE_NAME                   = 'table_name'
 JSON_SCHEMA_S3_KEY           = 'json_schema.json'
 JSON_SCHEMA_S3_KEY_SUBFOLDER = 'subfolder/json_schema.json'
-CSV_S3_KEY                   = 'csv.csv'
+S3_KEY                   = 'csv.csv'
 SELECT_USERS                 = 'publicuser'
 
 @pytest.fixture
@@ -23,7 +23,7 @@ def carto():
         table_name=TABLE_NAME,
         s3_bucket=S3_BUCKET,
         json_schema_s3_key=JSON_SCHEMA_S3_KEY,
-        csv_s3_key=CSV_S3_KEY,
+        s3_key=S3_KEY,
         select_users=SELECT_USERS)
     return carto_client
 
@@ -35,7 +35,7 @@ def carto_subfolder():
         table_name=TABLE_NAME,
         s3_bucket=S3_BUCKET,
         json_schema_s3_key=JSON_SCHEMA_S3_KEY_SUBFOLDER,
-        csv_s3_key=CSV_S3_KEY,
+        s3_key=S3_KEY,
         select_users=SELECT_USERS)
     return carto_client
 
@@ -46,7 +46,7 @@ def carto_point():
         table_name=TABLE_NAME,
         s3_bucket=S3_BUCKET,
         json_schema_s3_key=POINT_JSON_SCHEMA,
-        csv_s3_key=POINT_CSV,
+        s3_key=POINT_CSV,
         select_users=SELECT_USERS)
     return carto_client
 
@@ -57,7 +57,7 @@ def carto_polygon():
         table_name=TABLE_NAME,
         s3_bucket=S3_BUCKET,
         json_schema_s3_key=POLYGON_JSON_SCHEMA,
-        csv_s3_key=POLYGON_CSV,
+        s3_key=POLYGON_CSV,
         select_users=SELECT_USERS)
     return carto_client
 

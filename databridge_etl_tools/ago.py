@@ -35,7 +35,7 @@ class AGO():
                  ago_pw,
                  ago_item_name,
                  s3_bucket,
-                 csv_s3_key,
+                 s3_key,
                  **kwargs
                  ):
         self.ago_org_url = ago_org_url
@@ -43,7 +43,7 @@ class AGO():
         self.ago_password = ago_pw
         self.item_name = ago_item_name
         self.s3_bucket = s3_bucket
-        self.csv_s3_key = csv_s3_key
+        self.s3_key = s3_key
         self.in_srid = None
         self.proxy_host = kwargs.get('proxy_host', None)
         self.proxy_port = kwargs.get('proxy_port', None)
@@ -216,18 +216,18 @@ class AGO():
 
 
     def get_csv_from_s3(self):
-        self.logger.info('Fetching csv s3://{}/{}'.format(self.s3_bucket, self.csv_s3_key))
+        self.logger.info('Fetching csv s3://{}/{}'.format(self.s3_bucket, self.s3_key))
 
         s3 = boto3.resource('s3')
         try:
-            s3.Object(self.s3_bucket, self.csv_s3_key).download_file(self.csv_path)
+            s3.Object(self.s3_bucket, self.s3_key).download_file(self.csv_path)
         except botocore.exceptions.ClientError as e:
             if e.response['Error']['Code'] == "404":
-                raise AssertionError(f'CSV file doesnt appear to exist in S3! key: {self.csv_s3_key}')
+                raise AssertionError(f'CSV file doesnt appear to exist in S3! key: {self.s3_key}')
             else:
                 raise e
 
-        self.logger.info('CSV successfully downloaded.\n'.format(self.s3_bucket, self.csv_s3_key))
+        self.logger.info('CSV successfully downloaded.\n'.format(self.s3_bucket, self.s3_key))
 
 
     @property

@@ -32,17 +32,17 @@ def oracle_extract(table_name, table_schema, connection_string, s3_bucket, s3_ke
 @click.option('--connection_string')
 @click.option('--s3_bucket')
 @click.option('--json_schema_s3_key')
-@click.option('--csv_s3_key')
+@click.option('--s3_key')
 @click.option('--select_users')
 @click.option('--index_fields')
-def cartoupdate(table_name, connection_string, s3_bucket, json_schema_s3_key, csv_s3_key, select_users, index_fields):
+def cartoupdate(table_name, connection_string, s3_bucket, json_schema_s3_key, s3_key, select_users, index_fields):
     """Loads a datasets from S3 into carto"""
     carto = Carto(
         table_name=table_name,
         connection_string=connection_string,
         s3_bucket=s3_bucket,
         json_schema_s3_key=json_schema_s3_key,
-        csv_s3_key=csv_s3_key,
+        s3_key=s3_key,
         select_users=select_users,
         index_fields=index_fields)
     carto.run_workflow()
@@ -54,8 +54,8 @@ def cartoupdate(table_name, connection_string, s3_bucket, json_schema_s3_key, cs
 @click.option('--connection_string')
 @click.option('--s3_bucket')
 @click.option('--json_schema_s3_key')
-@click.option('--csv_s3_key')
-def postgres_load(table_name, table_schema, connection_string, s3_bucket, json_schema_s3_key, csv_s3_key):
+@click.option('--s3_key')
+def postgres_load(table_name, table_schema, connection_string, s3_bucket, json_schema_s3_key, s3_key):
     """Loads a dataset from postgresql into a CSV file in S3"""
     postgres = Postgres(
         table_name=table_name,
@@ -63,7 +63,7 @@ def postgres_load(table_name, table_schema, connection_string, s3_bucket, json_s
         connection_string=connection_string,
         s3_bucket=s3_bucket,
         json_schema_s3_key=json_schema_s3_key,
-        csv_s3_key=csv_s3_key)
+        s3_key=s3_key)
     postgres.load()
 
 
@@ -73,8 +73,8 @@ def postgres_load(table_name, table_schema, connection_string, s3_bucket, json_s
 @click.option('--connection_string')
 @click.option('--s3_bucket')
 @click.option('--json_schema_s3_key', default=None, required=False)
-@click.option('--csv_s3_key')
-def postgres_extract(table_name, table_schema, connection_string, s3_bucket, json_schema_s3_key, csv_s3_key):
+@click.option('--s3_key')
+def postgres_extract(table_name, table_schema, connection_string, s3_bucket, json_schema_s3_key, s3_key):
     """Extracts data from a postgres table into a CSV file in S3. Has spatial and SRID detection
     and will output it in a way that the ago append commands will recognize."""
     postgres = Postgres(
@@ -83,7 +83,7 @@ def postgres_extract(table_name, table_schema, connection_string, s3_bucket, jso
         connection_string=connection_string,
         s3_bucket=s3_bucket,
         json_schema_s3_key=json_schema_s3_key,
-        csv_s3_key=csv_s3_key)
+        s3_key=s3_key)
     postgres.extract()
 
 
@@ -95,8 +95,8 @@ def postgres_extract(table_name, table_schema, connection_string, s3_bucket, jso
 @click.option('--ago_pw')
 @click.option('--ago_item_name')
 @click.option('--s3_bucket')
-@click.option('--csv_s3_key')
-def ago_truncate_append(ago_org_url, ago_user, ago_pw, ago_item_name, s3_bucket, csv_s3_key):
+@click.option('--s3_key')
+def ago_truncate_append(ago_org_url, ago_user, ago_pw, ago_item_name, s3_bucket, s3_key):
     """Truncates a dataset in AGO and appends to it from a CSV. CSV needs to be made
     from the postgres-extract command."""
     ago = AGO(
@@ -105,7 +105,7 @@ def ago_truncate_append(ago_org_url, ago_user, ago_pw, ago_item_name, s3_bucket,
         ago_pw=ago_pw,
         ago_item_name=ago_item_name,
         s3_bucket=s3_bucket,
-        csv_s3_key=csv_s3_key)
+        s3_key=s3_key)
     ago.get_csv_from_s3()
     ago.truncate()
     ago.append()
@@ -119,8 +119,8 @@ def ago_truncate_append(ago_org_url, ago_user, ago_pw, ago_item_name, s3_bucket,
 @click.option('--ago_pw')
 @click.option('--ago_item_name')
 @click.option('--s3_bucket')
-@click.option('--csv_s3_key')
-def ago_append(ago_org_url, ago_user, ago_pw, ago_item_name, s3_bucket, csv_s3_key):
+@click.option('--s3_key')
+def ago_append(ago_org_url, ago_user, ago_pw, ago_item_name, s3_bucket, s3_key):
     """Appends records to AGO without truncating. NOTE that this is NOT an upsert 
     and will absolutely duplicate rows if you run this multiple times."""
     ago = AGO(
@@ -129,7 +129,7 @@ def ago_append(ago_org_url, ago_user, ago_pw, ago_item_name, s3_bucket, csv_s3_k
         ago_pw=ago_pw,
         ago_item_name=ago_item_name,
         s3_bucket=s3_bucket,
-        csv_s3_key=csv_s3_key)
+        s3_key=s3_key)
     ago.get_csv_from_s3()
     ago.append()
 
@@ -140,8 +140,8 @@ def ago_append(ago_org_url, ago_user, ago_pw, ago_item_name, s3_bucket, csv_s3_k
 @click.option('--ago_pw')
 @click.option('--ago_item_name')
 @click.option('--s3_bucket')
-@click.option('--csv_s3_key')
-def ago_export(ago_org_url, ago_user, ago_pw, ago_item_name, s3_bucket, csv_s3_key):
+@click.option('--s3_key')
+def ago_export(ago_org_url, ago_user, ago_pw, ago_item_name, s3_bucket, s3_key):
     """Export from an AGO dataset into an csv file in S3"""
     ago = AGO(
         ago_org_url=ago_org_url,
@@ -149,7 +149,7 @@ def ago_export(ago_org_url, ago_user, ago_pw, ago_item_name, s3_bucket, csv_s3_k
         ago_pw=ago_pw,
         ago_item_name=ago_item_name,
         s3_bucket=s3_bucket,
-        csv_s3_key=csv_s3_key)
+        s3_key=s3_key)
     ago.export()
 
 
