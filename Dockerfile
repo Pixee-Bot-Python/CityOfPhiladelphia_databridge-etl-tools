@@ -62,8 +62,7 @@ RUN sed -i 's/^# en_US.UTF-8 UTF-8$/en_US.UTF-8 UTF-8/g' /etc/locale.gen \
 RUN pip3 install --upgrade pip \
     && pip3 install setuptools-rust \
     && pip3 install -U setuptools \
-    && pip3 install -e git+https://github.com/CityOfPhiladelphia/geopetl.git@b80a38cf1dae2cec9ce2c619281cc513795bf608#egg=geopetl \
-                   Cython==0.29.28 \
+    && pip3 install Cython==0.29.28 \
                    awscli==1.22.70 \
                    boto3==1.21.15 \
                    click==8.0.4 \
@@ -109,10 +108,13 @@ RUN python -m compileall /databridge_etl_tools
 COPY setup.py /setup.py
 RUN pip3 install -e .[ago,carto,oracle,postgres,dev]
 # For some reason our latest commit wasn't being installed in setup.py, so install it here instead for now.
-RUN pip3 install -e git+https://github.com/CityOfPhiladelphia/geopetl.git@07fc22b4c92d1fe4e3d47a954c1dd36cccaaeb6d#egg=geopetl
+#RUN pip3 install -e git+https://github.com/CityOfPhiladelphia/geopetl.git@f4d3cd5571908fe6c51096f67c002b26a7f732c3#egg=geopetl
+# roland-3-31-22 branch to fix geom_column issue
+#RUN pip3 install -e git+https://github.com/CityOfPhiladelphia/geopetl.git@389f7d78c734197df0f3130e87e6b9091c34d805#egg=geopetl
+
 
 # Quick hack to fix CSV dump issue from Oracle
-RUN   sed -i "s|MAX_NUM_POINTS_IN_GEOM_FOR_CHAR_CONVERSION_IN_DB = 150|MAX_NUM_POINTS_IN_GEOM_FOR_CHAR_CONVERSION_IN_DB = 100|g" /src/geopetl/geopetl/oracle_sde.py
+RUN   sed -i "s|MAX_NUM_POINTS_IN_GEOM_FOR_CHAR_CONVERSION_IN_DB = 150|MAX_NUM_POINTS_IN_GEOM_FOR_CHAR_CONVERSION_IN_DB = 100|g" /usr/local/lib/python3.7/site-packages/geopetl/oracle_sde.py
 
 USER worker
 

@@ -23,7 +23,11 @@ setup(
         'requests==2.27.1',
         's3transfer==0.5.2',
         'six==1.16.0',
-        'Shapely==1.8.1.post1'
+        'Shapely==1.8.1.post1',
+        # TEMPORARY! using commmit id from victor's shapes_and_worklfows_2
+        #'geopetl @ https://github.com/CityOfPhiladelphia/geopetl/tarball/07fc22b4c92d1fe4e3d47a954c1dd36cccaaeb6d'
+        # Updating to a new one to handle gdb_geomattr_data fields
+        'geopetl @ https://github.com/CityOfPhiladelphia/geopetl/tarball/65ead28d4480d7cedcbc92272c3b4789f1e22810'
     ],
     extras_require={
         'ago': [
@@ -42,12 +46,6 @@ setup(
             'requests-mock==1.9.3'
         ]
     },
-    # TEMPORARY! using commmit id from victor's shapes_and_worklfows_2
-    # Updating to a new one to handle gdb_geomattr_data fields
-    dependency_links=[
-        #'https://github.com/CityOfPhiladelphia/geopetl/tarball/07fc22b4c92d1fe4e3d47a954c1dd36cccaaeb6d'
-        'https://github.com/CityOfPhiladelphia/geopetl/tarball/f4d3cd5571908fe6c51096f67c002b26a7f732c3'
-    ],
     entry_points={
         'console_scripts': [
             'databridge_etl_tools=databridge_etl_tools:main',
