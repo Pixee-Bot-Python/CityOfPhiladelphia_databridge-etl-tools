@@ -217,7 +217,11 @@ class Postgres():
     def write(self):
         self.get_csv_from_s3()
         # self.get_json_schema_from_s3()
-        rows = etl.fromcsv(self.csv_path, encoding='latin-1')
+        try:
+            rows = etl.fromcsv(self.csv_path, encoding='utf-8')
+        except UnicodeError:    
+            self.logger.info("Exception encountered trying to load rows with utf-8 encoding, trying latin-1...")
+            rows = etl.fromcsv(self.csv_path, encoding='latin-1')
         header = rows[0]
         str_header = ''
         num_fields = len(header)
@@ -341,7 +345,11 @@ class Postgres():
         rows = etl.frompostgis(self.conn, self.table_schema_name, geom_with_srid=True)
         # Dump to our CSV temp file
         print('Extracting csv...')
-        rows.tocsv(self.csv_path, 'utf-8')
+        try:
+            rows.tocsv(self.csv_path, 'utf-8')
+        except UnicodeError:
+            self.logger.info("Exception encountered trying to extract to CSV with utf-8 encoding, trying latin-1...")
+            rows.tocsv(self.csv_path, 'latin-1')
         self.extract_verify_row_count()
         self.load_csv_to_s3()
 

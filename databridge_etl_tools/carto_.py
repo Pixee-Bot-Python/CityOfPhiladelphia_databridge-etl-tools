@@ -275,8 +275,11 @@ class Carto():
 
     def write(self):
         self.get_csv_from_s3()
-        rows = etl.fromcsv(self.csv_path, encoding='latin-1')
-
+        try:
+            rows = etl.fromcsv(self.csv_path, encoding='utf-8')
+        except UnicodeError:
+            self.logger.info("Exception encountered trying to import rows with utf-8 encoding, trying latin-1...")
+            rows = etl.fromcsv(self.csv_path, encoding='latin-1')
         header = rows[0]
         str_header = ''
         num_fields = len(header)

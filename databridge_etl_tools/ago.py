@@ -316,9 +316,10 @@ class AGO():
 
     def append(self):
         try:
-            rows = etl.fromcsv(self.csv_path, encoding='latin-1')
-        except UnicodeError:
             rows = etl.fromcsv(self.csv_path, encoding='utf-8')
+        except UnicodeError:
+            logger.info("Exception encountered trying to import rows wtih utf-8 encoding, trying latin-1...")
+            rows = etl.fromcsv(self.csv_path, encoding='latin-1')
         # Compare headers in the csv file vs the fields in the ago item.
         # If the names don't match and we were to upload to AGO anyway, AGO will not actually do 
         # anything with our rows but won't tell us anything is wrong!
