@@ -69,8 +69,18 @@ class Oracle():
         self.logger.info('Starting extract from {}'.format(self.schema_table_name))
         import geopetl
 
-        etl.fromoraclesde(self.conn, self.schema_table_name, geom_with_srid=True) \
-           .tocsv(self.csv_path, encoding='latin-1')
+        try:
+            etl.fromoraclesde(self.conn, self.schema_table_name, geom_with_srid=True) \
+               .tocsv(self.csv_path, encoding='latin-1')
+        except UnicodeError:
+            try:
+                self.logger.info("Exception trying to extract to CSV with latin-1 encoding, trying utf-8...")
+                etl.fromoraclesde(self.conn, self.schema_table_name, geom_with_srid=True) \
+                   .tocsv(self.csv_path, encoding='utf-8')
+            except UnicodeError as e:
+                self.logger.error(f'Failed extracting to CSV! error: {str(e)}')
+                raise e
+
 
         self.load_csv_to_s3()
         os.remove(self.csv_path)
@@ -79,3 +89,4 @@ class Oracle():
 
     def write(self):
         raise NotImplementedError
+

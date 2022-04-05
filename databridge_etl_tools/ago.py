@@ -144,7 +144,18 @@ class AGO():
     @property
     def item_fields(self):
         '''Fields of the dataset in AGO'''
-        self._item_fields = layer_object.properties.fields
+        fields = [i.name.lower() for i in self.layer_object.properties.fields]
+        # shape field isn't included in this property of the AGO item, so check it its geometric first
+        # so we can accurately use this variables for field comparisions
+        if self.geometric and 'shape' not in fields:
+            fields.append('shape')
+        # AGO will show these fields for lines and polygons, so remove them for an accurate comparison to the CSV headers.
+        if 'shape__area' in fields:
+            fields.remove('shape__area')
+        if 'shape__length' in fields:
+            fields.remove('shape__length')
+        fields = tuple(fields)
+        self._item_fields = fields
         return self._item_fields
 
 
@@ -304,7 +315,16 @@ class AGO():
 
 
     def append(self):
-        rows = etl.fromcsv(self.csv_path, encoding='latin-1')
+        try:
+            rows = etl.fromcsv(self.csv_path, encoding='latin-1')
+        except UnicodeError:
+            rows = etl.fromcsv(self.csv_path, encoding='utf-8')
+        # Compare headers in the csv file vs the fields in the ago item.
+        # If the names don't match and we were to upload to AGO anyway, AGO will not actually do 
+        # anything with our rows but won't tell us anything is wrong!
+        self.logger.info(f'Comparing AGO fields: "{self.item_fields}" and CSV fields: "{rows.fieldnames()}"')
+        assert self.item_fields == rows.fieldnames()    
+
         self._num_rows_in_upload_file = rows.nrows()
         row_dicts = rows.dicts()
         adds = []
