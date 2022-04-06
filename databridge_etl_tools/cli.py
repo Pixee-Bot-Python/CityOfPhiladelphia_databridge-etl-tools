@@ -87,8 +87,8 @@ def postgres_extract(table_name, table_schema, connection_string, s3_bucket, jso
     postgres.extract()
 
 
-#@click.option('--in_srid', type=click.INT, default=0, required=False)
 
+# AGO truncate and append
 @main.command()
 @click.option('--ago_org_url')
 @click.option('--ago_user')
@@ -96,7 +96,8 @@ def postgres_extract(table_name, table_schema, connection_string, s3_bucket, jso
 @click.option('--ago_item_name')
 @click.option('--s3_bucket')
 @click.option('--s3_key')
-def ago_truncate_append(ago_org_url, ago_user, ago_pw, ago_item_name, s3_bucket, s3_key):
+@click.option('--in_srid', type=click.INT, default=False, required=False)
+def ago_truncate_append(ago_org_url, ago_user, ago_pw, ago_item_name, s3_bucket, s3_key, in_srid):
     """Truncates a dataset in AGO and appends to it from a CSV. CSV needs to be made
     from the postgres-extract command."""
     ago = AGO(
@@ -105,14 +106,15 @@ def ago_truncate_append(ago_org_url, ago_user, ago_pw, ago_item_name, s3_bucket,
         ago_pw=ago_pw,
         ago_item_name=ago_item_name,
         s3_bucket=s3_bucket,
-        s3_key=s3_key)
+        s3_key=s3_key,
+        in_srid=in_srid)
     ago.get_csv_from_s3()
     ago.truncate()
     ago.append()
     ago.verify_count()
 
 
-# Truncate without append
+# AGO append, no truncate
 @main.command()
 @click.option('--ago_org_url')
 @click.option('--ago_user')
@@ -120,7 +122,8 @@ def ago_truncate_append(ago_org_url, ago_user, ago_pw, ago_item_name, s3_bucket,
 @click.option('--ago_item_name')
 @click.option('--s3_bucket')
 @click.option('--s3_key')
-def ago_append(ago_org_url, ago_user, ago_pw, ago_item_name, s3_bucket, s3_key):
+@click.option('--in_srid', type=click.INT, default=False, required=False)
+def ago_append(ago_org_url, ago_user, ago_pw, ago_item_name, s3_bucket, s3_key, in_srid):
     """Appends records to AGO without truncating. NOTE that this is NOT an upsert 
     and will absolutely duplicate rows if you run this multiple times."""
     ago = AGO(
@@ -129,10 +132,35 @@ def ago_append(ago_org_url, ago_user, ago_pw, ago_item_name, s3_bucket, s3_key):
         ago_pw=ago_pw,
         ago_item_name=ago_item_name,
         s3_bucket=s3_bucket,
-        s3_key=s3_key)
+        s3_key=s3_key,
+        in_srid=in_srid)
     ago.get_csv_from_s3()
     ago.append()
 
+# AGO Upsert
+@main.command()
+@click.option('--ago_org_url')
+@click.option('--ago_user')
+@click.option('--ago_pw')
+@click.option('--ago_item_name')
+@click.option('--s3_bucket')
+@click.option('--s3_key')
+@click.option('--primary_key')
+@click.option('--in_srid', type=click.INT, default=False, required=False)
+def ago_upsert(ago_org_url, ago_user, ago_pw, ago_item_name, s3_bucket, s3_key, primary_key, in_srid):
+    """Upserts records to AGO, requires a primary key. Upserts the entire CSV
+    into AGO, it does not look for changes or differences."""
+    ago = AGO(
+        ago_org_url=ago_org_url,
+        ago_user=ago_user,
+        ago_pw=ago_pw,
+        ago_item_name=ago_item_name,
+        s3_bucket=s3_bucket,
+        s3_key=s3_key,
+        primary_key=primary_key,
+        in_srid=in_srid)
+    ago.get_csv_from_s3()
+    ago.upsert()
 
 @main.command()
 @click.option('--ago_org_url')
