@@ -53,11 +53,16 @@ jobs:
         AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
         AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
-    # NOTE: normally the docker container runs as 'worker' but
-    # in order to setup our testing venv we need root permissions
-    # hence we run the tests as 'root' user or '-u 0'
+    # Build our docker container and insert our AWS secret keys
     - name: Build docker container
-      run: docker build -t airflow-dbtools-testing .
+      run: |
+         docker build -t airflow-dbtools-testing \
+         --build-arg AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID \
+         --build-arg AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY \
+          .
+      env: 
+        AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
     - name: Start docker container and run pytests
       run: docker run --rm --name dbtools airflow-dbtools-testing pytest -v tests

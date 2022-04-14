@@ -118,4 +118,12 @@ RUN   sed -i "s|MAX_NUM_POINTS_IN_GEOM_FOR_CHAR_CONVERSION_IN_DB = 150|MAX_NUM_P
 
 USER worker
 
+# Set aws access keys as an env var for use with boto3
+# Specifically do this under the 'worker' user that runs our commands
+ARG AWS_ACCESS_KEY_ID
+ARG AWS_SECRET_ACCESS_KEY
+
+ENV AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID
+ENV AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY
+
 ENTRYPOINT ["/entrypoint.sh"]

@@ -613,7 +613,7 @@ class AGO():
             # create our formatted point geometry
             geom_dict = {"x": projected_x,
                          "y": projected_y,
-                         "spatial_reference": {"wkid": 102100, "latestWkid": 3857}
+                         "spatial_reference": {"wkid": self.ago_srid[0], "latestWkid": self.ago_srid[1]}
                          }
             #row_to_append = {"attributes": row,
             #                 "geometry": geom_dict}
