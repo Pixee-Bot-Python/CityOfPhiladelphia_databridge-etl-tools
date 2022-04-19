@@ -27,7 +27,9 @@ setup(
         # TEMPORARY! using commmit id from victor's shapes_and_worklfows_2
         #'geopetl @ https://github.com/CityOfPhiladelphia/geopetl/tarball/07fc22b4c92d1fe4e3d47a954c1dd36cccaaeb6d'
         # Updating to a new one to handle gdb_geomattr_data fields
-        'geopetl @ https://github.com/CityOfPhiladelphia/geopetl/tarball/65ead28d4480d7cedcbc92272c3b4789f1e22810'
+        #'geopetl @ https://github.com/CityOfPhiladelphia/geopetl/tarball/65ead28d4480d7cedcbc92272c3b4789f1e22810'
+        # Update again to latest victor commit
+        'geopetl @ https://github.com/CityOfPhiladelphia/geopetl/tarball/f11ea0d2190f8b8bdc2e9720ac9906360e5b8716'
     ],
     extras_require={
         'ago': [

@@ -86,7 +86,9 @@ class Postgres():
     @property
     def json_schema_file_name(self):
         # This expects the schema to be in a subfolder on S3
-        if ('/') in self.json_schema_s3_key:
+        if self.json_schema_s3_key is None:
+            json_schema_file_name = None
+        elif ('/') in self.json_schema_s3_key:
             json_schema_file_name = self.json_schema_s3_key.split('/')[1]
         else:
             json_schema_file_name = self.json_schema_s3_key

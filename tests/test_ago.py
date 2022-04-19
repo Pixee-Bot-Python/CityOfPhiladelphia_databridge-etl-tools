@@ -10,7 +10,7 @@ AGO_ITEM_NAME       = 'mock_item_name'
 AGO_USER            = 'auser'
 AGO_PW              = 'password'
 S3_KEY         = 'csv.csv'
-S3_BUCKET             = 'mock_folder'
+S3_BUCKET             = 'airflow-testing-v2'
 IN_SRID             = 2272
 
 @pytest.fixture
@@ -30,5 +30,5 @@ def test_ago_auth(ago):
     print('Testing ago auth which ensures we have our AWS key env vars configured...')
     client = boto3.setup_default_session(region_name='us-east-1')
     s3_client = boto3.client('s3')
-    s3_client.list_objects(Bucket='airflow-testing-v2')
+    s3_client.list_objects(Bucket=S3_BUCKET)
     print('Success.')
