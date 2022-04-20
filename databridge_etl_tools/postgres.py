@@ -96,8 +96,10 @@ class Postgres():
 
     @property
     def json_schema_path(self):
+        if self.json_schema_file_name == None:
+            json_schema_path = None
         # On Windows, save to current directory
-        if os.name == 'nt':
+        elif os.name == 'nt':
             json_schema_path = self.json_schema_file_name
         # On Linux, save to tmp folder
         else:
@@ -116,6 +118,8 @@ class Postgres():
 
     @property
     def geom_field(self):
+        if self._geom_field is None and self.json_schema_path is None:
+            return self._geom_field
         if self._geom_field is None:
             with open(self.json_schema_path) as json_file:
                 schema = json.load(json_file).get('fields', None)
@@ -234,6 +238,11 @@ class Postgres():
             else:
                 str_header += field
 
+        # Workaround: oracle allows special characters into it's column names
+        # We copy the oracle schema to postgres with ArcPy which at least for 
+        # the character '#' replaces it with an '_'. So do that here.
+        str_header = str_header.replace('#', '_')
+
         self.logger.info('Writing to table: {}...'.format(self.table_schema_name))
 
         write_file = self.temp_csv_path
@@ -301,12 +310,15 @@ class Postgres():
 
     def cleanup(self):
         self.logger.info('Attempting to drop temp files...')
-        
         for f in [self.csv_path, self.temp_csv_path, self.json_schema_path]:
-            if os.path.isfile(f):
-                os.remove(f)
+            if f is not None:
+                if os.path.isfile(f):
+                    try:
+                        os.remove(f)
+                    except Exception as e:
+                        self.logger.info(f'Failed removing file {f}.')
+                        pass
 
-        self.logger.info('Successfully removed temp files.')
 
 
     def load(self):
@@ -318,6 +330,7 @@ class Postgres():
             self.logger.info('Done!')
         except Exception as e:
             self.logger.error('Workflow failed...')
+            self.logger.error(f'Error: {str(e)}')
             self.conn.rollback()
             raise e
         finally:

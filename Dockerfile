@@ -20,6 +20,12 @@ ENV LC_ALL C.UTF-8
 ENV ORACLE_HOME=/usr/lib/oracle/12.1/client64
 ENV LD_LIBRARY_PATH=$ORACLE_HOME/lib
 ENV PATH=$ORACLE_HOME/bin:$PATH
+# Sets our hostname so it's pingable, which will make oracle happy.
+# We set our hostname in this file in the entrypoint.sh script
+# Explanation: https://medium.com/@mitchplanck/aws-lambda-node-js-oracle-3b5806fbecd3
+# More context on HOSTALIASES, which isn't well documented: https://bugzilla.redhat.com/show_bug.cgi?id=7385i2
+# Nother reference: https://stackoverflow.com/a/40400117
+# Importantly, it's order is reversed vs /etc/hosts (which we can't modify in docker)
 ENV HOSTALIASES=/tmp/HOSTALIASES
 
 RUN set -ex \
@@ -36,6 +42,7 @@ RUN set -ex \
     && apt-get update -yqq \
     && apt-get install -yqq --no-install-recommends \
         $buildDeps \
+        iputils-ping \
         libpq-dev \
         python3 \
         python3-pip \
@@ -62,6 +69,11 @@ RUN sed -i 's/^# en_US.UTF-8 UTF-8$/en_US.UTF-8 UTF-8/g' /etc/locale.gen \
     && update-locale LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 \
     && useradd -ms /bin/bash worker
 
+# chown hostname binary to our worker user so we can overwrite it in the entrypoint
+# Note: we are doing this hack solely because oracle insists on having a resolvable hostname
+# for connections to succeed.
+RUN chown worker:root /bin/hostname
+
 # Cleanup
 RUN apt-get remove --purge -yqq $buildDeps \
     && apt-get clean \
@@ -81,7 +93,6 @@ RUN alien -i oracle-instantclient12.1-basiclite-12.1.0.2.0-1.x86_64.rpm \
 # instant oracle-sdk
 RUN alien -i oracle-instantclient12.1-devel-12.1.0.2.0-1.x86_64.rpm \
     && rm oracle-instantclient12.1-devel-12.1.0.2.0-1.x86_64.rpm
-
 
 USER worker
 WORKDIR /home/worker/
