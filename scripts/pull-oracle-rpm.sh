@@ -16,8 +16,8 @@ if [[ ! -f "oracle-instantclient12.1-basiclite-12.1.0.2.0-1.x86_64.rpm" ]]; then
 # instant basic-lite instant oracle client
     aws s3api get-object \
     --bucket citygeo-oracle-instant-client \
-    --key oracle-instantclient12.1-basiclite-12.1.0.2.0-1.x86_64.rpm \
-        oracle-instantclient12.1-basiclite-12.1.0.2.0-1.x86_64.rpm || return 1 
+    --key oracle-instantclient18.5-basiclite-18.5.0.0.0-3.x86_64.rpm \
+        oracle-instantclient18.5-basiclite-18.5.0.0.0-3.x86_64.rpm || return 1 
 else
     echo "RPM already exists"
 fi
@@ -27,8 +27,8 @@ if [[ ! -f "oracle-instantclient12.1-devel-12.1.0.2.0-1.x86_64.rpm" ]]; then
 # instant oracle-sdk
     aws s3api get-object \
     --bucket citygeo-oracle-instant-client \
-    --key oracle-instantclient12.1-devel-12.1.0.2.0-1.x86_64.rpm \
-        oracle-instantclient12.1-devel-12.1.0.2.0-1.x86_64.rpm || return 1
+    --key oracle-instantclient18.5-devel-18.5.0.0.0-3.x86_64.rpm \
+        oracle-instantclient18.5-devel-18.5.0.0.0-3.x86_64.rpm || return 1
 else
     echo "RPM already exists"
 fi

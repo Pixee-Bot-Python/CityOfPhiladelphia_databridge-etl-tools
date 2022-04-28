@@ -17,7 +17,7 @@ ENV LANG C.UTF-8
 ENV LC_ALL C.UTF-8
 
 # Oracle
-ENV ORACLE_HOME=/usr/lib/oracle/12.1/client64
+ENV ORACLE_HOME=/usr/lib/oracle/18.5/client64
 ENV LD_LIBRARY_PATH=$ORACLE_HOME/lib
 ENV PATH=$ORACLE_HOME/bin:$PATH
 # Sets our hostname so it's pingable, which will make oracle happy.
@@ -69,11 +69,6 @@ RUN sed -i 's/^# en_US.UTF-8 UTF-8$/en_US.UTF-8 UTF-8/g' /etc/locale.gen \
     && update-locale LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 \
     && useradd -ms /bin/bash worker
 
-# chown hostname binary to our worker user so we can overwrite it in the entrypoint
-# Note: we are doing this hack solely because oracle insists on having a resolvable hostname
-# for connections to succeed.
-RUN chown worker:root /bin/hostname
-
 # Cleanup
 RUN apt-get remove --purge -yqq $buildDeps \
     && apt-get clean \
@@ -86,13 +81,14 @@ RUN apt-get remove --purge -yqq $buildDeps \
         /usr/share/doc-base
 
 # instant basic-lite instant oracle client
-COPY oracle-instantclient12.1-basiclite-12.1.0.2.0-1.x86_64.rpm oracle-instantclient12.1-devel-12.1.0.2.0-1.x86_64.rpm ./
-RUN alien -i oracle-instantclient12.1-basiclite-12.1.0.2.0-1.x86_64.rpm \
-    && rm oracle-instantclient12.1-basiclite-12.1.0.2.0-1.x86_64.rpm
+#COPY oracle-instantclient18.5-basiclite-18.5.0.0.0-3.x86_64.rpm oracle-instantclient12.1-devel-12.1.0.2.0-1.x86_64.rpm ./
+COPY oracle-instantclient18.5-basiclite-18.5.0.0.0-3.x86_64.rpm ./
+RUN alien -i oracle-instantclient18.5-basiclite-18.5.0.0.0-3.x86_64.rpm \
+    && rm oracle-instantclient18.5-basiclite-18.5.0.0.0-3.x86_64.rpm 
 
 # instant oracle-sdk
-RUN alien -i oracle-instantclient12.1-devel-12.1.0.2.0-1.x86_64.rpm \
-    && rm oracle-instantclient12.1-devel-12.1.0.2.0-1.x86_64.rpm
+#RUN alien -i oracle-instantclient18.5-devel-18.5.0.0.0-3.x86_64.rpm \
+#    && rm oracle-instantclient18.5-devel-18.5.0.0.0-3.x86_64.rpm 
 
 USER worker
 WORKDIR /home/worker/
