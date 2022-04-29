@@ -26,7 +26,8 @@ ENV PATH=$ORACLE_HOME/bin:$PATH
 # More context on HOSTALIASES, which isn't well documented: https://bugzilla.redhat.com/show_bug.cgi?id=7385i2
 # Nother reference: https://stackoverflow.com/a/40400117
 # Importantly, it's order is reversed vs /etc/hosts (which we can't modify in docker)
-ENV HOSTALIASES=/tmp/HOSTALIASES
+#ENV HOSTALIASES=/tmp/HOSTALIASES
+# EDIT with oracle instantclient 18.5 these seems ot no longer be needed.
 
 RUN set -ex \
     && buildDeps=' \
@@ -42,7 +43,6 @@ RUN set -ex \
     && apt-get update -yqq \
     && apt-get install -yqq --no-install-recommends \
         $buildDeps \
-        iputils-ping \
         libpq-dev \
         python3 \
         python3-pip \
