@@ -4,6 +4,8 @@ from .oracle import Oracle
 from .carto_ import Carto
 from .postgres import Postgres
 from .ago import AGO
+# One-off scripts for use in betabridge
+from .db2 import Db2
 
 
 @click.group()
@@ -179,6 +181,36 @@ def ago_export(ago_org_url, ago_user, ago_pw, ago_item_name, s3_bucket, s3_key):
         s3_bucket=s3_bucket,
         s3_key=s3_key)
     ago.export()
+
+
+@main.command()
+@click.option('--table_name')
+@click.option('--account_name')
+@click.option('--enterprise_schema')
+@click.option('--libpq_conn_string')
+def create_staging_from_enterprise(table_name, account_name, enterprise_schema, libpq_conn_string):
+    """Creates a staging table in etl_staging from the specified enterprise authoritative dataset."""
+    db2 = Db2(
+        table_name=table_name,
+        account_name=account_name,
+        enterprise_schema=enterprise_schema,
+        libpq_conn_string=libpq_conn_string)
+    db2.create_staging_from_enterprise()
+
+
+@main.command()
+@click.option('--table_name')
+@click.option('--account_name')
+@click.option('--enterprise_schema')
+@click.option('--libpq_conn_string')
+def copy_staging_to_enterprise(table_name, account_name, enterprise_schema, libpq_conn_string):
+    """Copies from etl_staging to the specified enterprise authoritative dataset."""
+    db2 = Db2(
+        table_name=table_name,
+        account_name=account_name,
+        enterprise_schema=enterprise_schema,
+        libpq_conn_string=libpq_conn_string)
+    db2.copy_staging_to_enterprise()
 
 
 if __name__ == '__main__':
