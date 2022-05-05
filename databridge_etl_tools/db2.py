@@ -4,6 +4,7 @@ import logging
 import click
 import json
 import psycopg2
+import cx_Oracle
 
 
 class Db2():
@@ -11,31 +12,42 @@ class Db2():
     _logger = None
     _staging_dataset_name = None
     _enterprise_dataset_name = None
-    _cursor = None
+    _pg_cursor = None
+    _oracle_cursor = None
 
     def __init__(self,
                 table_name,
                 account_name,
-                enterprise_schema,
-                libpq_conn_string
+                enterprise_schema = None,
+                oracle_conn_string = None,
+                libpq_conn_string = None
                 ):
         self.table_name = table_name
         self.account_name = account_name
         self.enterprise_schema = enterprise_schema
         self.libpq_conn_string = libpq_conn_string
+        self.oracle_conn_string = oracle_conn_string
         self.staging_schema = 'etl_staging'
         # use this to transform specific to more general data types for staging table
         self.data_type_map = {'character varying': 'text'}
         self.ignore_field_name = []
 
     @property
-    def cursor(self):
-        if self._cursor is None: 
-            conn = psycopg2.connect(self.libpq_conn_string + 'connect_timeout=5')
+    def pg_cursor(self):
+        if self._pg_cursor is None: 
+            conn = psycopg2.connect(self.libpq_conn_string)
             assert conn.closed == 0
             conn.autocommit = True
-            self._cursor = conn.cursor()
-        return self._cursor
+            self._pg_cursor = conn.cursor()
+        return self._pg_cursor
+
+    @property
+    def oracle_cursor(self):
+        if self._oracle_cursor is None: 
+            conn = cx_Oracle.connect(self.oracle_conn_string)
+            conn.autocommit = True
+            self._oracle_cursor = conn.cursor()
+        return self._oracle_cursor
 
     @property
     def logger(self):
@@ -69,9 +81,9 @@ class Db2():
         WHERE table_schema = '{self.enterprise_schema}' and table_name = '{self.enterprise_dataset_name}'
         '''
         self.logger.info('Running col_info_stmt: ' + col_info_stmt)
-        self.cursor.execute(col_info_stmt)
+        self.pg_cursor.execute(col_info_stmt)
         # Format and transform data types:
-        column_info = {i[0]: self.data_type_map.get(i[1], i[1]) for i in self.cursor.fetchall()}
+        column_info = {i[0]: self.data_type_map.get(i[1], i[1]) for i in self.pg_cursor.fetchall()}
 
         self.logger.info(f'DEBUG! column_info: {column_info}')
 
@@ -94,10 +106,10 @@ class Db2():
         '''
         # Identify the geometry column values
         self.logger.info('Running get_column_name_and_srid_stmt' + get_column_name_and_srid_stmt)
-        self.cursor.execute(get_column_name_and_srid_stmt)
+        self.pg_cursor.execute(get_column_name_and_srid_stmt)
 
-        #col_name = self.cursor.fetchall()[0]
-        col_name1 = self.cursor.fetchall()
+        #col_name = self.pg_cursor.fetchall()[0]
+        col_name1 = self.pg_cursor.fetchall()
     
         # If the result is empty, there is no shape field and this is a table.
         # return empty dict that will evaluate to False.
@@ -107,7 +119,7 @@ class Db2():
 
         col_name = col_name1[0]
         # Grab the column names
-        header = [h.name for h in self.cursor.description]
+        header = [h.name for h in self.pg_cursor.description]
         # zip column names with the values
         geom_column_and_srid = dict(zip(header, list(col_name)))
         geom_column = geom_column_and_srid['f_geometry_column']
@@ -124,15 +136,15 @@ class Db2():
             limit 1
         '''
         self.logger.info('Running geom_type_stmt: ' + geom_type_stmt)
-        self.cursor.execute(geom_type_stmt)
-        result = self.cursor.fetchone()
+        self.pg_cursor.execute(geom_type_stmt)
+        result = self.pg_cursor.fetchone()
         if result is None:
             geom_type_stmt = f'''
             select geometry_type('{self.enterprise_schema}', '{self.enterprise_dataset_name}', '{geom_column}')
             '''
             self.logger.info('Running geom_type_stmt: ' + geom_type_stmt)
-            self.cursor.execute(geom_type_stmt)
-            geom_type = self.cursor.fetchone()[0]
+            self.pg_cursor.execute(geom_type_stmt)
+            geom_type = self.pg_cursor.fetchone()[0]
 
             #geom_type = ti.xcom_pull(key=xcom_task_id_key + 'geomtype')
             assert geom_type
@@ -179,10 +191,10 @@ class Db2():
         drop_stmt = f'DROP TABLE IF EXISTS {self.staging_schema}.{self.enterprise_dataset_name}'
         # drop first so we have a total refresh
         self.logger.info('Running drop stmt: ' + drop_stmt)
-        self.cursor.execute(drop_stmt)
+        self.pg_cursor.execute(drop_stmt)
         # Identify the geometry column values
         self.logger.info('Running ddl stmt: ' + self.ddl)
-        self.cursor.execute(self.ddl)
+        self.pg_cursor.execute(self.ddl)
         # Make sure we were successful
         try:
             check_stmt = f'''
@@ -192,8 +204,8 @@ class Db2():
                     AND tablename = \'{self.enterprise_dataset_name}\');
                     '''
             self.logger.info('Running check_stmt: ' + check_stmt)
-            self.cursor.execute(check_stmt)
-            return_val = str(self.cursor.fetchone()[0])
+            self.pg_cursor.execute(check_stmt)
+            return_val = str(self.pg_cursor.fetchone()[0])
             assert (return_val == 'True' or return_val == 'False')
             if return_val == 'False':
                 raise Exception('Table does not appear to have been created!')
@@ -220,8 +232,8 @@ class Db2():
         '''
 
         self.logger.info("Executing get_enterprise_columns_stmt: " + str(get_enterprise_columns_stmt))
-        self.cursor.execute(get_enterprise_columns_stmt)
-        enterprise_columns = [column for column in self.cursor.fetchall()[0]][0]
+        self.pg_cursor.execute(get_enterprise_columns_stmt)
+        enterprise_columns = [column for column in self.pg_cursor.fetchall()[0]][0]
 
         # Figure out what the official OBJECTID is (since there can be multiple like "OBJECTID_1")
 
@@ -230,8 +242,8 @@ class Db2():
             WHERE table_name = '{self.enterprise_dataset_name}' AND schema = '{self.enterprise_schema}'
             '''
         self.logger.info("Executing get_oid_column_stmt: " + str(get_oid_column_stmt))
-        self.cursor.execute(get_oid_column_stmt)
-        oid_column = self.cursor.fetchone()[0]
+        self.pg_cursor.execute(get_oid_column_stmt)
+        oid_column = self.pg_cursor.fetchone()[0]
 
         # if table has objectid column, put at end of column list:
         print('DEBUG enterprise_columns: ' + str(enterprise_columns))
@@ -262,8 +274,8 @@ class Db2():
         WHERE owner = '{self.enterprise_schema}' AND table_name = '{self.enterprise_dataset_name}'
         '''
         self.logger.info("Running reg_stmt: " + str(reg_stmt))
-        self.cursor.execute(reg_stmt)
-        reg_id = self.cursor.fetchone()[0]
+        self.pg_cursor.execute(reg_stmt)
+        reg_id = self.pg_cursor.fetchone()[0]
 
 
         reset_stmt=f'''
@@ -271,8 +283,8 @@ class Db2():
         WHERE id_type = 2
         '''
         self.logger.info("Running reset_stmt: " + str(reset_stmt))
-        self.cursor.execute(reset_stmt)
-        self.cursor.execute('COMMIT')
+        self.pg_cursor.execute(reset_stmt)
+        self.pg_cursor.execute('COMMIT')
         #############
 
 
@@ -300,28 +312,66 @@ class Db2():
             '''
         self.logger.info("Running update_stmt: " + str(update_stmt))
         try:
-            self.cursor.execute(update_stmt)
-            self.cursor.execute('COMMIT')
+            self.pg_cursor.execute(update_stmt)
+            self.pg_cursor.execute('COMMIT')
             # Drop the etl_staging table when we're done to save space.
             delete_stmt = f'''
             DROP TABLE {self.staging_schema}.{self.enterprise_dataset_name}
             '''
-            self.cursor.execute(delete_stmt)
-            self.cursor.execute('COMMIT')
+            self.pg_cursor.execute(delete_stmt)
+            self.pg_cursor.execute('COMMIT')
 
             # Run a quick select statement to test.
             select_test_stmt = f'''
             SELECT * FROM {self.enterprise_schema}.{self.enterprise_dataset_name} LIMIT 1
             '''
-            self.cursor.execute(select_test_stmt)
-            result = self.cursor.fetchone()[0]
+            self.logger.info("Running select_test_stmt: " + str(select_test_stmt))
+
+            self.pg_cursor.execute(select_test_stmt)
+            result = self.pg_cursor.fetchone()[0]
             self.logger.info('Result of select test:')
             self.logger.info(str(result))
             assert result
 
         except psycopg2.Error as e:
-            logging.error(f'Error truncating and inserting into enterprise! Error: {str(e)}')
-            self.cursor.execute('ROLLBACK')
+            self.logger.error(f'Error truncating and inserting into enterprise! Error: {str(e)}')
+            self.pg_cursor.execute('ROLLBACK')
+
+
+    def update_oracle_scn(self):
+        
+        oracle_account_name = 'GIS_' + self.account_name.upper()
+
+        stmt = f'''SELECT MAX(ora_rowscn) FROM {oracle_account_name}.{self.table_name.upper()}'''
+        self.oracle_cursor.execute(stmt)
+        current_scn = self.oracle_cursor.fetchone()[0]
+
+        stmt=f'''
+            SELECT SCN FROM GIS_GSG.DB2_ORACLE_TRANSACTION_HISTORY
+            WHERE TABLE_OWNER = '{oracle_account_name}'
+            AND TABLE_NAME = '{self.table_name}'
+        '''
+        self.logger.info('Executing stmt: ' + str(stmt))
+        self.oracle_cursor.execute(stmt)
+        old_scn = self.oracle_cursor.fetchone()
+        print('DEBUG!: ' + str(old_scn))
+
+        # Because Oracle is an outdated database product, we don't have upsert and need to do
+        # either an insert or update depending if the row we want already exists.
+        if old_scn is None:
+            stmt = f'''
+            INSERT INTO GIS_GSG.DB2_ORACLE_TRANSACTION_HISTORY (TABLE_OWNER, TABLE_NAME, SCN)
+                VALUES('{oracle_account_name}', '{self.table_name}', {current_scn})
+            '''
+        elif old_scn:
+            stmt = f'''
+            UPDATE GIS_GSG.DB2_ORACLE_TRANSACTION_HISTORY SET SCN={current_scn}
+                WHERE TABLE_OWNER = '{oracle_account_name}' AND TABLE_NAME = '{self.table_name}'
+            '''
+        self.logger.info('Executing stmt: ' + str(stmt))
+        self.oracle_cursor.execute(stmt)
+
+
 
 
 @click.group()
