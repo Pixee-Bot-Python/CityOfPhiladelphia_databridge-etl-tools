@@ -31,6 +31,11 @@ class Db2():
         # use this to transform specific to more general data types for staging table
         self.data_type_map = {'character varying': 'text'}
         self.ignore_field_name = []
+        # placeholders vars for passing between methods
+        self.geom_info = None
+        self.column_info = None
+        self.ddl = None
+
 
     @property
     def pg_cursor(self):
