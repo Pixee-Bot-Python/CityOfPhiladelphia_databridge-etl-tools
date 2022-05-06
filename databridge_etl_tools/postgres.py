@@ -216,6 +216,7 @@ class Postgres():
 
         self.logger.info('CSV successfully downloaded.\n'.format(self.s3_bucket, self.s3_key))
 
+
     def create_indexes(self, table_name):
         raise NotImplementedError
 
@@ -243,21 +244,25 @@ class Postgres():
         # the character '#' replaces it with an '_'. So do that here.
         str_header = str_header.replace('#', '_')
 
+        self.logger.info(str_header)
         self.logger.info('Writing to table: {}...'.format(self.table_schema_name))
 
         write_file = self.temp_csv_path
-        rows.tocsv(write_file, write_header=False)
+        rows.tocsv(write_file)
+        #self.logger.info("DEBUG Rows: " + str(etl.look(rows)))
 
         with open(write_file, 'r') as f:
             with self.conn.cursor() as cursor:
                 copy_stmt = "COPY {table_name} ({header}) FROM STDIN WITH (FORMAT csv, HEADER true)".format(
                             table_name=self.table_schema_name, header=str_header)
+                self.logger.info('copy_stmt: ' + copy_stmt)
                 cursor.copy_expert(copy_stmt, f)
 
         check_load_stmt = "SELECT COUNT(*) FROM {table_name}".format(table_name=self.table_schema_name)
         response = self.execute_sql(check_load_stmt, fetch='one')
 
         self.logger.info('Postgres Write Successful: {} rows imported.\n'.format(response[0]))
+
 
     def get_geom_field(self):
         """Not currently implemented. Relying on csv to be extracted by geopetl fromoraclesde with geom_with_srid = True"""
@@ -281,7 +286,7 @@ class Postgres():
         num_rows_in_table = data[0][0]
         num_rows_inserted = num_rows_in_table  # for now until inserts/upserts are implemented
         # Postgres doesn't count the header
-        num_rows_expected = self._num_rows_in_upload_file - 1
+        num_rows_expected = self._num_rows_in_upload_file
         message = '{} - expected rows: {} inserted rows: {}.'.format(
             self.table_schema_name,
             num_rows_expected,
