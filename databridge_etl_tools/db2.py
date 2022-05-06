@@ -354,7 +354,7 @@ class Db2():
         stmt=f'''
             SELECT SCN FROM GIS_GSG.DB2_ORACLE_TRANSACTION_HISTORY
             WHERE TABLE_OWNER = '{oracle_account_name}'
-            AND TABLE_NAME = '{self.table_name}'
+            AND TABLE_NAME = '{self.table_name.upper()}'
         '''
         self.logger.info('Executing stmt: ' + str(stmt))
         self.oracle_cursor.execute(stmt)
@@ -366,12 +366,12 @@ class Db2():
         if old_scn is None:
             stmt = f'''
             INSERT INTO GIS_GSG.DB2_ORACLE_TRANSACTION_HISTORY (TABLE_OWNER, TABLE_NAME, SCN)
-                VALUES('{oracle_account_name}', '{self.table_name}', {current_scn})
+                VALUES('{oracle_account_name}', '{self.table_name.upper()}', {current_scn})
             '''
         elif old_scn:
             stmt = f'''
             UPDATE GIS_GSG.DB2_ORACLE_TRANSACTION_HISTORY SET SCN={current_scn}
-                WHERE TABLE_OWNER = '{oracle_account_name}' AND TABLE_NAME = '{self.table_name}'
+                WHERE TABLE_OWNER = '{oracle_account_name}' AND TABLE_NAME = '{self.table_name.upper()}'
             '''
         self.logger.info('Executing stmt: ' + str(stmt))
         self.oracle_cursor.execute(stmt)
