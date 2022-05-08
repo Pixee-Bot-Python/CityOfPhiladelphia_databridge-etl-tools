@@ -45,8 +45,6 @@ class Postgres():
     _conn = None
     _logger = None
     _schema = None
-    _geom_field = None
-    _geom_srid = None
 
     def __init__(self, 
                  table_name, 
@@ -54,17 +52,20 @@ class Postgres():
                  connection_string, 
                  s3_bucket, 
                  json_schema_s3_key, 
-                 s3_key):
+                 s3_key,
+                 geom_field=None,
+                 geom_type=None):
         self.table_name = table_name
         self.table_schema = table_schema
         self.connection_string = connection_string
         self.s3_bucket = s3_bucket
         self.json_schema_s3_key = json_schema_s3_key
         self.s3_key = s3_key
+        self.geom_field = geom_field
 
     @property
     def table_schema_name(self):
-        # schema.table
+        # schema.tablehealth__child_blood_lead_levels_by_zip
         return '{}.{}'.format(self.table_schema, self.table_name)
 
     @property
@@ -118,35 +119,53 @@ class Postgres():
 
     @property
     def geom_field(self):
-        if self._geom_field is None and self.json_schema_path is None:
-            return self._geom_field
-        if self._geom_field is None:
-            with open(self.json_schema_path) as json_file:
-                schema = json.load(json_file).get('fields', None)
-                if not schema:
-                    self.logger.error('Json schema malformatted...')
-                    raise
-                for scheme in schema:
-                    scheme_type = DATA_TYPE_MAP.get(scheme['type'].lower(), scheme['type'])
-                    if scheme_type == 'geometry':
-                        geom_field = scheme.get('name', None)
-                        self._geom_field = geom_field
         return self._geom_field
+    # Seperate out our property's setter method so we're not repeatedly making this db call
+    # should only get called once.
+    @geom_field.setter
+    def geom_field(self, value):
+        geom_stmt = f'''
+        SELECT f_geometry_column AS column_name
+        FROM geometry_columns WHERE f_table_name = '{self.table_name}' and f_table_schema = '{self.table_schema}'
+        '''
+        #self._geom_field = self.execute_sql(geom_stmt, fetch='one')[0]
+        result = self.execute_sql(geom_stmt, fetch='one')
+        if result == None:
+            self._geom_field = None
+        else:
+            self._geom_field = result[0]
 
     @property
-    def geom_srid(self):
-        if self._geom_srid is None:
-            with open(self.json_schema_path) as json_file:
-                schema = json.load(json_file).get('fields', None)
-                if not schema:
-                    self.logger.error('Json schema malformatted...')
-                    raise
-                for scheme in schema:
-                    scheme_type = DATA_TYPE_MAP.get(scheme['type'].lower(), scheme['type'])
-                    if scheme_type == 'geometry':
-                        geom_srid = scheme.get('srid', None)
-                        self._geom_srid = geom_srid
-        return self._geom_srid
+    def geom_type(self):
+        return self._geom_type
+    # Seperate out our property's setter method so we're not repeatedly making this db call
+    # should only get called once.
+    @geom_type.setter
+    def geom_type(self, value):
+        geom_stmt = f'''
+        SELECT geometry_type({self.table_schema}, {self.table_name}, {self.geom_field})
+        '''
+        result = self.execute_sql(geom_stmt, fetch='one')
+        if result == None:
+            self._geom_type = None
+        else:
+            self._geom_type = result[0]
+
+    # not currently used, getting SRID from the csv
+    #@property
+    #def geom_srid(self):
+    #    if self._geom_srid is None:
+    #        with open(self.json_schema_path) as json_file:
+    #            schema = json.load(json_file).get('fields', None)
+    #            if not schema:
+    #                self.logger.error('Json schema malformatted...')
+    #                raise
+    #            for scheme in schema:
+    #                scheme_type = DATA_TYPE_MAP.get(scheme['type'].lower(), scheme['type'])
+    #                if scheme_type == 'geometry':
+    #                    geom_srid = scheme.get('srid', None)
+    #                    self._geom_srid = geom_srid
+    #    return self._geom_srid
 
     @property
     def schema(self):
@@ -229,6 +248,22 @@ class Postgres():
         except UnicodeError:    
             self.logger.info("Exception encountered trying to load rows with utf-8 encoding, trying latin-1...")
             rows = etl.fromcsv(self.csv_path, encoding='latin-1')
+
+        if self.geom_field is not None:
+            # Multi-geom fix
+            # ESRI seems to only store polygon feature clasess as only multipolygons,
+            # so we need to convert all polygon datasets to multipolygon for a successful copy_export.
+            # 1) identify if multi in geom_field AND non-multi
+            # Grab the geom type in a wierd way for all rows and insert into new column
+            self.logger.info(self.geom_field)
+            rows = rows.addfield('row_geom_type', lambda a: a[f'{self.geom_field}'].split('(')[0].split(';')[1].replace(' ', ''))
+            # 2) Update geom_field "POLYGON" type values to "MULTIPOLYGON":
+            rows = rows.convert(self.geom_field, lambda u, row: u.replace(row.row_geom_type, 'MULTI' + row.row_geom_type) if row.row_geom_type == 'POLYGON' else u, pass_row=True)
+            # Remove our temporary column
+            rows = rows.cutout('row_geom_type')
+
+
+        # Grab our header string for the copy_stmt beflow
         header = rows[0]
         str_header = ''
         num_fields = len(header)
@@ -247,6 +282,7 @@ class Postgres():
         self.logger.info(str_header)
         self.logger.info('Writing to table: {}...'.format(self.table_schema_name))
 
+        # Write our possibly modified lines into the temp_csv file
         write_file = self.temp_csv_path
         rows.tocsv(write_file)
         #self.logger.info("DEBUG Rows: " + str(etl.look(rows)))
