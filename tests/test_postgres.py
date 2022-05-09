@@ -4,8 +4,8 @@ from .constants import S3_BUCKET
 from databridge_etl_tools.postgres import Postgres
 
 
-TABLE_NAME         = 'table_name'
-TABLE_SCHEMA       = 'schema'
+TABLE_NAME         = 'testing'
+TABLE_SCHEMA       = 'test'
 CONNECTION_STRING  = 'connection_string'
 JSON_SCHEMA_S3_KEY = 'json_schema.json'
 S3_KEY         = 'csv.csv'
@@ -25,4 +25,4 @@ def postgres():
 
 def test_table_schema_name(postgres):
     table_schema_name = postgres.table_schema_name
-    assert table_schema_name == 'schema.table_name'
+    assert table_schema_name == 'test.testing'
