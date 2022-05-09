@@ -77,6 +77,16 @@ class Oracle():
             etl.fromoraclesde(self.conn, self.schema_table_name, geom_with_srid=True) \
                .tocsv(self.csv_path, encoding='latin-1')
 
+        # Confirm CSV isn't empty
+        try:
+            rows = etl.fromcsv(self.csv_path, encoding='utf-8')
+        except UnicodeError:
+            rows = etl.fromcsv(self.csv_path, encoding='latin-1')
+        num_rows_in_csv = rows.nrows()
+        print(f'DEBUG!: {num_rows_in_csv}')
+        if num_rows_in_csv == 0:
+            raise AssertionError('Error! Dataset is empty? Line count of CSV is 0.')
+
         self.load_csv_to_s3()
         os.remove(self.csv_path)
 
