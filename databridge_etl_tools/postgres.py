@@ -271,7 +271,7 @@ class Postgres():
             rows = rows.addfield('row_geom_type', lambda a: a[f'{self.geom_field}'].split('(')[0].split(';')[1].replace(' ', ''))
             # 2) Update geom_field "POLYGON" type values to "MULTIPOLYGON":
             #    Also add a third paranthesis around the geom info to make it a MUTLIPOLYGON type
-            rows = rows.convert(self.geom_field, lambda u, row: u.replace(row.row_geom_type, 'MULTI' + row.row_geom_type + '(' ) + ')' if row.row_geom_type == 'POLYGON' else u, pass_row=True)
+            rows = rows.convert(self.geom_field, lambda u, row: u.replace(row.row_geom_type, 'MULTI' + row.row_geom_type + '(' ) + ')' if row.row_geom_type == 'POLYGON' or row.row_geom_type == 'LINESTRING' else u, pass_row=True)
             # Remove our temporary column
             rows = rows.cutout('row_geom_type')
 
