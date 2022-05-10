@@ -169,20 +169,25 @@ class Db2():
         '''
         self.logger.info('Running has_m_or_z_stmt: ' + has_m_or_z_stmt)
         self.pg_cursor.execute(has_m_or_z_stmt)
-        xml_def = self.pg_cursor.fetchone()[0]
-
-        m = re.search("<HasM>\D*<\/HasM>", xml_def)[0]
-        if 'false' in m:
+        result = self.pg_cursor.fetchone()
+        if result is None:
+            # NO xml definition is in the sde.gdb_items yet, assume false
             self.m = False
-        elif 'true' in m:
-            self.m = True
-
-        z = re.search("<HasZ>\D*<\/HasZ>", xml_def)[0]
-        if 'false' in z:
             self.z = False
-        elif 'true' in z:
-            self.z = True
+        else:
+            xml_def = result[0]
 
+            m = re.search("<HasM>\D*<\/HasM>", xml_def)[0]
+            if 'false' in m:
+                self.m = False
+            elif 'true' in m:
+                self.m = True
+
+            z = re.search("<HasZ>\D*<\/HasZ>", xml_def)[0]
+            if 'false' in z:
+                self.z = False
+            elif 'true' in z:
+                self.z = True
 
         # This will ultimpately be the data type we create the table with,
         # example data type: 'shape geometry(MultipolygonZ, 2272)
@@ -208,7 +213,6 @@ class Db2():
             srid = self.geom_info['srid']
             geom_column = self.geom_info['geom_field']
 
-            #geom_type = self.geom_info['geom_type'].replace('ST_', '').capitalize()
             geom_type = self.geom_info['geom_type']
             geom_column_string = f'{geom_column} geometry({geom_type}, {srid})'
             column_type_map.append(geom_column_string)
