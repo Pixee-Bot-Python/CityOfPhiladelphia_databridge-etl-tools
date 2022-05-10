@@ -265,7 +265,9 @@ class Postgres():
         # Shape types we will transform on, hacky way so we can insert it into our lambda function below
         shape_types = ['POLYGON', 'POLYGON Z', 'POLYGON M', 'POLYGON MZ', 'LINESTRING', 'LINESTRING Z', 'LINESTRING M', 'LINESTRING MZ']
 
-        if self.geom_field is not None and (self.geom_type == 'POLYGON' or self.geom_type == 'LINESTRING'):
+        # Note: also run this if the data type is 'MULTILINESTRING' some source datasets will export as LINESTRING but the dataset type is actually MULTILINESTRING (one example: GIS_PLANNING.pedbikeplan_bikerec)
+        # Note2: Also happening with poygons, example dataset: GIS_PPR.ppr_properties
+        if self.geom_field is not None and (self.geom_type == 'POLYGON' or self.geom_type == 'MULTIPOLYGON' or self.geom_type == 'LINESTRING' or self.geom_type == 'MULTILINESTRING'):
             # Multi-geom fix
             # ESRI seems to only store polygon feature clasess as only multipolygons,
             # so we need to convert all polygon datasets to multipolygon for a successful copy_export.
