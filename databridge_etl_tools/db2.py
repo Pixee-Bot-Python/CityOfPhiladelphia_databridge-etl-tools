@@ -160,7 +160,7 @@ class Db2():
         else:
             geom_type = result[0].replace('ST_', '').capitalize()
 
-        # Figure out if the dataset is 3D with either Z (elevation) or M (measure??) properties
+        # Figure out if the dataset is 3D with either Z (elevation) or M ("linear referencing measures") properties
         # Grabbing this text out of the XML definition put in place by ESRI, can't find out how to do
         # it with PostGIS, doesn't seem to be a whole lot of support or awareness for these extra properties.
         has_m_or_z_stmt = f'''

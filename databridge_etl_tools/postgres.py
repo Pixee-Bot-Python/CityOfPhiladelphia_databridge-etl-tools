@@ -62,6 +62,7 @@ class Postgres():
         self.json_schema_s3_key = json_schema_s3_key
         self.s3_key = s3_key
         self.geom_field = geom_field
+        self.geom_type = geom_type
 
     @property
     def table_schema_name(self):
@@ -155,7 +156,7 @@ class Postgres():
             self._geom_type = 'POINT'
         else:
             geom_stmt = f'''
-            SELECT geometry_type({self.table_schema}, {self.table_name}, {self.geom_field})
+            SELECT geometry_type('{self.table_schema}', '{self.table_name}', '{self.geom_field}')
             '''
             result = self.execute_sql(geom_stmt, fetch='one')
             if result == None:
@@ -264,7 +265,7 @@ class Postgres():
         # Shape types we will transform on, hacky way so we can insert it into our lambda function below
         shape_types = ['POLYGON', 'POLYGON Z', 'POLYGON M', 'POLYGON MZ', 'LINESTRING', 'LINESTRING Z', 'LINESTRING M', 'LINESTRING MZ']
 
-        if self.geom_field is not None:
+        if self.geom_field is not None and (self.geom_type == 'POLYGON' or self.geom_type == 'LINESTRING'):
             # Multi-geom fix
             # ESRI seems to only store polygon feature clasess as only multipolygons,
             # so we need to convert all polygon datasets to multipolygon for a successful copy_export.
