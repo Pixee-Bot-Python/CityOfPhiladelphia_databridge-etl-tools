@@ -261,6 +261,9 @@ class Postgres():
             self.logger.info("Exception encountered trying to load rows with utf-8 encoding, trying latin-1...")
             rows = etl.fromcsv(self.csv_path, encoding='latin-1')
 
+        # Shape types we will transform on, hacky way so we can insert it into our lambda function below
+        shape_types = ['POLYGON', 'POLYGON Z', 'POLYGON M', 'POLYGON MZ', 'LINESTRING', 'LINESTRING Z', 'LINESTRING M', 'LINESTRING MZ']
+
         if self.geom_field is not None:
             # Multi-geom fix
             # ESRI seems to only store polygon feature clasess as only multipolygons,
@@ -268,10 +271,10 @@ class Postgres():
             # 1) identify if multi in geom_field AND non-multi
             # Grab the geom type in a wierd way for all rows and insert into new column
             self.logger.info(self.geom_field)
-            rows = rows.addfield('row_geom_type', lambda a: a[f'{self.geom_field}'].split('(')[0].split(';')[1].replace(' ', ''))
+            rows = rows.addfield('row_geom_type', lambda a: a[f'{self.geom_field}'].split('(')[0].split(';')[1].strip())
             # 2) Update geom_field "POLYGON" type values to "MULTIPOLYGON":
             #    Also add a third paranthesis around the geom info to make it a MUTLIPOLYGON type
-            rows = rows.convert(self.geom_field, lambda u, row: u.replace(row.row_geom_type, 'MULTI' + row.row_geom_type + '(' ) + ')' if row.row_geom_type == 'POLYGON' or row.row_geom_type == 'LINESTRING' else u, pass_row=True)
+            rows = rows.convert(self.geom_field, lambda u, row: u.replace(row.row_geom_type, 'MULTI' + row.row_geom_type + ' (' ) + ')' if row.row_geom_type in shape_types else u, pass_row=True)
             # Remove our temporary column
             rows = rows.cutout('row_geom_type')
 

@@ -5,6 +5,7 @@ import click
 import json
 import psycopg2
 import cx_Oracle
+import re
 
 
 class Db2():
@@ -35,6 +36,8 @@ class Db2():
         self.geom_info = None
         self.column_info = None
         self.ddl = None
+        self.m = None
+        self.z = None
 
 
     @property
@@ -90,7 +93,7 @@ class Db2():
         # Format and transform data types:
         column_info = {i[0]: self.data_type_map.get(i[1], i[1]) for i in self.pg_cursor.fetchall()}
 
-        self.logger.info(f'DEBUG! column_info: {column_info}')
+        self.logger.info(f'column_info: {column_info}')
 
         # Metadata column added into postgres tables by arc programs, not needed.
         if 'gdb_geomattr_data' in column_info.keys():
@@ -155,11 +158,44 @@ class Db2():
             assert geom_type
             #self.logger.info(f'Got our geom_type from xcom: {geom_type}') 
         else:
-            geom_type = result[0]
+            geom_type = result[0].replace('ST_', '').capitalize()
+
+        # Figure out if the dataset is 3D with either Z (elevation) or M (measure??) properties
+        # Grabbing this text out of the XML definition put in place by ESRI, can't find out how to do
+        # it with PostGIS, doesn't seem to be a whole lot of support or awareness for these extra properties.
+        has_m_or_z_stmt = f'''
+        SELECT definition FROM sde.gdb_items
+        WHERE name = 'betabridge.{self.enterprise_schema}.{self.enterprise_dataset_name}'
+        '''
+        self.logger.info('Running has_m_or_z_stmt: ' + has_m_or_z_stmt)
+        self.pg_cursor.execute(has_m_or_z_stmt)
+        xml_def = self.pg_cursor.fetchone()[0]
+
+        m = re.search("<HasM>\D*<\/HasM>", xml_def)[0]
+        if 'false' in m:
+            self.m = False
+        elif 'true' in m:
+            self.m = True
+
+        z = re.search("<HasZ>\D*<\/HasZ>", xml_def)[0]
+        if 'false' in z:
+            self.z = False
+        elif 'true' in z:
+            self.z = True
+
+
+        # This will ultimpately be the data type we create the table with,
+        # example data type: 'shape geometry(MultipolygonZ, 2272)
+        if self.m:
+            geom_type = geom_type + 'M'
+        if self.z:
+            geom_type = geom_type + 'Z'
+            
 
         self.geom_info = {'geom_field': geom_column,
                           'geom_type': geom_type,
                           'srid': srid}
+        print(f'self.geom_info: {self.geom_info}')
 
         #return {'geom_field': geom_column, 'geom_type': geom_type, 'srid': srid}
 
@@ -172,8 +208,8 @@ class Db2():
             srid = self.geom_info['srid']
             geom_column = self.geom_info['geom_field']
 
-            # Think postgres calls for something like 'Point' vs 'POINT' ?
-            geom_type = self.geom_info['geom_type'].replace('ST_', '').capitalize()
+            #geom_type = self.geom_info['geom_type'].replace('ST_', '').capitalize()
+            geom_type = self.geom_info['geom_type']
             geom_column_string = f'{geom_column} geometry({geom_type}, {srid})'
             column_type_map.append(geom_column_string)
             column_type_map_string = ', '.join(column_type_map)
@@ -251,8 +287,8 @@ class Db2():
         oid_column = self.pg_cursor.fetchone()[0]
 
         # if table has objectid column, put at end of column list:
-        print('DEBUG enterprise_columns: ' + str(enterprise_columns))
-        print('DEBUG oid_column: ' + str(oid_column))
+        print('enterprise_columns: ' + str(enterprise_columns))
+        print('oid_column: ' + str(oid_column))
         if oid_column:
             enterprise_columns.remove(oid_column)
             enterprise_columns.append(oid_column)
@@ -264,7 +300,7 @@ class Db2():
         enterprise_columns_str = ', '.join(enterprise_columns)
         staging_columns = enterprise_columns
         # Remove objectid (or whatever it is) the value we'll insert will be next_rowid('{table_schema}', '{table_name}')'
-        print('DEBUG staging_columns: ' + str(staging_columns))
+        print('dstaging_columns: ' + str(staging_columns))
         if oid_column:
             staging_columns.remove(oid_column)
         staging_columns_str = ', '.join(staging_columns)
@@ -359,7 +395,6 @@ class Db2():
         self.logger.info('Executing stmt: ' + str(stmt))
         self.oracle_cursor.execute(stmt)
         old_scn = self.oracle_cursor.fetchone()
-        print('DEBUG!: ' + str(old_scn))
 
         # Because Oracle is an outdated database product, we don't have upsert and need to do
         # either an insert or update depending if the row we want already exists.

@@ -83,7 +83,6 @@ class Oracle():
         except UnicodeError:
             rows = etl.fromcsv(self.csv_path, encoding='latin-1')
         num_rows_in_csv = rows.nrows()
-        print(f'DEBUG!: {num_rows_in_csv}')
         if num_rows_in_csv == 0:
             raise AssertionError('Error! Dataset is empty? Line count of CSV is 0.')
 
