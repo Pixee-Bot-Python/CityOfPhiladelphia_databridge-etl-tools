@@ -388,8 +388,13 @@ class Db2():
         oracle_account_name = 'GIS_' + self.account_name.upper()
 
         stmt = f'''SELECT MAX(ora_rowscn) FROM {oracle_account_name}.{self.table_name.upper()}'''
+        self.logger.info('Executing stmt: ' + str(stmt))
         self.oracle_cursor.execute(stmt)
         current_scn = self.oracle_cursor.fetchone()[0]
+
+        # If there is no SCN available, insert NULL which will work in an INT datatype column.
+        if current_scn == 'None':
+            current_scn = 'NULL'
 
         stmt=f'''
             SELECT SCN FROM GIS_GSG.DB2_ORACLE_TRANSACTION_HISTORY
