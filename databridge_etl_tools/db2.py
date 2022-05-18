@@ -393,7 +393,7 @@ class Db2():
         current_scn = self.oracle_cursor.fetchone()[0]
 
         # If there is no SCN available, insert NULL which will work in an INT datatype column.
-        if current_scn == 'None':
+        if current_scn is None:
             current_scn = 'NULL'
 
         stmt=f'''
