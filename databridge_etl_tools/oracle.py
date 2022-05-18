@@ -1,6 +1,7 @@
 import logging
 import sys
 import os
+import csv
 
 import boto3
 import petl as etl
@@ -65,6 +66,33 @@ class Oracle():
         
         self.logger.info('Successfully loaded to s3: {}'.format(self.s3_key))
 
+    def check_remove_nulls(self):
+        '''
+        This function checks for null bytes ('\0'), and if exists replace with null string (''):
+        Check only the first 500 lines to stay efficient, if there aren't
+        any in the first 500, there likely(maybe?) aren't any.
+        '''
+        has_null_bytes = False
+        with open(self.csv_path, 'r') as infile:
+            for i, line in enumerate(infile):
+                if i >= 500:
+                    break
+                for char in line:
+                    if char == '\0':
+                        has_null_bytes = True
+                        break
+
+        if has_null_bytes:
+            self.logger.info("Dataset has null bytes, removing...")
+            temp_file = self.csv_path.replace('.csv', '_fmt.csv')
+            with open(self.csv_path, 'r') as infile:
+                with open(temp_file, 'w') as outfile:
+                    reader = csv.reader((line.replace('\0', '') for line in infile), delimiter=",")
+                    writer = csv.writer(outfile)
+                    writer.writerows(reader)
+            os.replace(temp_file, self.csv_path)
+
+
     def extract(self):
         self.logger.info('Starting extract from {}'.format(self.schema_table_name))
         import geopetl
@@ -82,6 +110,9 @@ class Oracle():
             rows = etl.fromcsv(self.csv_path, encoding='utf-8')
         except UnicodeError:
             rows = etl.fromcsv(self.csv_path, encoding='latin-1')
+
+        self.check_remove_nulls()
+
         num_rows_in_csv = rows.nrows()
         if num_rows_in_csv == 0:
             raise AssertionError('Error! Dataset is empty? Line count of CSV is 0.')

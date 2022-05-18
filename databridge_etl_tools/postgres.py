@@ -3,6 +3,7 @@ import logging
 import sys
 import os
 import json
+import csv
 
 import psycopg2
 import boto3
@@ -415,6 +416,33 @@ class Postgres():
         self.logger.info(f'Asserting counts match up: {csv_count} == {postgres_table_count}')
         assert csv_count == postgres_table_count
 
+    def check_remove_nulls(self):
+        '''
+        This function checks for null bytes ('\0'), and if exists replace with null string (''):
+        Check only the first 500 lines to stay efficient, if there aren't 
+        any in the first 500, there likely(maybe?) aren't any.
+        '''
+        has_null_bytes = False
+        with open(self.csv_path, 'r') as infile:
+            for i, line in enumerate(infile):
+                if i >= 500:
+                    break
+                for char in line:
+                    if char == '\0':
+                        has_null_bytes = True
+                        break
+
+        if has_null_bytes:
+            self.logger.info("Dataset has null bytes, removing...")
+            temp_file = self.csv_path.replace('.csv', '_fmt.csv')
+            with open(self.csv_path, 'r') as infile:
+                with open(temp_file, 'w') as outfile:
+                    reader = csv.reader((line.replace('\0', '') for line in infile), delimiter=",")
+                    writer = csv.writer(outfile)
+                    writer.writerows(reader)
+            os.replace(temp_file, self.csv_path)
+
+
 
     def extract(self):
         rows = etl.frompostgis(self.conn, self.table_schema_name, geom_with_srid=True)
@@ -426,5 +454,6 @@ class Postgres():
             self.logger.info("Exception encountered trying to extract to CSV with utf-8 encoding, trying latin-1...")
             rows.tocsv(self.csv_path, 'latin-1')
         self.extract_verify_row_count()
+        self.check_remove_nulls()
         self.load_csv_to_s3()
 
