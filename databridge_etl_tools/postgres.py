@@ -159,6 +159,7 @@ class Postgres():
             geom_stmt = f'''
             SELECT geometry_type('{self.table_schema}', '{self.table_name}', '{self.geom_field}')
             '''
+            self.logger.info(f'Determining our geom_type, running statement: {geom_stmt}')
             result = self.execute_sql(geom_stmt, fetch='one')
             if result == None:
                 self._geom_type = None
@@ -264,21 +265,27 @@ class Postgres():
             rows = etl.fromcsv(self.csv_path, encoding='latin-1')
 
         # Shape types we will transform on, hacky way so we can insert it into our lambda function below
-        shape_types = ['POLYGON', 'POLYGON Z', 'POLYGON M', 'POLYGON MZ', 'LINESTRING', 'LINESTRING Z', 'LINESTRING M', 'LINESTRING MZ']
+        # Note: this is for transforming non-multi types to multi, but we include multis in this list
+        # because we will compare this against self.geom_type, which is retrieved from the etl_staging table,
+        # which will probably be multi. This is safe becaue we will transform each row only if they are not already MULTI
+        shape_types = ['POLYGON', 'POLYGON Z', 'POLYGON M', 'POLYGON MZ', 'LINESTRING', 'LINESTRING Z', 'LINESTRING M', 'LINESTRING MZ', 'MULTIPOLYGON', 'MULTIPOLYGON Z', 'MULTIPOLYGON M', 'MULTIPOLYGON MZ', 'MULTILINESTRING', 'MULTILINESTRING Z', 'MULTILINESTRING M', 'MULTILINESTRING MZ']
 
         # Note: also run this if the data type is 'MULTILINESTRING' some source datasets will export as LINESTRING but the dataset type is actually MULTILINESTRING (one example: GIS_PLANNING.pedbikeplan_bikerec)
         # Note2: Also happening with poygons, example dataset: GIS_PPR.ppr_properties
-        if self.geom_field is not None and (self.geom_type == 'POLYGON' or self.geom_type == 'MULTIPOLYGON' or self.geom_type == 'LINESTRING' or self.geom_type == 'MULTILINESTRING'):
+        self.logger.info(f'self.geom_field is: {self.geom_field}')
+        self.logger.info(f'self.geom_type is: {self.geom_type}')
+        if self.geom_field is not None and (self.geom_type in shape_types):
+            self.logger.info('Detected that shape type needs conversion to MULTI....')
             # Multi-geom fix
             # ESRI seems to only store polygon feature clasess as only multipolygons,
             # so we need to convert all polygon datasets to multipolygon for a successful copy_export.
             # 1) identify if multi in geom_field AND non-multi
             # Grab the geom type in a wierd way for all rows and insert into new column
-            self.logger.info(self.geom_field)
-            rows = rows.addfield('row_geom_type', lambda a: a[f'{self.geom_field}'].split('(')[0].split(';')[1].strip())
+            #rows = rows.addfield('row_geom_type', lambda a: a[f'{self.geom_field}'].split('(')[0].split(';')[1].strip())
+            rows = rows.addfield('row_geom_type', lambda a: a[f'{self.geom_field}'].split('(')[0].split(';')[1].strip() if a[f'{self.geom_field}'] and '(' in a[f'{self.geom_field}'] else None)
             # 2) Update geom_field "POLYGON" type values to "MULTIPOLYGON":
             #    Also add a third paranthesis around the geom info to make it a MUTLIPOLYGON type
-            rows = rows.convert(self.geom_field, lambda u, row: u.replace(row.row_geom_type, 'MULTI' + row.row_geom_type + ' (' ) + ')' if row.row_geom_type in shape_types else u, pass_row=True)
+            rows = rows.convert(self.geom_field, lambda u, row: u.replace(row.row_geom_type, 'MULTI' + row.row_geom_type + ' (' ) + ')' if 'MULTI' not in row.row_geom_type else u, pass_row=True)
             # Remove our temporary column
             rows = rows.cutout('row_geom_type')
 

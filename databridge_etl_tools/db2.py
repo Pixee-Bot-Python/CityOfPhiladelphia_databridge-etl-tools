@@ -304,7 +304,7 @@ class Db2():
         enterprise_columns_str = ', '.join(enterprise_columns)
         staging_columns = enterprise_columns
         # Remove objectid (or whatever it is) the value we'll insert will be next_rowid('{table_schema}', '{table_name}')'
-        print('dstaging_columns: ' + str(staging_columns))
+        print('staging_columns: ' + str(staging_columns))
         if oid_column:
             staging_columns.remove(oid_column)
         staging_columns_str = ', '.join(staging_columns)
