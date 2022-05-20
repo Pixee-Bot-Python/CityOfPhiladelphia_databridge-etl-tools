@@ -116,7 +116,7 @@ class Postgres():
             self.logger.info('Trying to connect to postgres...')
             conn = psycopg2.connect(self.connection_string)
             self._conn = conn
-            self.logger.info('Connected to postgres.')
+            self.logger.info('Connected to postgres.\n')
         return self._conn
 
     @property
@@ -306,8 +306,19 @@ class Postgres():
         # the character '#' replaces it with an '_'. So do that here.
         str_header = str_header.replace('#', '_')
 
+        # Workaround: We have many datasets in Oracle where the objectid field is "objectid_1".
+        # When I make an empty dataset from Oracle with "create-beta-enterprise-table.py" it seems
+        # to remake the dataset with a proper 'objectid' primary key. However the CSV we make from Oracle
+        # will still have "objectid_1" in it.
+        # We'll attempt to handle this by replacing the "objectid_1" with "objectid" in the
+        # CSV header if there's not a second objectid field in there.
+        if ('objectid_1,' in str_header) and ('objectid,' not in str_header):
+            self.logger.info('\nDetected objectid_1 primary key, implementing workaround and modifying header...')
+            rows = rows.rename('objectid_1', 'objectid')
+            str_header = str_header.replace('objectid_1', 'objectid')
+
         self.logger.info(str_header)
-        self.logger.info('Writing to table: {}...'.format(self.table_schema_name))
+        self.logger.info('\nWriting to table: {}...'.format(self.table_schema_name))
 
         # Write our possibly modified lines into the temp_csv file
         write_file = self.temp_csv_path
@@ -316,8 +327,9 @@ class Postgres():
 
         with open(write_file, 'r') as f:
             with self.conn.cursor() as cursor:
-                copy_stmt = "COPY {table_name} ({header}) FROM STDIN WITH (FORMAT csv, HEADER true)".format(
-                            table_name=self.table_schema_name, header=str_header)
+                copy_stmt = f'''
+                    COPY {self.table_schema_name} ({str_header}) FROM STDIN WITH (FORMAT csv, HEADER true)
+                '''
                 self.logger.info('copy_stmt: ' + copy_stmt)
                 cursor.copy_expert(copy_stmt, f)
 

@@ -84,9 +84,9 @@ class Db2():
         """Queries the information_schema.columns table to get column names and data types"""
 
         col_info_stmt = f'''
-        SELECT column_name, data_type 
-        FROM information_schema.columns
-        WHERE table_schema = '{self.enterprise_schema}' and table_name = '{self.enterprise_dataset_name}'
+            SELECT column_name, data_type 
+            FROM information_schema.columns
+            WHERE table_schema = '{self.enterprise_schema}' and table_name = '{self.enterprise_dataset_name}'
         '''
         self.logger.info('Running col_info_stmt: ' + col_info_stmt)
         self.pg_cursor.execute(col_info_stmt)
@@ -164,8 +164,8 @@ class Db2():
         # Grabbing this text out of the XML definition put in place by ESRI, can't find out how to do
         # it with PostGIS, doesn't seem to be a whole lot of support or awareness for these extra properties.
         has_m_or_z_stmt = f'''
-        SELECT definition FROM sde.gdb_items
-        WHERE name = 'betabridge.{self.enterprise_schema}.{self.enterprise_dataset_name}'
+            SELECT definition FROM sde.gdb_items
+            WHERE name = 'betabridge.{self.enterprise_schema}.{self.enterprise_dataset_name}'
         '''
         self.logger.info('Running has_m_or_z_stmt: ' + has_m_or_z_stmt)
         self.pg_cursor.execute(has_m_or_z_stmt)
@@ -315,8 +315,8 @@ class Db2():
         # so we're not making crazy objectids in the trillions.
         # To do this we need to modify the insert delta table of our SDE table.
         reg_stmt=f'''
-        SELECT registration_id FROM sde.sde_table_registry
-        WHERE owner = '{self.enterprise_schema}' AND table_name = '{self.enterprise_dataset_name}'
+            SELECT registration_id FROM sde.sde_table_registry
+            WHERE owner = '{self.enterprise_schema}' AND table_name = '{self.enterprise_dataset_name}'
         '''
         self.logger.info("Running reg_stmt: " + str(reg_stmt))
         self.pg_cursor.execute(reg_stmt)
@@ -324,8 +324,8 @@ class Db2():
 
 
         reset_stmt=f'''
-        UPDATE phl.i{reg_id} SET base_id=1, last_id=1
-        WHERE id_type = 2
+            UPDATE phl.i{reg_id} SET base_id=1, last_id=1
+            WHERE id_type = 2
         '''
         self.logger.info("Running reset_stmt: " + str(reset_stmt))
         self.pg_cursor.execute(reset_stmt)
