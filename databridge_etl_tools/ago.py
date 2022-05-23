@@ -40,6 +40,7 @@ class AGO():
                  s3_bucket,
                  s3_key,
                  in_srid,
+                 clean_column = None,
                  **kwargs
                  ):
         self.ago_org_url = ago_org_url
@@ -49,6 +50,7 @@ class AGO():
         self.s3_bucket = s3_bucket
         self.s3_key = s3_key
         self.in_srid = in_srid
+        self.clean_column = clean_column
         self.primary_key = kwargs.get('primary_key', None)
         self.proxy_host = kwargs.get('proxy_host', None)
         self.proxy_port = kwargs.get('proxy_port', None)
@@ -338,18 +340,34 @@ class AGO():
         adds = []
         if not self.geometric:
             for i, row in enumerate(row_dicts):
+                # Clean our designated row of non-utf-8 characters or other undesirables that makes AGO mad.
+                # If you pass multiple values separated by a comma, it will perform on multiple colmns
+                for clean_column in self.clean_column.split(','):
+                    row[clean_column] = row[clean_column].encode("ascii", "ignore").decode()
+                    row[clean_column] = row[clean_column].replace('\'','')
+                    row[clean_column] = row[clean_column].replace('"', '')
+                    row[clean_column] = row[clean_column].replace('<', '')
+                    row[clean_column] = row[clean_column].replace('>', '')
+
                 adds.append({"attributes": row})
                 if len(adds) % batch_size == 0:
                     self.logger.info(f'Adding batch of {len(adds)}, at row #: {i}...')
                     self.layer_object.edit_features(adds, rollback_on_failure=True)
-                    self.logger.info('Batch added.\n')
                     adds = []
             if adds:
                 self.logger.info(f'Adding last batch of {len(adds)}, at row #: {i}...')
                 self.layer_object.edit_features(adds, rollback_on_failure=True)
-                self.logger.info('Batch added.\n')
         elif self.geometric:
             for i, row in enumerate(row_dicts):
+                # Clean our designated row of non-utf-8 characters or other undesirables that makes AGO mad.
+                # If you pass multiple values separated by a comma, it will perform on multiple colmns
+                for clean_column in self.clean_column.split(','):
+                    row[clean_column] = row[clean_column].encode("ascii", "ignore").decode()
+                    row[clean_column] = row[clean_column].replace('\'','')
+                    row[clean_column] = row[clean_column].replace('"', '')
+                    row[clean_column] = row[clean_column].replace('<', '')
+                    row[clean_column] = row[clean_column].replace('>', '')
+
                 # remove the shape field so we can replace it with SHAPE with the spatial reference key
                 # and also store in 'wkt' var (well known text) so we can project it
                 wkt = row.pop('shape')
@@ -436,36 +454,23 @@ class AGO():
                                      }
                 adds.append(row_to_append)
 
-                batch_size = 5000
+                batch_size = 2000
                 if len(adds) % batch_size == 0:
                     self.logger.info(f'Adding batch of {len(adds)}, at row #: {i+1}...')
                     start = time()
-                    split_batches = np.array_split(adds,5)
+                    #self.add_features(adds, i)
+
+                    split_batches = np.array_split(adds,2)
                     # Where we actually append the rows to the dataset in AGO
-                    #self.add_features(batch, i)
-                    #self.logger.info(f'Example row: {batch[0]}')
                     t1 = Thread(target=self.add_features,
                                 args=(list(split_batches[0]), i))
                     t2 = Thread(target=self.add_features,
                                 args=(list(split_batches[1]), i))
-                    t3 = Thread(target=self.add_features,
-                                args=(list(split_batches[2]), i))
-                    t4 = Thread(target=self.add_features,
-                                args=(list(split_batches[3]), i))
-                    t5 = Thread(target=self.add_features,
-                                args=(list(split_batches[4]), i))
                     t1.start()
                     t2.start()
-                    t3.start()
-                    t4.start()
-                    t5.start()
 
                     t1.join()
                     t2.join()
-                    t3.join()
-                    t4.join()
-                    t5.join()
-                    self.logger.info('Batch added.')
                     adds = []
                     print(f'Duration: {time() - start}\n')
             # add leftover rows outside the loop if they don't add up to 4000
@@ -474,7 +479,6 @@ class AGO():
                 self.logger.info(f'Adding last batch of {len(adds)}, at row #: {i+1}...')
                 self.logger.info(f'Example row: {adds[0]}')
                 self.add_features(adds, i)
-                self.logger.info('Batch added.\n')
                 print(f'Duration: {time() - start}')
 
 
@@ -499,7 +503,8 @@ class AGO():
             '''
             if result is None:
                 self.logger.info('Returned result object is None? In cases like this the append seems to fail completely, possibly from bad encoding. Retrying.')
-                self.logger.info(f'Example row from this batch: {adds[0]}')
+                #self.logger.info(f'Example row from this batch: {adds[0]}')
+                self.logger.info(f'batch: {adds}')
                 self.logger.info(f'Returned object: {pprint(result)}')
                 return True
             elif result["addResults"] is None:
@@ -531,8 +536,8 @@ class AGO():
         while success is False:
             tries += 1
             if tries > 5:
-                self.logger.error('Too many retries on this batch, giving up!')
-                break
+                raise Exception('Too many retries on this batch, there is probably something wrong with a row in here! Giving up!')
+                #break
             # Is it still rolled back after a retry?
             if result is not None:
                 if is_rolled_back(result):
@@ -684,19 +689,22 @@ class AGO():
         steps = int(count / 1000) + (count % 1000 > 0)
         remainder = count % 1000
 
-        # Pull in and operate on rows from AGO by the 1000s
-        # Useful to do it this way because we won't overload AGO pushing/pulling 1000 rows vs all of them
-        # And we also won't run out of memory attempting to hold too many rows in memory.
+
+        # Iterate over our CSV pandas dataframe
         features_for_update = []
         new_rows = []
         deleted_rows = []
-        for i in range(1,steps+1):
+        #for i in range(1,steps+1):
+        for i,row in csv_sdf.iterrows():
             upper = i * 1000
             lower = upper - 999
-            wherequery = f'OBJECTID >= {lower} AND OBJECTID <= {upper}'
+            primary_key_to_find = csv_sdf.attributes[self.primary_key.lower()]
+            #wherequery = f'OBJECTID >= {lower} AND OBJECTID <= {upper}'
+            wherequery = f'{self.primary_key.upper()} = {primary_key_to_find}'
             self.logger.info(wherequery)
-            # Get our batch of 1000 rows
-            ago_batch = self.layer_object.query(where=wherequery)
+            
+            # Get our hopefully matching row
+            ago_row = self.layer_object.query(where=wherequery)
             self.logger.info(f'Pandas verbose info on AGO df: \n{ago_batch.sdf.info(verbose=False)} \n')
             # Identify overlapping rows
             overlap_rows = pd.merge(
@@ -706,37 +714,42 @@ class AGO():
                                 left_on=self.primary_key.upper(),
                                 right_on=self.primary_key.lower()
                                 )
-            for pkey in overlap_rows[self.primary_key.lower()]:
-                # get the feature to be updated
-                original_feature = [f for f in ago_batch.features if f.attributes[self.primary_key.upper()] == pkey][0]
-                feature_to_be_updated = deepcopy(original_feature)
 
-                # get the matching row from csv
-                matching_row = csv_sdf.where(csv_sdf[self.primary_key.lower()] == pkey).dropna()
+            if overlap_rows.empty is True:
+                self.logger.info('Matching row for CSV not found in CSV! Must be new?')
+                self.logger.info(f'Primary key of row: {row.attributes[primary_key.lower()]}')
 
-                if matching_row.empty is True:
-                    self.logger.info('Matching row from AGO not found in CSV! Is it deleted?')
-                    self.logger.info(f'Primary key of row: {original_feature.attributes[primary_key.upper()]}')
-                    continue
+            # get the feature to be updated
+            original_feature = [f for f in ago_batch.features if f.attributes[self.primary_key.upper()] == pkey][0]
+            feature_to_be_updated = deepcopy(original_feature)
 
-                if self.geometric:
-                    if len(matching_row['shape'][0]) > 1:
-                        raise('Error! This is unexpected, more than 1 item in the shape value of the matching row.')
+            # get the matching row from csv
+            matching_row = csv_sdf.where(csv_sdf[self.primary_key.lower()] == pkey).dropna()
 
-                    # Convert the geometry into the proper format for AGO
-                    try:
-                        converted_geometry = self.convert_geometry(matching_row['shape'][0])
-                    except Exception as e:
-                        self.logger.info('Geometry is empty in this row...')
-                        converted_geometry = None
-                    feature_to_be_updated.geometry = converted_geometry
+            if matching_row.empty is True:
+                self.logger.info('Matching row from AGO not found in CSV! Is it deleted?')
+                self.logger.info(f'Primary key of row: {original_feature.attributes[primary_key.upper()]}')
+                #self.add_features(adds, i, method='deletes')
+                continue
 
-                    # Pop the SHAPE column out, not needed since it's in "geometry"
-                    feature_to_be_updated.attributes.pop('SHAPE')
-                    for attr in feature_to_be_updated.attributes:
-                        feature_to_be_updated[attr] = matching_row[attr]
+            if self.geometric:
+                if len(matching_row['shape'][0]) > 1:
+                    raise('Error! This is unexpected, more than 1 item in the shape value of the matching row.')
 
-                    self.logger.info(feature_to_be_updated)
+                # Convert the geometry into the proper format for AGO
+                try:
+                    converted_geometry = self.convert_geometry(matching_row['shape'][0])
+                except Exception as e:
+                    self.logger.info('Geometry is empty in this row...')
+                    converted_geometry = None
+                feature_to_be_updated.geometry = converted_geometry
+
+                # Pop the SHAPE column out, not needed since it's in "geometry"
+                feature_to_be_updated.attributes.pop('SHAPE')
+                for attr in feature_to_be_updated.attributes:
+                    feature_to_be_updated[attr] = matching_row[attr]
+
+                self.logger.info(feature_to_be_updated)
             #self.add_features(adds, i*1000, method='updates')
             #features_for_update = []
 

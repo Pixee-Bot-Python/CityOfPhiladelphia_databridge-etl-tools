@@ -99,7 +99,8 @@ def postgres_extract(table_name, table_schema, connection_string, s3_bucket, jso
 @click.option('--s3_bucket')
 @click.option('--s3_key')
 @click.option('--in_srid', type=click.INT, default=False, required=False)
-def ago_truncate_append(ago_org_url, ago_user, ago_pw, ago_item_name, s3_bucket, s3_key, in_srid):
+@click.option('--clean_column', type=click.STRING, default=False, required=False)
+def ago_truncate_append(ago_org_url, ago_user, ago_pw, ago_item_name, s3_bucket, s3_key, in_srid, clean_column):
     """Truncates a dataset in AGO and appends to it from a CSV. CSV needs to be made
     from the postgres-extract command."""
     ago = AGO(
@@ -109,7 +110,8 @@ def ago_truncate_append(ago_org_url, ago_user, ago_pw, ago_item_name, s3_bucket,
         ago_item_name=ago_item_name,
         s3_bucket=s3_bucket,
         s3_key=s3_key,
-        in_srid=in_srid)
+        in_srid=in_srid,
+        clean_column=clean_column)
     ago.get_csv_from_s3()
     ago.truncate()
     ago.append()
