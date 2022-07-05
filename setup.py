@@ -30,7 +30,9 @@ setup(
         #'geopetl @ https://github.com/CityOfPhiladelphia/geopetl/tarball/65ead28d4480d7cedcbc92272c3b4789f1e22810'
         # Update again to Alex's dev-pass branch
         #'geopetl @ https://github.com/CityOfPhiladelphia/geopetl/tarball/0091e15b9c3dc63fb13be5c2f41c13d55337dc27'
-        'geopetl @ https://github.com/CityOfPhiladelphia/geopetl/tarball/6ef4472b5c614669fd0b28ce7a30b4631385ed77'
+        #'geopetl @ https://github.com/CityOfPhiladelphia/geopetl/tarball/6ef4472b5c614669fd0b28ce7a30b4631385ed77'
+        # dev-pass branch, latest
+        'geopetl @ https://github.com/CityOfPhiladelphia/geopetl/tarball/981f32f54c04eef5e29cb74d805b79bdbddcbec2'
     ],
     extras_require={
         'ago': [
