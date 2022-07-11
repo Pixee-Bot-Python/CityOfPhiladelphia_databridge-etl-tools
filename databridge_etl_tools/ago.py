@@ -228,6 +228,9 @@ class AGO():
 
 
     def truncate(self):
+        count = self.layer_object.query(return_count_only=True)
+        if count > 100000:
+            raise AssertionError('Count is over 100,000, we dont recommend using this method for large datasets!')
         self.layer_object.manager.truncate()
         count = self.layer_object.query(return_count_only=True)
         self.logger.info('count after truncate: ' + str(count))
@@ -297,7 +300,7 @@ class AGO():
             multipoly = shapely.wkt.loads(wkt_shape)
             assert multipoly.is_valid
             list_of_rings = []
-            for poly in multipoly:
+            for poly in multipoly.geoms:
                 assert poly.is_valid
                 # reference for polygon projection: https://gis.stackexchange.com/a/328642
                 ring = format_ring(poly)
@@ -361,12 +364,13 @@ class AGO():
             for i, row in enumerate(row_dicts):
                 # Clean our designated row of non-utf-8 characters or other undesirables that makes AGO mad.
                 # If you pass multiple values separated by a comma, it will perform on multiple colmns
-                for clean_column in self.clean_column.split(','):
-                    row[clean_column] = row[clean_column].encode("ascii", "ignore").decode()
-                    row[clean_column] = row[clean_column].replace('\'','')
-                    row[clean_column] = row[clean_column].replace('"', '')
-                    row[clean_column] = row[clean_column].replace('<', '')
-                    row[clean_column] = row[clean_column].replace('>', '')
+                if self.clean_column != 'False':
+                    for clean_column in self.clean_column.split(','):
+                        row[clean_column] = row[clean_column].encode("ascii", "ignore").decode()
+                        row[clean_column] = row[clean_column].replace('\'','')
+                        row[clean_column] = row[clean_column].replace('"', '')
+                        row[clean_column] = row[clean_column].replace('<', '')
+                        row[clean_column] = row[clean_column].replace('>', '')
 
                 # remove the shape field so we can replace it with SHAPE with the spatial reference key
                 # and also store in 'wkt' var (well known text) so we can project it
@@ -375,15 +379,18 @@ class AGO():
                 # if the wkt is not empty, and SRID isn't in it, fail out.
                 # empty geometries come in with some whitespace, so test truthiness
                 # after stripping whitespace.
-                if 'SRID=' not in wkt and bool(wkt.strip()) is False and self.in_srid == None:
+                if 'SRID=' not in wkt and bool(wkt.strip()) is False and (not self.in_srid):
                     raise AssertionError("Receieved a row with blank geometry, you need to pass an --in_srid so we know if we need to project!")
                 if 'SRID=' not in wkt and bool(wkt.strip()) is True:
                     raise AssertionError("SRID not found in shape row! Please export your dataset with 'geom_with_srid=True'.")
-                elif 'SRID=' in wkt:
-                    wkt = wkt.split(';')[1]
 
-                if self.in_srid == None and 'SRID=' in wkt:
+                if (not self.in_srid) and 'SRID=' in wkt:
+                    print('Getting SRID from csv...')
                     self.in_srid = wkt.split(';')[0].strip("SRID=")
+    
+                # Get just the WKT from the shape, remove SRID after we extract it
+                if 'SRID=' in wkt:
+                    wkt = wkt.split(';')[1]
 
 
                 # If the geometry cell is blank, properly pass a NaN or empty value to indicate so.
@@ -655,6 +662,7 @@ class AGO():
     def upsert(self):
         '''This is unfinished. Got stuck with getting rows based on the primary key.'''
         raise NotImplementedError
+
         count = self.layer_object.query(return_count_only=True)
 
         # Setup our data types to use when importing our CSV into a pandas dataframe
