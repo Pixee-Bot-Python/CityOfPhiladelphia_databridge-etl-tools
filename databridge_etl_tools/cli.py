@@ -113,8 +113,7 @@ def ago_truncate_append(ago_org_url, ago_user, ago_pw, ago_item_name, s3_bucket,
         in_srid=in_srid,
         clean_column=clean_column)
     ago.get_csv_from_s3()
-    ago.truncate()
-    ago.append()
+    ago.append(truncate=True)
     ago.verify_count()
 
 
@@ -141,7 +140,7 @@ def ago_append(ago_org_url, ago_user, ago_pw, ago_item_name, s3_bucket, s3_key, 
         in_srid=in_srid,
         clean_column=clean_column)
     ago.get_csv_from_s3()
-    ago.append()
+    ago.append(truncate=False)
 
 # AGO Upsert
 #@main.command()

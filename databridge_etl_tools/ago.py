@@ -106,7 +106,9 @@ class AGO():
                 # "Feature Service" seems to pull up both spatial and table items in AGO
                 items = self.org.content.search(f'''owner:"{self.ago_user}" AND title:"{self.item_name}" AND type:"Feature Service"''')
                 for item in items:
-                    if item.title == self.item_name:
+                    # For items with spaces in their titles, AGO will smartly change out spaces to underscores
+                    # Test for this too.
+                    if (item.title == self.item_name) or (item.title == self.item_name.replace(' ', '_')):
                         self._item = item
                         self.logger.info(f'Found item, url and id: {self.item.url}, {self.item.id}')
                         return self._item
@@ -114,6 +116,24 @@ class AGO():
                 self.logger.error(f'Failed searching for item owned by {self.ago_user} with title: {self.item_name} and type:"Feature Service"')
                 raise e
         return self._item
+
+
+    @property
+    def item_fields(self):
+        '''Fields of the dataset in AGO'''
+        fields = [i.name.lower() for i in self.layer_object.properties.fields]
+        # shape field isn't included in this property of the AGO item, so check it its geometric first
+        # so we can accurately use this variables for field comparisions
+        if self.geometric and 'shape' not in fields:
+            fields.append('shape')
+        # AGO will show these fields for lines and polygons, so remove them for an accurate comparison to the CSV headers.
+        if 'shape__area' in fields:
+            fields.remove('shape__area')
+        if 'shape__length' in fields:
+            fields.remove('shape__length')
+        fields = tuple(fields)
+        self._item_fields = fields
+        return self._item_fields
 
 
     @property
@@ -146,24 +166,6 @@ class AGO():
             assert self.layer_object.container.properties.initialExtent.spatialReference is not None
             self._ago_srid = (self.layer_object.container.properties.initialExtent.spatialReference['wkid'],self.layer_object.container.properties.initialExtent.spatialReference['latestWkid'])
         return self._ago_srid
-
-
-    @property
-    def item_fields(self):
-        '''Fields of the dataset in AGO'''
-        fields = [i.name.lower() for i in self.layer_object.properties.fields]
-        # shape field isn't included in this property of the AGO item, so check it its geometric first
-        # so we can accurately use this variables for field comparisions
-        if self.geometric and 'shape' not in fields:
-            fields.append('shape')
-        # AGO will show these fields for lines and polygons, so remove them for an accurate comparison to the CSV headers.
-        if 'shape__area' in fields:
-            fields.remove('shape__area')
-        if 'shape__length' in fields:
-            fields.remove('shape__length')
-        fields = tuple(fields)
-        self._item_fields = fields
-        return self._item_fields
 
 
     @property
@@ -298,17 +300,23 @@ class AGO():
                 return pt.x, pt.y
         elif 'MULTIPOLYGON' in wkt_shape:
             multipoly = shapely.wkt.loads(wkt_shape)
-            assert multipoly.is_valid
+            if not multipoly.is_valid:
+                print('Warning, shapely found this WKT to be invalid! Might want to fix this!')
+                print(wkt_shape)
             list_of_rings = []
             for poly in multipoly.geoms:
-                assert poly.is_valid
+                if not poly.is_valid:
+                    print('Warning, shapely found this WKT to be invalid! Might want to fix this!')
+                    print(wkt_shape)
                 # reference for polygon projection: https://gis.stackexchange.com/a/328642
                 ring = format_ring(poly)
                 list_of_rings.append(ring)
             return list_of_rings
         elif 'POLYGON' in wkt_shape:
             poly = shapely.wkt.loads(wkt_shape)
-            assert poly.is_valid
+            if not poly.is_valid:
+                print('Warning, shapely found this WKT to be invalid! Might want to fix this!')
+                print(wkt_shape)
             ring = format_ring(poly)
             return ring
         elif 'LINESTRING' in wkt_shape:
@@ -325,7 +333,37 @@ class AGO():
         return poly.exterior.xy[0], poly.exterior.xy[1]
 
 
-    def append(self):
+    def format_row(self,row):
+        # Clean our designated row of non-utf-8 characters or other undesirables that makes AGO mad.
+        # If you pass multiple values separated by a comma, it will perform on multiple colmns
+        if self.clean_column != 'False':
+            for clean_column in self.clean_column.split(','):
+                row[clean_column] = row[clean_column].encode("ascii", "ignore").decode()
+                row[clean_column] = row[clean_column].replace('\'','')
+                row[clean_column] = row[clean_column].replace('"', '')
+                row[clean_column] = row[clean_column].replace('<', '')
+                row[clean_column] = row[clean_column].replace('>', '')
+
+        # Convert None values to empty string
+        # but don't convert date fields to empty strings,
+        # Apparently arcgis API needs a None value to properly pass a value as 'null' to ago.
+        for col in row.keys():
+            if col in ['introduction', 'planning_commission', 'rules', 'mayor_signed']:
+                if not row[col]:
+                    row[col] = None
+            elif not row[col]:
+                row[col] = ''
+
+        # Check to make sure rows aren't incorrectly set as UTC. Convert to EST/EDT if so.
+        #    if row[col]:
+        #        if 'datetime' in col and '+0000' in row[col]:
+        #            dt_obj = datetime.strptime(row[col], "%Y-%m-%d %H:%M:%S %z")
+        #            local_dt_obj = obj.astimezone(pytz.timezone('US/Eastern'))
+        #            row[col] = local_db_obj.strftime("%Y-%m-%d %H:%M:%S %z")
+        return row
+
+
+    def append(self, truncate=True):
         try:
             rows = etl.fromcsv(self.csv_path, encoding='utf-8')
         except UnicodeError:
@@ -335,42 +373,40 @@ class AGO():
         # If the names don't match and we were to upload to AGO anyway, AGO will not actually do 
         # anything with our rows but won't tell us anything is wrong!
         self.logger.info(f'Comparing AGO fields: "{self.item_fields}" and CSV fields: "{rows.fieldnames()}"')
-        assert self.item_fields == rows.fieldnames()    
+        row_differences = set(self.item_fields) - set(rows.fieldnames())
+        if row_differences:
+            # Ignore differences if it's just objectid.
+            if 'objectid' in row_differences and len(row_differences) == 1:
+                pass
+            else:
+                print(f'Row differences found!: {row_differences}')
+                assert self.item_fields == rows.fieldnames()    
         self.logger.info('Fields are the same! Continuing.\n')
+
+        # We're more sure that we'll succeed after prior checks, so let's truncate here..
+        if truncate is True:
+            self.truncate()
 
         self._num_rows_in_upload_file = rows.nrows()
         row_dicts = rows.dicts()
         adds = []
         if not self.geometric:
             for i, row in enumerate(row_dicts):
-                # Clean our designated row of non-utf-8 characters or other undesirables that makes AGO mad.
-                # If you pass multiple values separated by a comma, it will perform on multiple colmns
-                for clean_column in self.clean_column.split(','):
-                    row[clean_column] = row[clean_column].encode("ascii", "ignore").decode()
-                    row[clean_column] = row[clean_column].replace('\'','')
-                    row[clean_column] = row[clean_column].replace('"', '')
-                    row[clean_column] = row[clean_column].replace('<', '')
-                    row[clean_column] = row[clean_column].replace('>', '')
+                # clean up row and perform basic non-geometric transformations
+                row = self.format_row(row)
 
                 adds.append({"attributes": row})
                 if len(adds) % batch_size == 0:
                     self.logger.info(f'Adding batch of {len(adds)}, at row #: {i}...')
-                    self.layer_object.edit_features(adds, rollback_on_failure=True)
+                    self.edit_features(rows=adds, method='adds')
                     adds = []
             if adds:
                 self.logger.info(f'Adding last batch of {len(adds)}, at row #: {i}...')
-                self.layer_object.edit_features(adds, rollback_on_failure=True)
+                self.edit_features(rows=adds, method='adds')
         elif self.geometric:
             for i, row in enumerate(row_dicts):
-                # Clean our designated row of non-utf-8 characters or other undesirables that makes AGO mad.
-                # If you pass multiple values separated by a comma, it will perform on multiple colmns
-                if self.clean_column != 'False':
-                    for clean_column in self.clean_column.split(','):
-                        row[clean_column] = row[clean_column].encode("ascii", "ignore").decode()
-                        row[clean_column] = row[clean_column].replace('\'','')
-                        row[clean_column] = row[clean_column].replace('"', '')
-                        row[clean_column] = row[clean_column].replace('<', '')
-                        row[clean_column] = row[clean_column].replace('>', '')
+                # clean up row and perform basic non-geometric transformations
+                row = self.format_row(row)
 
                 # remove the shape field so we can replace it with SHAPE with the spatial reference key
                 # and also store in 'wkt' var (well known text) so we can project it
@@ -392,27 +428,26 @@ class AGO():
                 if 'SRID=' in wkt:
                     wkt = wkt.split(';')[1]
 
-
                 # If the geometry cell is blank, properly pass a NaN or empty value to indicate so.
                 if not (bool(wkt.strip())): 
                     if self.geometric == 'esriGeometryPoint':
                         geom_dict = {"x": 'NaN',
                                      "y": 'NaN',
-                                     "spatial_reference": {"wkid": self.ago_srid[0], "latestWkid": self.ago_srid[1]}
+                                     "spatial_reference": {"wkid": self.ago_srid[1]}
                                      }
                         row_to_append = {"attributes": row,
                                         "geometry": geom_dict
                                         }
                     elif self.geometric == 'esriGeometryPolyline':
                         geom_dict = {"paths": [],
-                                     "spatial_reference": {"wkid": self.ago_srid[0], "latestWkid": self.ago_srid[1]}
+                                     "spatial_reference": {"wkid": self.ago_srid[1]}
                                      }
                         row_to_append = {"attributes": row,
                                          "geometry": geom_dict
                                          }
                     elif self.geometric == 'esriGeometryPolygon':
                         geom_dict = {"rings": [],
-                                     "spatial_reference": {"wkid": self.ago_srid[0], "latestWkid": self.ago_srid[1]}
+                                     "spatial_reference": {"wkid": self.ago_srid[1]}
                                      }
                         row_to_append = {"attributes": row,
                                          "geometry": geom_dict
@@ -423,12 +458,12 @@ class AGO():
                 # https://developers.arcgis.com/documentation/common-data-types/geometry-objects.htm
                 if 'POINT' in wkt:
                     projected_x, projected_y = self.project_and_format_shape(wkt)
-                                   # Format our row, following the docs on this one, see section "In [18]":
+                    # Format our row, following the docs on this one, see section "In [18]":
                     # https://developers.arcgis.com/python/sample-notebooks/updating-features-in-a-feature-layer/
                     # create our formatted point geometry
                     geom_dict = {"x": projected_x,
                                  "y": projected_y,
-                                 "spatial_reference": {"wkid": self.ago_srid[0], "latestWkid": self.ago_srid[1]}
+                                 "spatial_reference": {"wkid": self.ago_srid[1]}
                                  }
                     row_to_append = {"attributes": row,
                                      "geometry": geom_dict}
@@ -437,7 +472,7 @@ class AGO():
                 elif 'MULTIPOLYGON' in wkt:
                     rings = self.project_and_format_shape(wkt)
                     geom_dict = {"rings": rings,
-                                 "spatial_reference": {"wkid": self.ago_srid[0], "latestWkid": self.ago_srid[1]}
+                                 "spatial_reference": {"wkid": self.ago_srid[1]}
                                  }
                     row_to_append = {"attributes": row,
                                      "geometry": geom_dict
@@ -446,7 +481,7 @@ class AGO():
                     #xlist, ylist = return_coords_only(wkt)
                     ring = self.project_and_format_shape(wkt)
                     geom_dict = {"rings": [ring],
-                                 "spatial_reference": {"wkid": self.ago_srid[0], "latestWkid": self.ago_srid[1]}
+                                 "spatial_reference": {"wkid": self.ago_srid[1]}
                                  }
                     row_to_append = {"attributes": row,
                                      "geometry": geom_dict
@@ -454,7 +489,7 @@ class AGO():
                 elif 'LINESTRING' in wkt:
                     paths = self.project_and_format_shape(wkt)
                     geom_dict = {"paths": [paths],
-                                 "spatial_reference": {"wkid": self.ago_srid[0], "latestWkid": self.ago_srid[1]}
+                                 "spatial_reference": {"wkid": self.ago_srid[1]}
                                  }
                     row_to_append = {"attributes": row,
                                      "geometry": geom_dict
@@ -469,10 +504,10 @@ class AGO():
 
                     split_batches = np.array_split(adds,2)
                     # Where we actually append the rows to the dataset in AGO
-                    t1 = Thread(target=self.add_features,
-                                args=(list(split_batches[0]), i))
-                    t2 = Thread(target=self.add_features,
-                                args=(list(split_batches[1]), i))
+                    t1 = Thread(target=self.edit_features,
+                                args=(list(split_batches[0]), 'adds'))
+                    t2 = Thread(target=self.edit_features,
+                                args=(list(split_batches[1]), 'adds'))
                     t1.start()
                     t2.start()
 
@@ -484,23 +519,24 @@ class AGO():
             if adds:
                 start = time()
                 self.logger.info(f'Adding last batch of {len(adds)}, at row #: {i+1}...')
-                self.logger.info(f'Example row: {adds[0]}')
-                self.add_features(adds, i)
+                #self.logger.info(f'Example row: {adds[0]}')
+                #self.logger.info(f'batch: {adds}')
+                self.edit_features(rows=adds, method='adds')
                 print(f'Duration: {time() - start}')
-
 
         ago_count = self.layer_object.query(return_count_only=True)
         self.logger.info(f'count after batch adds: {str(ago_count)}')
         assert ago_count != 0
 
 
-    def add_features(self, adds, on_row, method='adds'):
+    def edit_features(self, rows, method='adds'):
         '''
         Complicated function to wrap the edit_features arcgis function so we can handle AGO failing
         It will handle either:
         1. A reported rollback from AGO (1003) and try one more time,
         2. An AGO timeout, which can still be successful which we'll verify with a row count.
         '''
+
         def is_rolled_back(result):
             '''
             If we receieve a vague object back from AGO and it contains an error code of 1003
@@ -509,32 +545,24 @@ class AGO():
             ESRi lacks documentation here for us to really know what to expect..
             '''
             if result is None:
-                self.logger.info('Returned result object is None? In cases like this the append seems to fail completely, possibly from bad encoding. Retrying.')
-                #self.logger.info(f'Example row from this batch: {adds[0]}')
-                self.logger.info(f'batch: {adds}')
-                self.logger.info(f'Returned object: {pprint(result)}')
+                print('Returned result object is None? In cases like this the append seems to fail completely, possibly from bad encoding. Retrying.')
+                print(f'Example row from this batch: {rows[0]}')
+                print(f'Returned object: {pprint(result)}')
                 return True
             elif result["addResults"] is None:
-                self.logger.info('Returned result not what we expected, assuming success.')
-                self.logger.info(f'Returned object: {pprint(result)}')
+                print('Returned result not what we expected, assuming success.')
+                print(f'Returned object: {pprint(result)}')
                 return False
             elif result["addResults"] is not None:
                 for element in result["addResults"]:
                     if "error" in element and element["error"]["code"] == 1003:
+                        print('Error code 1003 received, we are rolled back...')
                         return True
                     elif "error" in element and element["error"]["code"] != 1003:
                         raise Exception(f'Got this error returned from AGO (unhandled error): {element["error"]}')
                 return False
-
-        def verify_count(on_row):
-            '''If we receive a timeout, verify the count. It will sometimes have actually successfully added.'''
-            count = self.layer_object.query(return_count_only=True)
-            self.logger.info(f'Received a timeout, comparing row count {on_row+1} to {count} to see if we can continue')
-            if int(on_row)+1 == int(count):
-                return True
             else:
-                self.logger.info('Counts dont match after AGO timeout...')
-                return False
+                raise Exception(f'Unexpected result: {result}')
 
         success = False
         # save our result outside the while loop
@@ -543,8 +571,8 @@ class AGO():
         while success is False:
             tries += 1
             if tries > 5:
-                raise Exception('Too many retries on this batch, there is probably something wrong with a row in here! Giving up!')
-                #break
+                raise Exception(
+                    'Too many retries on this batch, there is probably something wrong with a row in here! Giving up!')
             # Is it still rolled back after a retry?
             if result is not None:
                 if is_rolled_back(result):
@@ -553,37 +581,61 @@ class AGO():
             # Add the batch
             try:
                 if method == "adds":
-                    result = self.layer_object.edit_features(adds=adds, rollback_on_failure=True)
+                    result = self.layer_object.edit_features(adds=rows, rollback_on_failure=True)
                 elif method == "updates":
-                    result = self.layer_object.edit_features(updates=adds, rollback_on_failure=True)
+                    result = self.layer_object.edit_features(updates=rows, rollback_on_failure=True)
+                elif method == "deletes":
+                    result = self.layer_object.edit_features(deletes=rows, rollback_on_failure=True)
             except Exception as e:
-                if '504' in str(e):
-                    # let's try ignoring timeouts for now, it seems the count catches up eventually
-                    continue
+                if 'request has timed out' in str(e):
+                    print(f'Request timed out, retrying. Error: {str(e)}')
+                    count += 1
                     sleep(5)
-                    if verify_count(on_row):
-                        success = True
+                    continue
+                if 'Unable to perform query' in str(e):
+                    print(f'Dumb error received, retrying. Error: {str(e)}')
+                    count += 1
+                    sleep(5)
+                    continue
+                # Gateway error recieved, sleep for a bit longer.
+                if '502' in str(e):
+                    print(f'502 Gateway error received, retrying. Error: {str(e)}')
+                    count += 1
+                    sleep(15)
+                    continue
+                else:
+                    raise e
+
+            if is_rolled_back(result):
+                print("Results rolled back, retrying our batch adds in 15 seconds....")
+                sleep(15)
+                try:
+                    if method == "adds":
+                        result = self.layer_object.edit_features(adds=rows, rollback_on_failure=True)
+                    elif method == "updates":
+                        result = self.layer_object.edit_features(updates=rows, rollback_on_failure=True)
+                    elif method == "deletes":
+                        result = self.layer_object.edit_features(deletes=rows, rollback_on_failure=True)
+                except Exception as e:
+                    if 'request has timed out' in str(e):
+                        print(f'Request timed out, retrying. Error: {str(e)}')
+                        count += 1
+                        sleep(5)
+                        continue
+                    if 'Unable to perform query' in str(e):
+                        print(f'Dumb error received, retrying. Error: {str(e)}')
+                        count += 1
+                        sleep(5)
+                        continue
+                    # Gateway error recieved, sleep for a bit longer.
+                    if '502' in str(e):
+                        print(f'502 Gateway error received, retrying. Error: {str(e)}')
+                        count += 1
+                        sleep(15)
                         continue
                     else:
                         raise e
 
-            if is_rolled_back(result):
-                self.logger.info("Results rolled back, retrying our batch adds in 15 seconds....")
-                sleep(15)
-                try:
-                    if method == "adds":
-                        result = self.layer_object.edit_features(adds=adds, rollback_on_failure=True)
-                    elif method == "updates":
-                        result = self.layer_object.edit_features(updates=adds, rollback_on_failure=True)
-                except Exception as e:
-                    if '504' in str(e):
-                        # let's try ignoring timeouts for now, it seems the count catches up eventually
-                        continue
-                        if verify_count(on_row):
-                            success = True
-                            continue
-                        else:
-                            raise e
             # If we didn't get rolled back, batch of adds successfully added.
             else:
                 success = True
@@ -591,8 +643,8 @@ class AGO():
 
     def verify_count(self):
         ago_count = self.layer_object.query(return_count_only=True)
+        print(f'Asserting csv equals ago count: {self._num_rows_in_upload_file} == {ago_count}')
         assert self._num_rows_in_upload_file == ago_count
-        self.logger.info(f'CSV count matches AGO dataset, AGO: {str(ago_count)}, CSV: {str(self._num_rows_in_upload_file)}')
 
 
     def export(self):
