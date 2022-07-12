@@ -113,10 +113,10 @@ class Postgres():
     @property
     def conn(self):
         if self._conn is None:
-            self.logger.info('Trying to connect to postgres...')
+            print('Trying to connect to postgres...')
             conn = psycopg2.connect(self.connection_string)
             self._conn = conn
-            self.logger.info('Connected to postgres.\n')
+            print('Connected to postgres.\n')
         return self._conn
 
     @property
@@ -132,16 +132,53 @@ class Postgres():
             # tests is bogus.
             self._geom_field = 'shape'
         else:
-            geom_stmt = f'''
-            SELECT f_geometry_column AS column_name
-            FROM geometry_columns WHERE f_table_name = '{self.table_name}' and f_table_schema = '{self.table_schema}'
-            '''
-            #self._geom_field = self.execute_sql(geom_stmt, fetch='one')[0]
-            result = self.execute_sql(geom_stmt, fetch='one')
-            if result == None:
-                self._geom_field = None
-            else:
-                self._geom_field = result[0]
+            # start off with a None value to fall through conditionals properly.
+            self._geom_field = None
+            # First check if we're a view:
+            check_view_stmt = f"select table_name from INFORMATION_SCHEMA.views where table_name = \'{self.table_name}\'"
+            result = self.execute_sql(check_view_stmt, fetch='one')
+            if result:
+                print(1)
+                # We're a bit limited in our options, so let's hope the shape fiel is named 'shape'
+                # And check if the data_type is "USER-DEFINED".
+                geom_stmt = f'''
+                select data_type from information_schema.columns
+                    where table_name = '{self.table_name}' and column_name = 'shape'
+                '''
+                result = self.execute_sql(geom_stmt, fetch='one')
+                if result == 'USER_DEFINED':
+                    self._geom_field = 'shape'
+
+            # Then check if were an SDE-enabled database
+            if self._geom_field is None:
+                print(2)
+                check_table_stmt = "SELECT to_regclass(\'sde.st_geometry_columns\');"
+                result = self.execute_sql(check_table_stmt, fetch='one')[0]
+                if result != None:
+                    # sde.st_geometry_columns table exists, we are an SDE-enabled database
+                    geom_stmt = f'''
+                    select column_name from sde.st_geometry_columns where table_name = '{self.table_name}'
+                    '''
+                    result = self.execute_sql(geom_stmt, fetch='one')
+                    if result != None:
+                        self._geom_field = result[0]
+
+            # Else if we're still None, then we're a PostGIS database and this query should work:
+            if self._geom_field is None:
+                print(3)
+                check_table_stmt = "SELECT to_regclass(\'public.geometry_columns\');"
+                result = self.execute_sql(check_table_stmt, fetch='one')[0]
+                if result != None:
+                    geom_stmt = f'''
+                    SELECT f_geometry_column AS column_name
+                    FROM public.geometry_columns WHERE f_table_name = '{self.table_name}' and f_table_schema = '{self.table_schema}'
+                    '''
+                    self._geom_field = self.execute_sql(geom_stmt, fetch='one')
+                    result = self.execute_sql(geom_stmt, fetch='one')
+                    if result != None and result[0] != None:
+                        self._geom_field = result[0]
+            # Else, there truly isn't a shape field and we're not geometric? Leave as None.
+
 
     @property
     def geom_type(self):
@@ -156,15 +193,20 @@ class Postgres():
             # tests is bogus.
             self._geom_type = 'POINT'
         else:
-            geom_stmt = f'''
-            SELECT geometry_type('{self.table_schema}', '{self.table_name}', '{self.geom_field}')
-            '''
-            self.logger.info(f'Determining our geom_type, running statement: {geom_stmt}')
-            result = self.execute_sql(geom_stmt, fetch='one')
-            if result == None:
-                self._geom_type = None
+            check_table_stmt = "select exists(select * from pg_proc where proname = 'geometry_type');"
+            result = self.execute_sql(check_table_stmt, fetch='one')[0]
+            if result:
+                geom_stmt = f'''
+                SELECT geometry_type('{self.table_schema}', '{self.table_name}', '{self.geom_field}')
+                '''
+                print(f'Determining our geom_type, running statement: {geom_stmt}')
+                result = self.execute_sql(geom_stmt, fetch='one')
+                if result == None:
+                    self._geom_type = None
+                else:
+                    self._geom_type = result[0]
             else:
-                self._geom_type = result[0]
+                self._geom_type = None
 
     # not currently used, getting SRID from the csv
     #@property
@@ -221,7 +263,7 @@ class Postgres():
        return self._logger
 
     def execute_sql(self, stmt, fetch=None):
-        self.logger.info('Executing: {}'.format(stmt))
+        print('Executing: {}'.format(stmt))
 
         with self.conn.cursor() as cursor:
             cursor.execute(stmt)
@@ -235,20 +277,20 @@ class Postgres():
                 return result
 
     def get_json_schema_from_s3(self):
-        self.logger.info('Fetching json schema: s3://{}/{}'.format(self.s3_bucket, self.json_schema_s3_key))
+        print('Fetching json schema: s3://{}/{}'.format(self.s3_bucket, self.json_schema_s3_key))
 
         s3 = boto3.resource('s3')
         s3.Object(self.s3_bucket, self.json_schema_s3_key).download_file(self.json_schema_path)
 
-        self.logger.info('Json schema successfully downloaded.\n'.format(self.s3_bucket, self.json_schema_s3_key))
+        print('Json schema successfully downloaded.\n'.format(self.s3_bucket, self.json_schema_s3_key))
 
     def get_csv_from_s3(self):
-        self.logger.info('Fetching csv s3://{}/{}'.format(self.s3_bucket, self.s3_key))
+        print('Fetching csv s3://{}/{}'.format(self.s3_bucket, self.s3_key))
 
         s3 = boto3.resource('s3')
         s3.Object(self.s3_bucket, self.s3_key).download_file(self.csv_path)
 
-        self.logger.info('CSV successfully downloaded.\n'.format(self.s3_bucket, self.s3_key))
+        print('CSV successfully downloaded.\n'.format(self.s3_bucket, self.s3_key))
 
 
     def create_indexes(self, table_name):
@@ -261,7 +303,7 @@ class Postgres():
         try:
             rows = etl.fromcsv(self.csv_path, encoding='utf-8')
         except UnicodeError:    
-            self.logger.info("Exception encountered trying to load rows with utf-8 encoding, trying latin-1...")
+            print("Exception encountered trying to load rows with utf-8 encoding, trying latin-1...")
             rows = etl.fromcsv(self.csv_path, encoding='latin-1')
 
         # Shape types we will transform on, hacky way so we can insert it into our lambda function below
@@ -272,10 +314,10 @@ class Postgres():
 
         # Note: also run this if the data type is 'MULTILINESTRING' some source datasets will export as LINESTRING but the dataset type is actually MULTILINESTRING (one example: GIS_PLANNING.pedbikeplan_bikerec)
         # Note2: Also happening with poygons, example dataset: GIS_PPR.ppr_properties
-        self.logger.info(f'self.geom_field is: {self.geom_field}')
-        self.logger.info(f'self.geom_type is: {self.geom_type}')
+        print(f'self.geom_field is: {self.geom_field}')
+        print(f'self.geom_type is: {self.geom_type}')
         if self.geom_field is not None and (self.geom_type in shape_types):
-            self.logger.info('Detected that shape type needs conversion to MULTI....')
+            print('Detected that shape type needs conversion to MULTI....')
             # Multi-geom fix
             # ESRI seems to only store polygon feature clasess as only multipolygons,
             # so we need to convert all polygon datasets to multipolygon for a successful copy_export.
@@ -313,30 +355,30 @@ class Postgres():
         # We'll attempt to handle this by replacing the "objectid_1" with "objectid" in the
         # CSV header if there's not a second objectid field in there.
         if ('objectid_1,' in str_header) and ('objectid,' not in str_header):
-            self.logger.info('\nDetected objectid_1 primary key, implementing workaround and modifying header...')
+            print('\nDetected objectid_1 primary key, implementing workaround and modifying header...')
             rows = rows.rename('objectid_1', 'objectid')
             str_header = str_header.replace('objectid_1', 'objectid')
 
-        self.logger.info(str_header)
-        self.logger.info('\nWriting to table: {}...'.format(self.table_schema_name))
+        print(str_header)
+        print('\nWriting to table: {}...'.format(self.table_schema_name))
 
         # Write our possibly modified lines into the temp_csv file
         write_file = self.temp_csv_path
         rows.tocsv(write_file)
-        #self.logger.info("DEBUG Rows: " + str(etl.look(rows)))
+        #print("DEBUG Rows: " + str(etl.look(rows)))
 
         with open(write_file, 'r') as f:
             with self.conn.cursor() as cursor:
                 copy_stmt = f'''
                     COPY {self.table_schema_name} ({str_header}) FROM STDIN WITH (FORMAT csv, HEADER true)
                 '''
-                self.logger.info('copy_stmt: ' + copy_stmt)
+                print('copy_stmt: ' + copy_stmt)
                 cursor.copy_expert(copy_stmt, f)
 
         check_load_stmt = "SELECT COUNT(*) FROM {table_name}".format(table_name=self.table_schema_name)
         response = self.execute_sql(check_load_stmt, fetch='one')
 
-        self.logger.info('Postgres Write Successful: {} rows imported.\n'.format(response[0]))
+        print('Postgres Write Successful: {} rows imported.\n'.format(response[0]))
 
 
     def get_geom_field(self):
@@ -355,7 +397,7 @@ class Postgres():
         raise NotImplementedError
 
     def verify_count(self):
-        self.logger.info('Verifying row count...')
+        print('Verifying row count...')
 
         data = self.execute_sql('SELECT count(*) FROM {};'.format(self.table_schema_name), fetch='many')
         num_rows_in_table = data[0][0]
@@ -367,7 +409,7 @@ class Postgres():
             num_rows_expected,
             num_rows_inserted
         )
-        self.logger.info(message)
+        print(message)
         if num_rows_in_table != num_rows_expected:
             self.logger.error('Did not insert all rows, reverting...')
             stmt = 'BEGIN;' + \
@@ -377,7 +419,7 @@ class Postgres():
             exit(1)
 
     def vacuum_analyze(self):
-        self.logger.info('Vacuum analyzing table: {}'.format(self.table_schema_name))
+        print('Vacuum analyzing table: {}'.format(self.table_schema_name))
 
         # An autocommit connection is needed for vacuuming for psycopg2
         # https://stackoverflow.com/questions/1017463/postgresql-how-to-run-vacuum-from-code-outside-transaction-block
@@ -386,17 +428,17 @@ class Postgres():
         self.execute_sql('VACUUM ANALYZE {};'.format(self.table_schema_name))
         self.conn.set_isolation_level(old_isolation_level)
         
-        self.logger.info('Vacuum analyze complete.\n')
+        print('Vacuum analyze complete.\n')
 
     def cleanup(self):
-        self.logger.info('Attempting to drop temp files...')
+        print('Attempting to drop temp files...')
         for f in [self.csv_path, self.temp_csv_path, self.json_schema_path]:
             if f is not None:
                 if os.path.isfile(f):
                     try:
                         os.remove(f)
                     except Exception as e:
-                        self.logger.info(f'Failed removing file {f}.')
+                        print(f'Failed removing file {f}.')
                         pass
 
 
@@ -407,7 +449,7 @@ class Postgres():
             self.conn.commit()
             self.verify_count()
             self.vacuum_analyze()
-            self.logger.info('Done!')
+            print('Done!')
         except Exception as e:
             self.logger.error('Workflow failed...')
             self.logger.error(f'Error: {str(e)}')
@@ -418,12 +460,12 @@ class Postgres():
 
 
     def load_csv_to_s3(self):
-        self.logger.info('Starting load to s3: {}'.format(self.s3_key))
+        print('Starting load to s3: {}'.format(self.s3_key))
 
         s3 = boto3.resource('s3')
         s3.Object(self.s3_bucket, self.s3_key).put(Body=open(self.csv_path, 'rb'))
         
-        self.logger.info('Successfully loaded to s3: {}'.format(self.s3_key))
+        print('Successfully loaded to s3: {}'.format(self.s3_key))
 
 
     def extract_verify_row_count(self):
@@ -432,7 +474,7 @@ class Postgres():
                 pass
         data = self.execute_sql('SELECT count(*) FROM {};'.format(self.table_schema_name), fetch='many')
         postgres_table_count = data[0][0]
-        self.logger.info(f'Asserting counts match up: {csv_count} == {postgres_table_count}')
+        print(f'Asserting counts match up: {csv_count} == {postgres_table_count}')
         assert csv_count == postgres_table_count
 
     def check_remove_nulls(self):
@@ -452,7 +494,7 @@ class Postgres():
                         break
 
         if has_null_bytes:
-            self.logger.info("Dataset has null bytes, removing...")
+            print("Dataset has null bytes, removing...")
             temp_file = self.csv_path.replace('.csv', '_fmt.csv')
             with open(self.csv_path, 'r') as infile:
                 with open(temp_file, 'w') as outfile:
@@ -464,13 +506,19 @@ class Postgres():
 
 
     def extract(self):
+        # First make sure the table exists:
+        exists_query = f'''SELECT to_regclass('{self.table_schema}.{self.table_name}');'''
+        result = self.execute_sql(exists_query, fetch='one')[0]
+        if result is None:
+            raise AssertionError(f'Table does not exist in this DB: {self.table_schema}.{self.table_name}!')
+
         rows = etl.frompostgis(self.conn, self.table_schema_name, geom_with_srid=True)
         # Dump to our CSV temp file
         print('Extracting csv...')
         try:
             rows.tocsv(self.csv_path, 'utf-8')
         except UnicodeError:
-            self.logger.info("Exception encountered trying to extract to CSV with utf-8 encoding, trying latin-1...")
+            print("Exception encountered trying to extract to CSV with utf-8 encoding, trying latin-1...")
             rows.tocsv(self.csv_path, 'latin-1')
         self.extract_verify_row_count()
         self.check_remove_nulls()
