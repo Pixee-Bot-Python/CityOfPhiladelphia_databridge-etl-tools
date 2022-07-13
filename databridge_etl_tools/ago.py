@@ -378,6 +378,8 @@ class AGO():
             # Ignore differences if it's just objectid.
             if 'objectid' in row_differences and len(row_differences) == 1:
                 pass
+            elif 'esri_oid' in row_differences and len(row_differences) == 1:
+                pass
             else:
                 print(f'Row differences found!: {row_differences}')
                 assert self.item_fields == rows.fieldnames()    
@@ -390,6 +392,7 @@ class AGO():
         self._num_rows_in_upload_file = rows.nrows()
         row_dicts = rows.dicts()
         adds = []
+        batch_size = 2000
         if not self.geometric:
             for i, row in enumerate(row_dicts):
                 # clean up row and perform basic non-geometric transformations
@@ -496,7 +499,6 @@ class AGO():
                                      }
                 adds.append(row_to_append)
 
-                batch_size = 2000
                 if len(adds) % batch_size == 0:
                     self.logger.info(f'Adding batch of {len(adds)}, at row #: {i+1}...')
                     start = time()
