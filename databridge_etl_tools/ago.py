@@ -104,7 +104,9 @@ class AGO():
         if self._item is None:
             try:
                 # "Feature Service" seems to pull up both spatial and table items in AGO
-                items = self.org.content.search(f'''owner:"{self.ago_user}" AND title:"{self.item_name}" AND type:"Feature Service"''')
+                search_query = f'''owner:"{self.ago_user}" AND title:"{self.item_name}" AND type:"Feature Service"'''
+                print(f'Searching for item with query: {search_query}')
+                items = self.org.content.search(search_query, outside_org=False)
                 for item in items:
                     # For items with spaces in their titles, AGO will smartly change out spaces to underscores
                     # Test for this too.
@@ -112,6 +114,9 @@ class AGO():
                         self._item = item
                         self.logger.info(f'Found item, url and id: {self.item.url}, {self.item.id}')
                         return self._item
+                # If item is still None, then fail out
+                if self._item is None:
+                    raise Exception(f'Failed searching for item owned by {self.ago_user} with title: {self.item_name} and type:"Feature Service"')
             except Exception as e:
                 self.logger.error(f'Failed searching for item owned by {self.ago_user} with title: {self.item_name} and type:"Feature Service"')
                 raise e
@@ -420,7 +425,7 @@ class AGO():
                 # after stripping whitespace.
                 if 'SRID=' not in wkt and bool(wkt.strip()) is False and (not self.in_srid):
                     raise AssertionError("Receieved a row with blank geometry, you need to pass an --in_srid so we know if we need to project!")
-                if 'SRID=' not in wkt and bool(wkt.strip()) is True:
+                if 'SRID=' not in wkt and bool(wkt.strip()) is True and (not self.in_srid):
                     raise AssertionError("SRID not found in shape row! Please export your dataset with 'geom_with_srid=True'.")
 
                 if (not self.in_srid) and 'SRID=' in wkt:

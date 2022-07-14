@@ -147,7 +147,7 @@ class Postgres():
                 result = self.execute_sql(geom_stmt, fetch='one')
                 if result:
                     if len(result) == 1 and result[0]:
-                        self._geom_field = result[0]['column_name']
+                        self._geom_field = result[0]
                         return self._geom_field
                     elif len(result) > 1:
                         raise LookupError('Multiple geometry fields')
