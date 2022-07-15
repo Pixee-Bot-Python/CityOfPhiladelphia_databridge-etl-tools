@@ -24,6 +24,7 @@ setup(
         's3transfer==0.5.2',
         'six==1.16.0',
         'Shapely==1.8.1.post1',
+        'geopetl @ https://github.com/CityOfPhiladelphia/geopetl/tarball/master'
         # TEMPORARY! using commmit id from victor's shapes_and_worklfows_2
         #'geopetl @ https://github.com/CityOfPhiladelphia/geopetl/tarball/07fc22b4c92d1fe4e3d47a954c1dd36cccaaeb6d'
         # Updating to a new one to handle gdb_geomattr_data fields
@@ -32,7 +33,7 @@ setup(
         #'geopetl @ https://github.com/CityOfPhiladelphia/geopetl/tarball/0091e15b9c3dc63fb13be5c2f41c13d55337dc27'
         #'geopetl @ https://github.com/CityOfPhiladelphia/geopetl/tarball/6ef4472b5c614669fd0b28ce7a30b4631385ed77'
         # dev-pass branch, latest
-        'geopetl @ https://github.com/CityOfPhiladelphia/geopetl/tarball/dev-pass'
+        #'geopetl @ https://github.com/CityOfPhiladelphia/geopetl/tarball/dev-pass'
     ],
     extras_require={
         'ago': [
