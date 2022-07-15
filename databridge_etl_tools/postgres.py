@@ -114,7 +114,7 @@ class Postgres():
     def conn(self):
         if self._conn is None:
             print('Trying to connect to postgres...')
-            conn = psycopg2.connect(self.connection_string + ', connect_timeout=5')
+            conn = psycopg2.connect(self.connection_string, connect_timeout=5)
             self._conn = conn
             print('Connected to postgres.\n')
         return self._conn
