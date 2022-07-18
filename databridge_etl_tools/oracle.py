@@ -73,14 +73,18 @@ class Oracle():
         any in the first 500, there likely(maybe?) aren't any.
         '''
         has_null_bytes = False
-        with open(self.csv_path, 'r') as infile:
+        with open(self.csv_path, 'r', encoding='utf-8') as infile:
             for i, line in enumerate(infile):
                 if i >= 500:
                     break
+                print(line)
                 for char in line:
-                    if char == '\0':
+                    #if char == '\0' or char == u'\xa0' or char == b'\xc2\xa0':
+                    if char == '\0' or char == u'\xa0':
+                        print('Found null bytes')
                         has_null_bytes = True
                         break
+
 
         if has_null_bytes:
             self.logger.info("Dataset has null bytes, removing...")
@@ -88,9 +92,12 @@ class Oracle():
             with open(self.csv_path, 'r') as infile:
                 with open(temp_file, 'w') as outfile:
                     reader = csv.reader((line.replace('\0', '') for line in infile), delimiter=",")
+                    reader = csv.reader((line.replace(u'\xa0', '') for line in infile), delimiter=",")
+                    #reader = csv.reader((line.replace(b'\xc2\xa0', '') for line in infile), delimiter=",")
                     writer = csv.writer(outfile)
                     writer.writerows(reader)
             os.replace(temp_file, self.csv_path)
+
 
 
     def extract(self):
