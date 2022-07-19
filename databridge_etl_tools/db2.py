@@ -385,9 +385,8 @@ class Db2():
 
     def update_oracle_scn(self):
         
-        oracle_account_name = 'GIS_' + self.account_name.upper()
 
-        stmt = f'''SELECT MAX(ora_rowscn) FROM {oracle_account_name}.{self.table_name.upper()}'''
+        stmt = f'''SELECT MAX(ora_rowscn) FROM {self.account_name}.{self.table_name.upper()}'''
         self.logger.info('Executing stmt: ' + str(stmt))
         self.oracle_cursor.execute(stmt)
         current_scn = self.oracle_cursor.fetchone()[0]
@@ -398,7 +397,7 @@ class Db2():
 
         stmt=f'''
             SELECT SCN FROM GIS_GSG.DB2_ORACLE_TRANSACTION_HISTORY
-            WHERE TABLE_OWNER = '{oracle_account_name}'
+            WHERE TABLE_OWNER = '{self.account_name}'
             AND TABLE_NAME = '{self.table_name.upper()}'
         '''
         self.logger.info('Executing stmt: ' + str(stmt))
@@ -410,12 +409,12 @@ class Db2():
         if old_scn is None:
             stmt = f'''
             INSERT INTO GIS_GSG.DB2_ORACLE_TRANSACTION_HISTORY (TABLE_OWNER, TABLE_NAME, SCN)
-                VALUES('{oracle_account_name}', '{self.table_name.upper()}', {current_scn})
+                VALUES('{self.account_name}', '{self.table_name.upper()}', {current_scn})
             '''
         elif old_scn:
             stmt = f'''
             UPDATE GIS_GSG.DB2_ORACLE_TRANSACTION_HISTORY SET SCN={current_scn}
-                WHERE TABLE_OWNER = '{oracle_account_name}' AND TABLE_NAME = '{self.table_name.upper()}'
+                WHERE TABLE_OWNER = '{self.account_name}' AND TABLE_NAME = '{self.table_name.upper()}'
             '''
         self.logger.info('Executing stmt: ' + str(stmt))
         self.oracle_cursor.execute(stmt)
