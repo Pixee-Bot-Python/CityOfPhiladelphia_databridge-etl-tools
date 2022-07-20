@@ -45,7 +45,8 @@ class Db2():
         if self._pg_cursor is None: 
             conn = psycopg2.connect(self.libpq_conn_string)
             assert conn.closed == 0
-            conn.autocommit = True
+            conn.autocommit = False
+            conn.set_session(autocommit=False)
             self._pg_cursor = conn.cursor()
         return self._pg_cursor
 
@@ -90,6 +91,7 @@ class Db2():
         '''
         self.logger.info('Running col_info_stmt: ' + col_info_stmt)
         self.pg_cursor.execute(col_info_stmt)
+
         # Format and transform data types:
         column_info = {i[0]: self.data_type_map.get(i[1], i[1]) for i in self.pg_cursor.fetchall()}
 
@@ -237,9 +239,11 @@ class Db2():
         # drop first so we have a total refresh
         self.logger.info('Running drop stmt: ' + drop_stmt)
         self.pg_cursor.execute(drop_stmt)
+        self.pg_cursor.execute('COMMIT')
         # Identify the geometry column values
         self.logger.info('Running ddl stmt: ' + self.ddl)
         self.pg_cursor.execute(self.ddl)
+        self.pg_cursor.execute('COMMIT')
         # Make sure we were successful
         try:
             check_stmt = f'''
@@ -301,6 +305,7 @@ class Db2():
         if 'gdb_geomattr_data' in enterprise_columns:
             enterprise_columns.remove('gdb_geomattr_data')
 
+        # Get our enterprise columns which we'll use for our insert statement below
         enterprise_columns_str = ', '.join(enterprise_columns)
         staging_columns = enterprise_columns
         # Remove objectid (or whatever it is) the value we'll insert will be next_rowid('{table_schema}', '{table_name}')'
@@ -323,6 +328,7 @@ class Db2():
         reg_id = self.pg_cursor.fetchone()[0]
 
 
+        # Reset what the objectid field will start incrementing from.
         reset_stmt=f'''
             UPDATE phl.i{reg_id} SET base_id=1, last_id=1
             WHERE id_type = 2
@@ -333,16 +339,10 @@ class Db2():
         #############
 
 
+        # Fields to select from staging
         select_fields = f'''
         {staging_columns_str}''' if not oid_column else f'''{staging_columns_str}''' + f''', next_rowid('{self.enterprise_schema}', '{self.enterprise_dataset_name}')
         '''
-
-        insert_stmt = f'''
-            INSERT INTO {self.enterprise_schema}.{self.enterprise_dataset_name} ({enterprise_columns_str})
-            SELECT {select_fields}
-            FROM {self.staging_schema}.{self.enterprise_dataset_name}
-            '''
-
         ###############
         # Truncate is not 'MVCC-safe', which means concurrent select transactions will not be able to
         # view/select the data during the execution of the update_stmt.
@@ -350,37 +350,68 @@ class Db2():
         # DELTE FROM is 'MVCC-safe'.
         truncate_stmt = f'''DELETE FROM phl.{self.enterprise_dataset_name}'''
 
+        #Update 7/20/22 trying out a table make, insert, and then and rename instead
+        # Will also avoid a DELETE FROM which is transactionally intense vs a DROP or TRUNCATE
+
+        # Table names for copying stuff around
+        table_copy = f'{self.enterprise_schema}.{self.enterprise_dataset_name+"_COPY_FOR_AIRFLOW"}'
+        table_old = f'{self.enterprise_schema}.{self.enterprise_dataset_name+"_OLD_FOR_AIRFLOW"}'
+        orig_table = f'{self.enterprise_schema}.{self.enterprise_dataset_name}'
+        
+        self.pg_cursor.execute(f'DROP TABLE IF EXISTS {table_copy}')
+        self.pg_cursor.execute(f'DROP TABLE IF EXISTS {table_old}')
+        self.pg_cursor.execute('COMMIT')
+
+        insert_stmt = f'''
+            INSERT INTO {table_copy} ({enterprise_columns_str})
+            SELECT {select_fields}
+            FROM {self.staging_schema}.{self.enterprise_dataset_name}
+            '''
+        
         update_stmt = f'''
             BEGIN;
-            {truncate_stmt};
+            CREATE TABLE {table_copy} (LIKE {orig_table} INCLUDING ALL);
             {insert_stmt};
+            ALTER TABLE {orig_table} RENAME TO {self.enterprise_dataset_name+"_OLD_FOR_AIRFLOW"};
+            ALTER TABLE {table_copy} RENAME TO {self.enterprise_dataset_name};
+            END;
             '''
         self.logger.info("Running update_stmt: " + str(update_stmt))
         try:
+            #####################
+            # The big cahooney, run our large delete and insert statement which won't
+            # show any differences until we commit.
+            #####################
             self.pg_cursor.execute(update_stmt)
             self.pg_cursor.execute('COMMIT')
-            # Drop the etl_staging table when we're done to save space.
-            delete_stmt = f'''
-            DROP TABLE {self.staging_schema}.{self.enterprise_dataset_name}
-            '''
-            self.pg_cursor.execute(delete_stmt)
-            self.pg_cursor.execute('COMMIT')
-
-            # Run a quick select statement to test.
-            select_test_stmt = f'''
-            SELECT * FROM {self.enterprise_schema}.{self.enterprise_dataset_name} LIMIT 1
-            '''
-            self.logger.info("Running select_test_stmt: " + str(select_test_stmt))
-
-            self.pg_cursor.execute(select_test_stmt)
-            result = self.pg_cursor.fetchone()[0]
-            self.logger.info('Result of select test:')
-            self.logger.info(str(result))
-            assert result
-
+            #####################
         except psycopg2.Error as e:
             self.logger.error(f'Error truncating and inserting into enterprise! Error: {str(e)}')
             self.pg_cursor.execute('ROLLBACK')
+            raise e
+
+        # If successful, drop the etl_staging and old table when we're done to save space.
+        self.pg_cursor.execute(f'DROP TABLE {self.staging_schema}.{self.enterprise_dataset_name}')
+        self.pg_cursor.execute(f'DROP TABLE IF EXISTS {table_copy}')
+        self.pg_cursor.execute(f'DROP TABLE IF EXISTS {table_old}')
+        self.pg_cursor.execute('COMMIT')
+
+        # Manually run a vacuum on our tables for database performance
+        self.pg_cursor.execute(f'VACUUM VERBOSE {self.enterprise_schema}.{self.enterprise_dataset_name}')
+        self.pg_cursor.execute('COMMIT')
+
+        # Run a quick select statement to test.
+        select_test_stmt = f'''
+        SELECT * FROM {self.enterprise_schema}.{self.enterprise_dataset_name} LIMIT 1
+        '''
+        self.logger.info("Running select_test_stmt: " + str(select_test_stmt))
+
+        self.pg_cursor.execute(select_test_stmt)
+        result = self.pg_cursor.fetchone()[0]
+        self.logger.info('Result of select test:')
+        self.logger.info(str(result))
+        assert result
+
 
 
     def update_oracle_scn(self):
