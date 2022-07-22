@@ -1,9 +1,9 @@
-import os
-import sys
+import os, sys, signal, time
 import logging
 import click
 import json
 import psycopg2
+import psycopg2.extras
 import cx_Oracle
 import re
 
@@ -39,15 +39,51 @@ class Db2():
         self.m = None
         self.z = None
 
+        # Intercept signals correctly (ctrl+c, docker stop) and cancel queries
+        # reference: https://www.psycopg.org/docs/faq.html#faq-interrupt-query
+        psycopg2.extensions.set_wait_callback(psycopg2.extras.wait_select)
+
+        # Setup our function to catch kill signals so we can gracefully exit.
+        self.signal_catch_setup()
+
+
+    def signal_catch_setup(self):
+        print("DEBUG! Setting up signal catching")
+        # Handle terminations from AWS
+        signal.signal(signal.SIGTERM, self.handleSigTERMKILL)
+        # Handle ctrl+c
+        signal.signal(signal.SIGINT, self.handleSigTERMKILL)
+
+    # Process for gracefully exiting if the batch container is terminated.
+    def handleSigTERMKILL(self, signum, frame):
+        print("application received SIGTERM signal: " + str(signum))
+
+
+        print("Cancelling PG query and closing the connection.")
+        # Get the PID of any currently running queries on our main connection
+        pid = self.conn.get_backend_pid()
+
+        # Must create a new connection in order to cancel
+        cancel_conn = psycopg2.connect(self.libpq_conn_string)
+        cancel_cur = cancel_conn.cursor()
+        cancel_cur.execute(f'SELECT pg_cancel_backend({pid})')
+
+        #self.conn.close()
+        cancel_conn.close()
+
+        print("exiting the container gracefully")
+        sys.exit(signum)
+
+
 
     @property
     def pg_cursor(self):
         if self._pg_cursor is None: 
-            conn = psycopg2.connect(self.libpq_conn_string)
-            assert conn.closed == 0
-            conn.autocommit = False
-            conn.set_session(autocommit=False)
-            self._pg_cursor = conn.cursor()
+            self.conn = psycopg2.connect(self.libpq_conn_string)
+            assert self.conn.closed == 0
+            self.conn.autocommit = False
+            self.conn.set_session(autocommit=False)
+            self._pg_cursor = self.conn.cursor()
         return self._pg_cursor
 
     @property
@@ -348,32 +384,47 @@ class Db2():
         # view/select the data during the execution of the update_stmt.
         #truncate_stmt = f'''TRUNCATE TABLE phl.{self.enterprise_dataset_name}'''
         # DELTE FROM is 'MVCC-safe'.
-        truncate_stmt = f'''DELETE FROM phl.{self.enterprise_dataset_name}'''
 
-        #Update 7/20/22 trying out a table make, insert, and then and rename instead
-        # Will also avoid a DELETE FROM which is transactionally intense vs a DROP or TRUNCATE
+        prod_table = f'{self.enterprise_schema}.{self.enterprise_dataset_name}'
 
-        # Table names for copying stuff around
-        table_copy = f'{self.enterprise_schema}.{self.enterprise_dataset_name+"_COPY_FOR_AIRFLOW"}'
-        table_old = f'{self.enterprise_schema}.{self.enterprise_dataset_name+"_OLD_FOR_AIRFLOW"}'
-        orig_table = f'{self.enterprise_schema}.{self.enterprise_dataset_name}'
-        
-        self.pg_cursor.execute(f'DROP TABLE IF EXISTS {table_copy}')
-        self.pg_cursor.execute(f'DROP TABLE IF EXISTS {table_old}')
-        self.pg_cursor.execute('COMMIT')
+        truncate_stmt = f'''DELETE FROM {prod_table}'''
+
 
         insert_stmt = f'''
-            INSERT INTO {table_copy} ({enterprise_columns_str})
+            INSERT INTO {prod_table} ({enterprise_columns_str})
             SELECT {select_fields}
             FROM {self.staging_schema}.{self.enterprise_dataset_name}
             '''
+        # NOTE: this method of copying from etl_staging into a copy of the table, and then renaming,
+        # does not seem to be faster at all.
+        #
+        # Table names for copying stuff around
+        #table_copy = f'{self.enterprise_schema}.{self.enterprise_dataset_name+"_COPY_FOR_AIRFLOW"}'
+        #table_old = f'{self.enterprise_schema}.{self.enterprise_dataset_name+"_OLD_FOR_AIRFLOW"}'
+        #orig_table = f'{self.enterprise_schema}.{self.enterprise_dataset_name}'
         
+        #self.pg_cursor.execute(f'DROP TABLE IF EXISTS {table_copy}')
+        #self.pg_cursor.execute(f'DROP TABLE IF EXISTS {table_old}')
+        #self.pg_cursor.execute('COMMIT')
+
+        #update_stmt = f'''
+        #    BEGIN;
+        #    -- Create a copy from the enterprise table
+        #    CREATE TABLE {table_copy} (LIKE {orig_table} INCLUDING ALL);
+        #    -- Insert into our table copy from etl_staging
+        #    {insert_stmt};
+        #    -- Swap things around, set orig table to 'old', table_copy to orig.
+        #    ALTER TABLE {orig_table} RENAME TO {self.enterprise_dataset_name+"_OLD_FOR_AIRFLOW"};
+        #    ALTER TABLE {table_copy} RENAME TO {self.enterprise_dataset_name};
+        #    END;
+        #    '''
+
         update_stmt = f'''
             BEGIN;
-            CREATE TABLE {table_copy} (LIKE {orig_table} INCLUDING ALL);
+            -- Truncate our table (won't show until commit) 
+            {truncate_stmt};
+            -- Insert into our table from etl_staging
             {insert_stmt};
-            ALTER TABLE {orig_table} RENAME TO {self.enterprise_dataset_name+"_OLD_FOR_AIRFLOW"};
-            ALTER TABLE {table_copy} RENAME TO {self.enterprise_dataset_name};
             END;
             '''
         self.logger.info("Running update_stmt: " + str(update_stmt))
@@ -392,8 +443,8 @@ class Db2():
 
         # If successful, drop the etl_staging and old table when we're done to save space.
         self.pg_cursor.execute(f'DROP TABLE {self.staging_schema}.{self.enterprise_dataset_name}')
-        self.pg_cursor.execute(f'DROP TABLE IF EXISTS {table_copy}')
-        self.pg_cursor.execute(f'DROP TABLE IF EXISTS {table_old}')
+        #self.pg_cursor.execute(f'DROP TABLE IF EXISTS {table_copy}')
+        #self.pg_cursor.execute(f'DROP TABLE IF EXISTS {table_old}')
         self.pg_cursor.execute('COMMIT')
 
         # Manually run a vacuum on our tables for database performance
