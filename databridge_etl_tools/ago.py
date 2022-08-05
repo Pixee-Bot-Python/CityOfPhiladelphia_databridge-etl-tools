@@ -40,7 +40,7 @@ class AGO():
                  s3_bucket,
                  s3_key,
                  in_srid,
-                 clean_column = None,
+                 clean_columns,
                  **kwargs
                  ):
         self.ago_org_url = ago_org_url
@@ -50,7 +50,7 @@ class AGO():
         self.s3_bucket = s3_bucket
         self.s3_key = s3_key
         self.in_srid = in_srid
-        self.clean_column = clean_column
+        self.clean_columns = kwargs.get('clean_columns', None)
         self.primary_key = kwargs.get('primary_key', None)
         self.proxy_host = kwargs.get('proxy_host', None)
         self.proxy_port = kwargs.get('proxy_port', None)
@@ -228,7 +228,7 @@ class AGO():
         '''
         if self.geometric:
             raise NotImplementedError('Overwrite with CSVs only works for non-spatial datasets (maybe?)')
-        print(vars(self.item))
+        #print(vars(self.item))
         flayer_collection = FeatureLayerCollection.fromitem(self.item)
         # call the overwrite() method which can be accessed using the manager property
         flayer_collection.manager.overwrite(self.csv_path)
@@ -341,8 +341,8 @@ class AGO():
     def format_row(self,row):
         # Clean our designated row of non-utf-8 characters or other undesirables that makes AGO mad.
         # If you pass multiple values separated by a comma, it will perform on multiple colmns
-        if self.clean_column != 'False':
-            for clean_column in self.clean_column.split(','):
+        if self.clean_columns:
+            for clean_column in self.clean_columns.split(','):
                 row[clean_column] = row[clean_column].encode("ascii", "ignore").decode()
                 row[clean_column] = row[clean_column].replace('\'','')
                 row[clean_column] = row[clean_column].replace('"', '')
@@ -369,6 +369,9 @@ class AGO():
 
 
     def append(self, truncate=True):
+        '''
+        Appends rows from our CSV into a matching item in AGO
+        '''
         try:
             rows = etl.fromcsv(self.csv_path, encoding='utf-8')
         except UnicodeError:
@@ -404,7 +407,7 @@ class AGO():
                 row = self.format_row(row)
 
                 adds.append({"attributes": row})
-                if len(adds) % batch_size == 0:
+                if (len(adds) != 0) and (len(adds) % batch_size == 0):
                     self.logger.info(f'Adding batch of {len(adds)}, at row #: {i}...')
                     self.edit_features(rows=adds, method='adds')
                     adds = []
@@ -443,23 +446,14 @@ class AGO():
                                      "y": 'NaN',
                                      "spatial_reference": {"wkid": self.ago_srid[1]}
                                      }
-                        row_to_append = {"attributes": row,
-                                        "geometry": geom_dict
-                                        }
                     elif self.geometric == 'esriGeometryPolyline':
                         geom_dict = {"paths": [],
                                      "spatial_reference": {"wkid": self.ago_srid[1]}
                                      }
-                        row_to_append = {"attributes": row,
-                                         "geometry": geom_dict
-                                         }
                     elif self.geometric == 'esriGeometryPolygon':
                         geom_dict = {"rings": [],
                                      "spatial_reference": {"wkid": self.ago_srid[1]}
                                      }
-                        row_to_append = {"attributes": row,
-                                         "geometry": geom_dict
-                                         }
                     else:
                         raise TypeError(f'Unexpected geomtry type!: {self.geometric}')
                 # For different types we can consult this for the proper json format:
@@ -473,8 +467,6 @@ class AGO():
                                  "y": projected_y,
                                  "spatial_reference": {"wkid": self.ago_srid[1]}
                                  }
-                    row_to_append = {"attributes": row,
-                                     "geometry": geom_dict}
                 elif 'MULTIPOINT' in wkt:
                     raise NotImplementedError("MULTIPOINTs not implemented yet..")
                 elif 'MULTIPOLYGON' in wkt:
@@ -482,29 +474,25 @@ class AGO():
                     geom_dict = {"rings": rings,
                                  "spatial_reference": {"wkid": self.ago_srid[1]}
                                  }
-                    row_to_append = {"attributes": row,
-                                     "geometry": geom_dict
-                                     }
                 elif 'POLYGON' in wkt:
                     #xlist, ylist = return_coords_only(wkt)
                     ring = self.project_and_format_shape(wkt)
                     geom_dict = {"rings": [ring],
                                  "spatial_reference": {"wkid": self.ago_srid[1]}
                                  }
-                    row_to_append = {"attributes": row,
-                                     "geometry": geom_dict
-                                     }
                 elif 'LINESTRING' in wkt:
                     paths = self.project_and_format_shape(wkt)
                     geom_dict = {"paths": [paths],
                                  "spatial_reference": {"wkid": self.ago_srid[1]}
                                  }
-                    row_to_append = {"attributes": row,
-                                     "geometry": geom_dict
-                                     }
-                adds.append(row_to_append)
 
-                if len(adds) % batch_size == 0:
+                # Create our formatted row after geometric stuff
+                formatted_row = {"attributes": row,
+                                 "geometry": geom_dict
+                                 }
+                adds.append(formatted_row)
+
+                if (len(adds) != 0) and (len(adds) % batch_size == 0):
                     self.logger.info(f'Adding batch of {len(adds)}, at row #: {i+1}...')
                     start = time()
                     #self.add_features(adds, i)
@@ -543,6 +531,7 @@ class AGO():
         1. A reported rollback from AGO (1003) and try one more time,
         2. An AGO timeout, which can still be successful which we'll verify with a row count.
         '''
+        assert rows
 
         def is_rolled_back(result):
             '''
@@ -553,7 +542,11 @@ class AGO():
             '''
             if result is None:
                 print('Returned result object is None? In cases like this the append seems to fail completely, possibly from bad encoding. Retrying.')
-                print(f'Example row from this batch: {rows[0]}')
+                try:
+                    print(f'Example row from this batch: {rows[0]}')
+                except IndexError as e:
+                    print(f'Rows not of expected format??? type: {type(rows)}, printed: {rows}')
+                    raise e
                 print(f'Returned object: {pprint(result)}')
                 return True
             elif result["addResults"] is None:
@@ -719,117 +712,300 @@ class AGO():
 
 
     def upsert(self):
-        '''This is unfinished. Got stuck with getting rows based on the primary key.'''
-        raise NotImplementedError
+        '''
+        Upserts rows from a CSV into a matching AGO item. The upsert works by first taking a unique primary key
+        and searching in AGO for that. If the row exists in AGO, it will get the AGO objectid. We then take our
+        updated row, and switch out the objectid for the AGO objectid.
 
-        count = self.layer_object.query(return_count_only=True)
+        Then using the AGO API "edit_features", we pass the rows as "updates", and AGO should know what rows to
+        update based on the matching objectid. The CSV objectid is ignored (which is also true for appends actually).
 
-        # Setup our data types to use when importing our CSV into a pandas dataframe
-        # If they're not setup properly we cannot do an inner join to find overlapping rows
-        # Note: specifically if we have a conflict between like strs and ints it'll fail.
-        # But we seem to be fine just setting datetime and geometry fields to 'str.
+        For new rows, it will pass them as "adds" into the edit_features api, and they'll be appended into the ago item.
+        '''
+        # Assert we got a primary_key passed and it's not None.
+        assert self.primary_key
 
-        # First get a query back in order to get a dataframes object
-        # Because dataframes intelligently guesses at dataframe types, grab a bunch.
-        initial_query = self.layer_object.query(where='OBJECTID >= 0 AND OBJECTID <= 3000')
-        ago_dtypes = initial_query.sdf.dtypes.to_dict()
-        ago_dtypes = {k.lower(): v for k, v in ago_dtypes.items()}
-        #ago_dtypes['shape'] = features.geo._array.GeoType
-        # set the shape to a str, the type ArcGIS puts on it is not compatible with an inner join.
-        ago_dtypes['shape'] = 'str'
-        # Remove these ago specific dtypes, these columns won't be in the CSV
-        if 'Shape__Area' in ago_dtypes.keys():
-            ago_dtypes.pop('Shape__Area')
-        if 'Shape__Length' in ago_dtypes.keys():
-            ago_dtypes.pop('Shape__Length')
+        try:
+            rows = etl.fromcsv(self.csv_path, encoding='utf-8')
+        except UnicodeError:
+            logger.info("Exception encountered trying to import rows wtih utf-8 encoding, trying latin-1...")
+            rows = etl.fromcsv(self.csv_path, encoding='latin-1')
+        # Compare headers in the csv file vs the fields in the ago item.
+        # If the names don't match and we were to upload to AGO anyway, AGO will not actually do
+        # anything with our rows but won't tell us anything is wrong!
+        self.logger.info(f'Comparing AGO fields: "{self.item_fields}" and CSV fields: "{rows.fieldnames()}"')
+        row_differences = set(self.item_fields) - set(rows.fieldnames())
+        if row_differences:
+            # Ignore differences if it's just objectid.
+            if 'objectid' in row_differences and len(row_differences) == 1:
+                pass
+            elif 'esri_oid' in row_differences and len(row_differences) == 1:
+                pass
+            else:
+                print(f'Row differences found!: {row_differences}')
+                assert self.item_fields == rows.fieldnames()
+        self.logger.info('Fields are the same! Continuing.\n')
 
-        # also just set datetimes to strs
-        for k,v in ago_dtypes.items():
-            if 'datetime' in str(v):
-                ago_dtypes[k] = 'str'
+        self._num_rows_in_upload_file = rows.nrows()
+        row_dicts = rows.dicts()
+        adds = []
+        updates = []
+        batch_size = 2000
+        if not self.geometric:
+            for i, row in enumerate(row_dicts):
+                # We need an OBJECTID in our row for upserting. Assert that we have that, bomb out if we don't
+                assert row['objectid']
 
-        csv_sdf = pd.read_csv(self.csv_path, encoding='utf-8', dtype=ago_dtypes)
-        self.logger.info(f'Pandas verbose info on CSV df: \n{csv_sdf.info(verbose=False)} \n')
-  
-        # Chunk into steps based on AGO count
-        # round up steps to a whole number without importing math:
-        steps = int(count / 1000) + (count % 1000 > 0)
-        remainder = count % 1000
+                # clean up row and perform basic non-geometric transformations
+                row = self.format_row(row)
+
+                # Figure out if row exists in AGO, and what it's object ID is.
+                row_primary_key = row[self.primary_key]
+                wherequery = f"{self.primary_key} = {row_primary_key}"
+                #print(f'DEBUG! wherequery: {wherequery}')
+                ago_row = self.query_features(wherequery=wherequery)
+
+                # Should be length 0 or 1
+                if len(ago_row.sdf) > 1:
+                    raise AssertionError(f'Should have only gotten 1 or 0 rows from AGO! Instead we got: {len(ago_row.sdf)}')
+
+                # If our row is in AGO, then we need the objectid for the upsert/update
+                if not ago_row.sdf.empty:
+                    ago_objectid = ago_row.sdf.iloc[0]['OBJECTID']
+                else:
+                    #print(f'DEBUG! ago_row is empty?: {ago_row}')
+                    print(ago_row.sdf)
+                    ago_objectid = False
+
+                #print(f'DEBUG! ago_objectid: {ago_objectid}')
+    
+                # Reassign the objectid or assign it to match the row in AGO. This will
+                # make it work with AGO's 'updates' endpoint and work like an upsert.
+                row['objectid'] = ago_objectid
+
+                # If we didn't get anything back from AGO, then we can simply append our row
+                if ago_row.sdf.empty:
+                    adds.append({"attributes": row})
+
+                # If we did get something back from AGO, then we're upserting our row
+                if ago_objectid:
+                    updates.append({"attributes": row})
+
+                if (len(adds) != 0) and (len(adds) % batch_size == 0):
+                    self.logger.info(f'(non geometric) Adding batch of appends, {len(adds)}, at row #: {i}...')
+                    self.edit_features(rows=adds, method='adds')
+                    adds = []
+                if (len(updates) != 0) and (len(adds) % batch_size == 0):
+                    self.logger.info(f'(non geometric) Adding batch of updates {len(updates)}, at row #: {i}...')
+                    self.edit_features(rows=updates, method='updates')
+                    updates = []
+            if adds:
+                self.logger.info(f'(non geometric) Adding last batch of appends, {len(adds)}, at row #: {i}...')
+                self.edit_features(rows=adds, method='adds')
+            if updates:
+                self.logger.info(f'(non geometric) Adding last batch of updates, {len(updates)}, at row #: {i}...')
+                self.edit_features(rows=updates, method='updates')
+
+        elif self.geometric:
+            for i, row in enumerate(row_dicts):
+                # We need an OBJECTID in our row for upserting. Assert that we have that, bomb out if we don't
+                assert row['objectid']
+
+                # clean up row and perform basic non-geometric transformations
+                row = self.format_row(row)
+
+                # Figure out if row exists in AGO, and what it's object ID is.
+                row_primary_key = row[self.primary_key]
+                wherequery = f"{self.primary_key} = {row_primary_key}"
+                #print(f'DEBUG! wherequery: {wherequery}')
+                ago_row = self.query_features(wherequery=wherequery)
+
+                # Should be length 0 or 1
+                if len(ago_row.sdf) > 1:
+                    raise AssertionError(f'Should have only gotten 1 or 0 rows from AGO! Instead we got: {len(ago_row.sdf)}')
+
+                # If our row is in AGO, then we need the objectid for the upsert/update
+                if not ago_row.sdf.empty:
+                    ago_objectid = ago_row.sdf.iloc[0]['OBJECTID']
+                else:
+                    ago_objectid = False
+
+                #print(f'DEBUG! ago_objectid: {ago_objectid}')
+    
+                # Reassign the objectid or assign it to match the row in AGO. This will
+                # make it work with AGO's 'updates' endpoint and work like an upsert.
+                row['objectid'] = ago_objectid
+
+                # remove the shape field so we can replace it with SHAPE with the spatial reference key
+                # and also store in 'wkt' var (well known text) so we can project it
+                wkt = row.pop('shape')
+
+                # if the wkt is not empty, and SRID isn't in it, fail out.
+                # empty geometries come in with some whitespace, so test truthiness
+                # after stripping whitespace.
+                if 'SRID=' not in wkt and bool(wkt.strip()) is False and (not self.in_srid):
+                    raise AssertionError("Receieved a row with blank geometry, you need to pass an --in_srid so we know if we need to project!")
+                if 'SRID=' not in wkt and bool(wkt.strip()) is True and (not self.in_srid):
+                    raise AssertionError("SRID not found in shape row! Please export your dataset with 'geom_with_srid=True'.")
+
+                if (not self.in_srid) and 'SRID=' in wkt:
+                    print('Getting SRID from csv...')
+                    self.in_srid = wkt.split(';')[0].strip("SRID=")
+
+                # Get just the WKT from the shape, remove SRID after we extract it
+                if 'SRID=' in wkt:
+                    wkt = wkt.split(';')[1]
+
+                # If the geometry cell is blank, properly pass a NaN or empty value to indicate so.
+                if not (bool(wkt.strip())):
+                    if self.geometric == 'esriGeometryPoint':
+                        geom_dict = {"x": 'NaN',
+                                     "y": 'NaN',
+                                     "spatial_reference": {"wkid": self.ago_srid[1]}
+                                     }
+                    elif self.geometric == 'esriGeometryPolyline':
+                        geom_dict = {"paths": [],
+                                     "spatial_reference": {"wkid": self.ago_srid[1]}
+                                     }
+                    elif self.geometric == 'esriGeometryPolygon':
+                        geom_dict = {"rings": [],
+                                     "spatial_reference": {"wkid": self.ago_srid[1]}
+                                     }
+                    else:
+                        raise TypeError(f'Unexpected geomtry type!: {self.geometric}')
+                # For different types we can consult this for the proper json format:
+                # https://developers.arcgis.com/documentation/common-data-types/geometry-objects.htm
+                if 'POINT' in wkt:
+                    projected_x, projected_y = self.project_and_format_shape(wkt)
+                    # Format our row, following the docs on this one, see section "In [18]":
+                    # https://developers.arcgis.com/python/sample-notebooks/updating-features-in-a-feature-layer/
+                    # create our formatted point geometry
+                    geom_dict = {"x": projected_x,
+                                 "y": projected_y,
+                                 "spatial_reference": {"wkid": self.ago_srid[1]}
+                                 }
+                elif 'MULTIPOINT' in wkt:
+                    raise NotImplementedError("MULTIPOINTs not implemented yet..")
+                elif 'MULTIPOLYGON' in wkt:
+                    rings = self.project_and_format_shape(wkt)
+                    geom_dict = {"rings": rings,
+                                 "spatial_reference": {"wkid": self.ago_srid[1]}
+                                 }
+                elif 'POLYGON' in wkt:
+                    #xlist, ylist = return_coords_only(wkt)
+                    ring = self.project_and_format_shape(wkt)
+                    geom_dict = {"rings": [ring],
+                                 "spatial_reference": {"wkid": self.ago_srid[1]}
+                                 }
+                elif 'LINESTRING' in wkt:
+                    paths = self.project_and_format_shape(wkt)
+                    geom_dict = {"paths": [paths],
+                                 "spatial_reference": {"wkid": self.ago_srid[1]}
+                                 }
+
+                # Once we're done our shape stuff, put our row into it's final format
+                formatted_row = {"attributes": row,
+                                 "geometry": geom_dict
+                                 }
+                ##################################
+                # END geometry handling
+                ##################################
+
+                # If we didn't get anything back from AGO, then we can simply append our row
+                if ago_row.sdf.empty:
+                    adds.append(formatted_row)
+
+                # If we did get something back from AGO, then we're upserting our row
+                if ago_objectid:
+                    updates.append(formatted_row)
+
+                if (len(adds) != 0) and (len(adds) % batch_size == 0):
+                    self.logger.info(f'Adding batch of appends, {len(adds)}, at row #: {i+1}...')
+                    start = time()
+                    #self.add_features(adds, i)
+
+                    split_batches = np.array_split(adds,2)
+                    # Where we actually append the rows to the dataset in AGO
+                    t1 = Thread(target=self.edit_features,
+                                args=(list(split_batches[0]), 'adds'))
+                    t2 = Thread(target=self.edit_features,
+                                args=(list(split_batches[1]), 'adds'))
+                    t1.start()
+                    t2.start()
+
+                    t1.join()
+                    t2.join()
+                    adds = []
+                    print(f'Duration: {time() - start}\n')
+
+                if (len(updates) != 0) and (len(updates) % batch_size == 0):
+                    self.logger.info(f'Adding batch of updates, {len(adds)}, at row #: {i+1}...')
+                    start = time()
+                    #self.add_features(adds, i)
+
+                    split_batches = np.array_split(updates,2)
+                    # Where we actually append the rows to the dataset in AGO
+                    t1 = Thread(target=self.edit_features,
+                                args=(list(split_batches[0]), 'updates'))
+                    t2 = Thread(target=self.edit_features,
+                                args=(list(split_batches[1]), 'updates'))
+                    t1.start()
+                    t2.start()
+
+                    t1.join()
+                    t2.join()
+                    updates = []
+                    print(f'Duration: {time() - start}\n')
+            # add leftover rows outside the loop if they don't add up to 4000
+            if adds:
+                start = time()
+                self.logger.info(f'Adding last batch of appends, {len(adds)}, at row #: {i+1}...')
+                self.edit_features(rows=adds, method='adds')
+                print(f'Duration: {time() - start}')
+            if updates:
+                start = time()
+                self.logger.info(f'Adding last batch of updates, {len(updates)}, at row #: {i+1}...')
+                self.edit_features(rows=updates, method='updates')
+                print(f'Duration: {time() - start}')
+
+        ago_count = self.layer_object.query(return_count_only=True)
+        self.logger.info(f'count after batch adds: {str(ago_count)}')
+        assert ago_count != 0
 
 
-        # Iterate over our CSV pandas dataframe
-        features_for_update = []
-        new_rows = []
-        deleted_rows = []
-        #for i in range(1,steps+1):
-        for i,row in csv_sdf.iterrows():
-            upper = i * 1000
-            lower = upper - 999
-            primary_key_to_find = csv_sdf.attributes[self.primary_key.lower()]
-            #wherequery = f'OBJECTID >= {lower} AND OBJECTID <= {upper}'
-            wherequery = f'{self.primary_key.upper()} = {primary_key_to_find}'
-            self.logger.info(wherequery)
-            
-            # Get our hopefully matching row
-            ago_row = self.layer_object.query(where=wherequery)
-            self.logger.info(f'Pandas verbose info on AGO df: \n{ago_batch.sdf.info(verbose=False)} \n')
-            # Identify overlapping rows
-            overlap_rows = pd.merge(
-                                left=ago_batch.sdf,
-                                right=csv_sdf,
-                                how='inner',
-                                left_on=self.primary_key.upper(),
-                                right_on=self.primary_key.lower()
-                                )
-
-            if overlap_rows.empty is True:
-                self.logger.info('Matching row for CSV not found in CSV! Must be new?')
-                self.logger.info(f'Primary key of row: {row.attributes[primary_key.lower()]}')
-
-            # get the feature to be updated
-            original_feature = [f for f in ago_batch.features if f.attributes[self.primary_key.upper()] == pkey][0]
-            feature_to_be_updated = deepcopy(original_feature)
-
-            # get the matching row from csv
-            matching_row = csv_sdf.where(csv_sdf[self.primary_key.lower()] == pkey).dropna()
-
-            if matching_row.empty is True:
-                self.logger.info('Matching row from AGO not found in CSV! Is it deleted?')
-                self.logger.info(f'Primary key of row: {original_feature.attributes[primary_key.upper()]}')
-                #self.add_features(adds, i, method='deletes')
-                continue
-
-            if self.geometric:
-                if len(matching_row['shape'][0]) > 1:
-                    raise('Error! This is unexpected, more than 1 item in the shape value of the matching row.')
-
-                # Convert the geometry into the proper format for AGO
-                try:
-                    converted_geometry = self.convert_geometry(matching_row['shape'][0])
-                except Exception as e:
-                    self.logger.info('Geometry is empty in this row...')
-                    converted_geometry = None
-                feature_to_be_updated.geometry = converted_geometry
-
-                # Pop the SHAPE column out, not needed since it's in "geometry"
-                feature_to_be_updated.attributes.pop('SHAPE')
-                for attr in feature_to_be_updated.attributes:
-                    feature_to_be_updated[attr] = matching_row[attr]
-
-                self.logger.info(feature_to_be_updated)
-            #self.add_features(adds, i*1000, method='updates')
-            #features_for_update = []
-
-
-
-
-        # Loop over the last leftover rows
-        lower = count - remainder
-        upper = count
-        wherequery = f'OBJECTID >= {lower} AND OBJECTID <= {upper}'
-        ago_batch = self.layer_object.query(where=wherequery)
-
-
+    # Wrapped AGO function in a retry while loop because AGO is very unreliable.
+    def query_features(self, wherequery=None, outstats=None):
+        count = 0
+        while True:
+            if count > 5:
+                raise RuntimeError("AGO keeps failing on our query!")
+            try:
+                # outstats is used for grabbing the MAX value of updated_datetime.
+                if outstats:
+                    output = self.layer_object.query(outStatistics=outstats, outFields='*')
+                elif wherequery:
+                    output = self.layer_object.query(where=wherequery)
+                return output
+            except RuntimeError as e:
+                if 'request has timed out' in str(e):
+                    print(f'Request timed out, retrying. Error: {str(e)}')
+                    count += 1
+                    sleep(5)
+                    continue
+                # Ambiguous mysterious error returned to us sometimes1
+                if 'Unable to perform query' in str(e):
+                    print(f'Dumb error received, retrying. Error: {str(e)}')
+                    count += 1
+                    sleep(5)
+                    continue
+                # Gateway error recieved, sleep for a bit longer.
+                if '502' in str(e):
+                    print(f'502 Gateway error received, retrying. Error: {str(e)}')
+                    count += 1
+                    sleep(15)
+                    continue
+                else:
+                    raise e
 
 
 
