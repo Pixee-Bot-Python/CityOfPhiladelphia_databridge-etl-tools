@@ -22,7 +22,8 @@ def ago():
         ago_pw=AGO_PW,
         s3_bucket=S3_BUCKET,
         s3_key=S3_KEY,
-        in_srid=IN_SRID
+        in_srid=IN_SRID,
+        clean_columns=None,
     )
     return ago_client
 

@@ -19,7 +19,8 @@ def postgres():
         connection_string=CONNECTION_STRING,
         s3_bucket=S3_BUCKET,
         json_schema_s3_key=JSON_SCHEMA_S3_KEY,
-        s3_key=S3_KEY
+        s3_key=S3_KEY,
+        with_srid=True
     )
     return postgres_client
 

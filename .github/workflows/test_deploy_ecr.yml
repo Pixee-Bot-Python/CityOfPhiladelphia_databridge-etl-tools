@@ -65,7 +65,7 @@ jobs:
         AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
     - name: Start docker container and run pytests
-      run: docker run --rm --name dbtools airflow-dbtools-testing pytest -v tests
+      run: docker run --rm --name dbtools airflow-dbtools-testing pytest -vvv -ra --disable-warnings --showlocals --tb=native tests
 
     # https://github.com/aws-actions/amazon-ecr-login
     - name: Login to Amazon ECR
