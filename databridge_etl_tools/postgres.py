@@ -54,6 +54,7 @@ class Postgres():
                  s3_bucket, 
                  json_schema_s3_key, 
                  s3_key,
+                 with_srid,
                  geom_field=None,
                  geom_type=None):
         self.table_name = table_name
@@ -62,6 +63,7 @@ class Postgres():
         self.s3_bucket = s3_bucket
         self.json_schema_s3_key = json_schema_s3_key
         self.s3_key = s3_key
+        self.with_srid = with_srid
         self.geom_field = geom_field
         self.geom_type = geom_type
 
@@ -518,7 +520,10 @@ class Postgres():
         if result is None:
             raise AssertionError(f'Table does not exist in this DB: {self.table_schema}.{self.table_name}!')
 
-        rows = etl.frompostgis(self.conn, self.table_schema_name, geom_with_srid=True)
+        if self.with_srid is True:
+            rows = etl.frompostgis(self.conn, self.table_schema_name, geom_with_srid=True)
+        else:
+            rows = etl.frompostgis(self.conn, self.table_schema_name, geom_with_srid=False)
 
         # Dump to our CSV temp file
         print('Extracting csv...')

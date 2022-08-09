@@ -76,7 +76,11 @@ def postgres_load(table_name, table_schema, connection_string, s3_bucket, json_s
 @click.option('--s3_bucket')
 @click.option('--json_schema_s3_key', default=None, required=False)
 @click.option('--s3_key')
-def postgres_extract(table_name, table_schema, connection_string, s3_bucket, json_schema_s3_key, s3_key):
+@click.option('--with_srid', default=True, required=False,
+        help='''Likely only needed for certain views. This
+        controls whether the geopetl frompostgis() function exports with geom_with_srid. That wont work
+        for some views so just export without.''')
+def postgres_extract(table_name, table_schema, connection_string, s3_bucket, json_schema_s3_key, s3_key, with_srid):
     """Extracts data from a postgres table into a CSV file in S3. Has spatial and SRID detection
     and will output it in a way that the ago append commands will recognize."""
     postgres = Postgres(
@@ -85,7 +89,8 @@ def postgres_extract(table_name, table_schema, connection_string, s3_bucket, jso
         connection_string=connection_string,
         s3_bucket=s3_bucket,
         json_schema_s3_key=json_schema_s3_key,
-        s3_key=s3_key)
+        s3_key=s3_key,
+        with_srid=with_srid)
     postgres.extract()
 
 
