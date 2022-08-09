@@ -77,7 +77,6 @@ class Oracle():
             for i, line in enumerate(infile):
                 if i >= 500:
                     break
-                print(line)
                 for char in line:
                     #if char == '\0' or char == u'\xa0' or char == b'\xc2\xa0':
                     if char == '\0' or char == u'\xa0':
