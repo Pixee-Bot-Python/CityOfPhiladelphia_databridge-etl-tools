@@ -55,17 +55,17 @@ def cartoupdate(table_name, connection_string, s3_bucket, json_schema_s3_key, s3
 @click.option('--table_schema')
 @click.option('--connection_string')
 @click.option('--s3_bucket')
-@click.option('--json_schema_s3_key')
 @click.option('--s3_key')
-def postgres_load(table_name, table_schema, connection_string, s3_bucket, json_schema_s3_key, s3_key):
+@click.option('--json_schema_s3_key', default=None, required=False)
+def postgres_load(table_name, table_schema, connection_string, s3_bucket, s3_key, json_schema_s3_key=None):
     """Loads a dataset from postgresql into a CSV file in S3"""
     postgres = Postgres(
         table_name=table_name,
         table_schema=table_schema,
         connection_string=connection_string,
         s3_bucket=s3_bucket,
-        json_schema_s3_key=json_schema_s3_key,
-        s3_key=s3_key)
+        s3_key=s3_key,
+        json_schema_s3_key=json_schema_s3_key)
     postgres.load()
 
 
@@ -74,13 +74,13 @@ def postgres_load(table_name, table_schema, connection_string, s3_bucket, json_s
 @click.option('--table_schema')
 @click.option('--connection_string')
 @click.option('--s3_bucket')
-@click.option('--json_schema_s3_key', default=None, required=False)
 @click.option('--s3_key')
+@click.option('--json_schema_s3_key', default=None, required=False)
 @click.option('--with_srid', default=True, required=False,
         help='''Likely only needed for certain views. This
         controls whether the geopetl frompostgis() function exports with geom_with_srid. That wont work
         for some views so just export without.''')
-def postgres_extract(table_name, table_schema, connection_string, s3_bucket, json_schema_s3_key, s3_key, with_srid):
+def postgres_extract(table_name, table_schema, connection_string, s3_bucket, s3_key, json_schema_s3_key=None, with_srid=None):
     """Extracts data from a postgres table into a CSV file in S3. Has spatial and SRID detection
     and will output it in a way that the ago append commands will recognize."""
     postgres = Postgres(
@@ -88,8 +88,8 @@ def postgres_extract(table_name, table_schema, connection_string, s3_bucket, jso
         table_schema=table_schema,
         connection_string=connection_string,
         s3_bucket=s3_bucket,
-        json_schema_s3_key=json_schema_s3_key,
         s3_key=s3_key,
+        json_schema_s3_key=json_schema_s3_key,
         with_srid=with_srid)
     postgres.extract()
 
@@ -107,7 +107,7 @@ def postgres_extract(table_name, table_schema, connection_string, s3_bucket, jso
             help='The SRID of the source datasets geometry features.')
 @click.option('--clean_columns', type=click.STRING, default=False, required=False,
             help='Column, or comma separated list of column names to clean of AGO invalid characters.')
-def ago_truncate_append(ago_org_url, ago_user, ago_pw, ago_item_name, s3_bucket, s3_key, in_srid, clean_columns):
+def ago_truncate_append(ago_org_url, ago_user, ago_pw, ago_item_name, s3_bucket, s3_key, in_srid=None, clean_columns=None):
     """Truncates a dataset in AGO and appends to it from a CSV. CSV needs to be made
     from the postgres-extract command."""
     ago = AGO(
@@ -136,7 +136,7 @@ def ago_truncate_append(ago_org_url, ago_user, ago_pw, ago_item_name, s3_bucket,
             help='The SRID of the source datasets geometry features.')
 @click.option('--clean_columns', type=click.STRING, default=False, required=False,
             help='Column, or comma separated list of column names to clean of AGO invalid characters.')
-def ago_append(ago_org_url, ago_user, ago_pw, ago_item_name, s3_bucket, s3_key, in_srid, clean_columns):
+def ago_append(ago_org_url, ago_user, ago_pw, ago_item_name, s3_bucket, s3_key, in_srid=None, clean_columns=None):
     """Appends records to AGO without truncating. NOTE that this is NOT an upsert 
     and will absolutely duplicate rows if you run this multiple times."""
     ago = AGO(
@@ -164,7 +164,7 @@ def ago_append(ago_org_url, ago_user, ago_pw, ago_item_name, s3_bucket, s3_key, 
             help='The SRID of the source datasets geometry features.')
 @click.option('--clean_columns', type=click.STRING, default=False, required=False,
             help='Column, or comma separated list of column names to clean of AGO invalid characters.')
-def ago_upsert(ago_org_url, ago_user, ago_pw, ago_item_name, s3_bucket, s3_key, primary_key, in_srid, clean_columns):
+def ago_upsert(ago_org_url, ago_user, ago_pw, ago_item_name, s3_bucket, s3_key, primary_key, in_srid=None, clean_columns=None):
     """Upserts records to AGO, requires a primary key. Upserts the entire CSV
     into AGO, it does not look for changes or differences."""
     ago = AGO(

@@ -39,8 +39,6 @@ class AGO():
                  ago_item_name,
                  s3_bucket,
                  s3_key,
-                 in_srid,
-                 clean_columns,
                  **kwargs
                  ):
         self.ago_org_url = ago_org_url
@@ -49,7 +47,7 @@ class AGO():
         self.item_name = ago_item_name
         self.s3_bucket = s3_bucket
         self.s3_key = s3_key
-        self.in_srid = in_srid
+        self.in_srid = kwargs.get('in_srid', None)
         self.clean_columns = kwargs.get('clean_columns', None)
         self.primary_key = kwargs.get('primary_key', None)
         self.proxy_host = kwargs.get('proxy_host', None)

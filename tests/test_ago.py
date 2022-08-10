@@ -5,12 +5,12 @@ from databridge_etl_tools.ago import AGO
 import boto3
 
 
-AGO_ORG_URL        = 'phl.maps.arcgis.com'
+AGO_ORG_URL         = 'phl.maps.arcgis.com'
 AGO_ITEM_NAME       = 'mock_item_name'
 AGO_USER            = 'auser'
 AGO_PW              = 'password'
-S3_KEY         = 'csv.csv'
-S3_BUCKET             = 'airflow-testing-v2'
+S3_KEY              = 'csv.csv'
+S3_BUCKET           = 'airflow-testing-v2'
 IN_SRID             = 2272
 
 @pytest.fixture
@@ -22,8 +22,7 @@ def ago():
         ago_pw=AGO_PW,
         s3_bucket=S3_BUCKET,
         s3_key=S3_KEY,
-        in_srid=IN_SRID,
-        clean_columns=None,
+        in_srid=IN_SRID
     )
     return ago_client
 

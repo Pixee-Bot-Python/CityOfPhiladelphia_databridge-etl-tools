@@ -52,20 +52,17 @@ class Postgres():
                  table_schema, 
                  connection_string, 
                  s3_bucket, 
-                 json_schema_s3_key, 
                  s3_key,
-                 with_srid,
-                 geom_field=None,
-                 geom_type=None):
+                 **kwargs):
         self.table_name = table_name
         self.table_schema = table_schema
         self.connection_string = connection_string
         self.s3_bucket = s3_bucket
-        self.json_schema_s3_key = json_schema_s3_key
         self.s3_key = s3_key
-        self.with_srid = with_srid
-        self.geom_field = geom_field
-        self.geom_type = geom_type
+        self.json_schema_s3_key = kwargs.get('json_schema_s3_key', None)
+        self.geom_field = kwargs.get('geom_field', None)
+        self.geom_type = kwargs.get('geom_type', None)
+        self.with_srid = kwargs.get('with_srid', None)
 
     @property
     def table_schema_name(self):
