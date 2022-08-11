@@ -335,19 +335,21 @@ class Db2():
         print('oid_column: ' + str(oid_column))
         if oid_column:
             enterprise_columns.remove(oid_column)
-            enterprise_columns.append(oid_column)
+            # Actually don't add it back because our new method does not use objectid in the insert.
+            #enterprise_columns.append(oid_column)
 
         # Metadata column added into postgres tables by arc programs, not needed.
         if 'gdb_geomattr_data' in enterprise_columns:
             enterprise_columns.remove('gdb_geomattr_data')
+
 
         # Get our enterprise columns which we'll use for our insert statement below
         enterprise_columns_str = ', '.join(enterprise_columns)
         staging_columns = enterprise_columns
         # Remove objectid (or whatever it is) the value we'll insert will be next_rowid('{table_schema}', '{table_name}')'
         print('staging_columns: ' + str(staging_columns))
-        if oid_column:
-            staging_columns.remove(oid_column)
+        #if oid_column:
+        #    staging_columns.remove(oid_column)
         staging_columns_str = ', '.join(staging_columns)
 
 
@@ -380,9 +382,12 @@ class Db2():
 
 
         # Fields to select from staging
-        select_fields = f'''
-        {staging_columns_str}''' if not oid_column else f'''{staging_columns_str}''' + f''', next_rowid('{self.enterprise_schema}', '{self.enterprise_dataset_name}')
-        '''
+        # Actually don't use next_rowid as our new method does not need it.
+        #select_fields = f'''
+        #{staging_columns_str}''' if not oid_column else f'''{staging_columns_str}''' + f''', next_rowid('{self.enterprise_schema}', '{self.enterprise_dataset_name}')
+        #'''
+        select_fields = staging_columns_str
+
         ###############
         # Truncate is not 'MVCC-safe', which means concurrent select transactions will not be able to
         # view/select the data during the execution of the update_stmt.
