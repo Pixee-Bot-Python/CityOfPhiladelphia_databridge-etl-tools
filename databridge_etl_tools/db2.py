@@ -363,6 +363,10 @@ class Db2():
         self.pg_cursor.execute(reg_stmt)
         reg_id = self.pg_cursor.fetchone()[0]
 
+        row_count_stmt=f'select count(*) from {self.staging_schema}.{self.enterprise_dataset_name}'
+        self.pg_cursor.execute(row_count_stmt)
+        row_count = self.pg_cursor.fetchone()[0]
+
 
         # Reset what the objectid field will start incrementing from.
         reset_stmt=f'''
@@ -427,13 +431,37 @@ class Db2():
             {insert_stmt};
             END;
             '''
-        self.logger.info("Running update_stmt: " + str(update_stmt))
+
+        new_update_stmt = f'''
+        BEGIN;
+
+            -- Drop our ESRI objectid column so we can insert without any overhead from the objectid column doing stuff
+            ALTER TABLE {prod_table} DROP COLUMN objectid;
+
+            -- Truncate our table (won't show until commit) 
+            {truncate_stmt};
+            -- Our delete and insert from etl_staging statement.
+            {insert_stmt};
+
+            -- Recreate it as an autoincrementer SERIAL column, it is much much faster,
+            -- and the values will get populated automagically.
+            ALTER TABLE {prod_table} ADD objectid serial NOT NULL;
+
+            -- Set these vals to our row_count so ESRIs next_rowid() increments without collisions
+            UPDATE phl.i{reg_id} SET base_id={row_count + 1}, last_id={row_count} WHERE id_type = 2;
+
+            -- Set back to the ESRI objectid data type.
+            ALTER TABLE {prod_table} ALTER COLUMN objectid TYPE int4;
+
+        END;
+        '''
+        self.logger.info("Running update_stmt: " + str(new_update_stmt))
         try:
             #####################
             # The big cahooney, run our large delete and insert statement which won't
             # show any differences until we commit.
             #####################
-            self.pg_cursor.execute(update_stmt)
+            self.pg_cursor.execute(new_update_stmt)
             self.pg_cursor.execute('COMMIT')
             #####################
         except psycopg2.Error as e:
