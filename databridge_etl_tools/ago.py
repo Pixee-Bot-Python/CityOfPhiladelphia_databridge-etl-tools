@@ -591,15 +591,20 @@ class AGO():
                     sleep(5)
                     continue
                 if 'Unable to perform query' in str(e):
-                    print(f'Dumb error received, retrying. Error: {str(e)}')
+                    print(f'"Unable to perform query" error received, retrying. Error: {str(e)}')
                     count += 1
-                    sleep(5)
+                    sleep(20)
                     continue
                 # Gateway error recieved, sleep for a bit longer.
                 if '502' in str(e):
                     print(f'502 Gateway error received, retrying. Error: {str(e)}')
                     count += 1
-                    sleep(15)
+                    sleep(20)
+                    continue
+                if '503' in str(e):
+                    print(f'503 Service Unavailable received, retrying. Error: {str(e)}')
+                    count += 1
+                    sleep(20)
                     continue
                 else:
                     raise e
@@ -621,15 +626,20 @@ class AGO():
                         sleep(5)
                         continue
                     if 'Unable to perform query' in str(e):
-                        print(f'Dumb error received, retrying. Error: {str(e)}')
+                        print(f'"Unable to perform query" error received, retrying. Error: {str(e)}')
                         count += 1
-                        sleep(5)
+                        sleep(20)
                         continue
                     # Gateway error recieved, sleep for a bit longer.
                     if '502' in str(e):
                         print(f'502 Gateway error received, retrying. Error: {str(e)}')
                         count += 1
-                        sleep(15)
+                        sleep(20)
+                        continue
+                    if '503' in str(e):
+                        print(f'503 Service Unavailable received, retrying. Error: {str(e)}')
+                        count += 1
+                        sleep(20)
                         continue
                     else:
                         raise e
@@ -992,15 +1002,20 @@ class AGO():
                     continue
                 # Ambiguous mysterious error returned to us sometimes1
                 if 'Unable to perform query' in str(e):
-                    print(f'Dumb error received, retrying. Error: {str(e)}')
+                    print(f'"Unable to perform query" error received, retrying. Error: {str(e)}')
                     count += 1
-                    sleep(5)
+                    sleep(20)
                     continue
                 # Gateway error recieved, sleep for a bit longer.
                 if '502' in str(e):
                     print(f'502 Gateway error received, retrying. Error: {str(e)}')
                     count += 1
-                    sleep(15)
+                    sleep(20)
+                    continue
+                if '503' in str(e):
+                    print(f'503 Gateway error received, retrying. Error: {str(e)}')
+                    count += 1
+                    sleep(20)
                     continue
                 else:
                     raise e
