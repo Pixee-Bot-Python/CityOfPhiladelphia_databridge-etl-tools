@@ -234,8 +234,8 @@ class AGO():
 
     def truncate(self):
         count = self.layer_object.query(return_count_only=True)
-        if count > 100000:
-            raise AssertionError('Count is over 100,000, we dont recommend using this method for large datasets!')
+        #if count > 100000:
+        #    raise AssertionError('Count is over 100,000, we dont recommend using this method for large datasets!')
         self.layer_object.manager.truncate()
         count = self.layer_object.query(return_count_only=True)
         self.logger.info('count after truncate: ' + str(count))
