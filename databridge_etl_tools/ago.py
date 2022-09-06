@@ -12,7 +12,7 @@ import numpy as np
 from pprint import pprint
 import pandas as pd
 from copy import deepcopy
-from threading import Thread
+#from threading import Thread
 from shapely.ops import transform as shapely_transformer
 from arcgis import GIS
 from arcgis.features import FeatureLayerCollection
@@ -108,15 +108,16 @@ class AGO():
                 for item in items:
                     # For items with spaces in their titles, AGO will smartly change out spaces to underscores
                     # Test for this too.
+                    self.logger.info(f'Seeing if item title is a match: "{item.title}"..')
                     if (item.title == self.item_name) or (item.title == self.item_name.replace(' ', '_')):
                         self._item = item
                         self.logger.info(f'Found item, url and id: {self.item.url}, {self.item.id}')
                         return self._item
                 # If item is still None, then fail out
                 if self._item is None:
-                    raise Exception(f'Failed searching for item owned by {self.ago_user} with title: {self.item_name} and type:"Feature Service"')
+                    raise Exception(f'Failed searching for item with search_query = {search_query}')
             except Exception as e:
-                self.logger.error(f'Failed searching for item owned by {self.ago_user} with title: {self.item_name} and type:"Feature Service"')
+                self.logger.error(f'Failed searching for item with search_query = {search_query}')
                 raise e
         return self._item
 
@@ -398,7 +399,7 @@ class AGO():
         self._num_rows_in_upload_file = rows.nrows()
         row_dicts = rows.dicts()
         adds = []
-        batch_size = 2000
+        batch_size = 1000
         if not self.geometric:
             for i, row in enumerate(row_dicts):
                 # clean up row and perform basic non-geometric transformations
@@ -406,12 +407,14 @@ class AGO():
 
                 adds.append({"attributes": row})
                 if (len(adds) != 0) and (len(adds) % batch_size == 0):
-                    self.logger.info(f'Adding batch of {len(adds)}, at row #: {i}...')
-                    self.edit_features(rows=adds, method='adds')
+                    row_count = i+1
+                    self.logger.info(f'Adding batch of {len(adds)}, at row #: {row_count}...')
+                    self.edit_features(rows=adds, row_count=row_count, method='adds')
                     adds = []
             if adds:
-                self.logger.info(f'Adding last batch of {len(adds)}, at row #: {i}...')
-                self.edit_features(rows=adds, method='adds')
+                row_count = i+1
+                self.logger.info(f'Adding last batch of {len(adds)}, at row #: {row_count}...')
+                self.edit_features(rows=adds, row_count=row_count, method='adds')
         elif self.geometric:
             for i, row in enumerate(row_dicts):
                 # clean up row and perform basic non-geometric transformations
@@ -491,21 +494,24 @@ class AGO():
                 adds.append(formatted_row)
 
                 if (len(adds) != 0) and (len(adds) % batch_size == 0):
-                    self.logger.info(f'Adding batch of {len(adds)}, at row #: {i+1}...')
+                    row_count = i + 1
+                    self.logger.info(f'Adding batch of {len(adds)}, at row #: {row_count}...')
                     start = time()
-                    #self.add_features(adds, i)
+                    self.edit_features(rows=adds, row_count=row_count, method='adds')
 
-                    split_batches = np.array_split(adds,2)
+                    # Commenting out multithreading for now.
+                    #split_batches = np.array_split(adds,2)
                     # Where we actually append the rows to the dataset in AGO
-                    t1 = Thread(target=self.edit_features,
-                                args=(list(split_batches[0]), 'adds'))
-                    t2 = Thread(target=self.edit_features,
-                                args=(list(split_batches[1]), 'adds'))
-                    t1.start()
-                    t2.start()
+                    #t1 = Thread(target=self.edit_features,
+                    #            args=(list(split_batches[0]), 'adds'))
+                    #t2 = Thread(target=self.edit_features,
+                    #            args=(list(split_batches[1]), 'adds'))
+                    #t1.start()
+                    #t2.start()
 
-                    t1.join()
-                    t2.join()
+                    #t1.join()
+                    #t2.join()
+
                     adds = []
                     print(f'Duration: {time() - start}\n')
             # add leftover rows outside the loop if they don't add up to 4000
@@ -514,7 +520,7 @@ class AGO():
                 self.logger.info(f'Adding last batch of {len(adds)}, at row #: {i+1}...')
                 #self.logger.info(f'Example row: {adds[0]}')
                 #self.logger.info(f'batch: {adds}')
-                self.edit_features(rows=adds, method='adds')
+                self.edit_features(rows=adds, row_count=row_count, method='adds')
                 print(f'Duration: {time() - start}')
 
         ago_count = self.layer_object.query(return_count_only=True)
@@ -522,7 +528,7 @@ class AGO():
         assert ago_count != 0
 
 
-    def edit_features(self, rows, method='adds'):
+    def edit_features(self, rows, row_count, method='adds'):
         '''
         Complicated function to wrap the edit_features arcgis function so we can handle AGO failing
         It will handle either:
@@ -586,32 +592,37 @@ class AGO():
                     result = self.layer_object.edit_features(deletes=rows, rollback_on_failure=True)
             except Exception as e:
                 if 'request has timed out' in str(e):
-                    print(f'Request timed out, retrying. Error: {str(e)}')
-                    count += 1
-                    sleep(5)
+                    print(f'Request timed out, checking counts. Error: {str(e)}')
+                    tries += 1
+                    sleep(30)
+                    ago_count = self.layer_object.query(return_count_only=True)
+                    print(f'ago_count: {ago_count} == row_count: {row_count}')
+                    if ago_count == row_count:
+                        print(f'Request was actually successful, ago_count matches our current row count.')
+                        success = True
                     continue
                 if 'Unable to perform query' in str(e):
                     print(f'"Unable to perform query" error received, retrying. Error: {str(e)}')
-                    count += 1
+                    tries += 1
                     sleep(20)
                     continue
                 # Gateway error recieved, sleep for a bit longer.
                 if '502' in str(e):
                     print(f'502 Gateway error received, retrying. Error: {str(e)}')
-                    count += 1
+                    tries += 1
                     sleep(20)
                     continue
                 if '503' in str(e):
                     print(f'503 Service Unavailable received, retrying. Error: {str(e)}')
-                    count += 1
+                    tries += 1
                     sleep(20)
                     continue
                 else:
                     raise e
 
             if is_rolled_back(result):
-                print("Results rolled back, retrying our batch adds in 15 seconds....")
-                sleep(15)
+                print("Results rolled back, retrying our batch adds in 60 seconds....")
+                sleep(60)
                 try:
                     if method == "adds":
                         result = self.layer_object.edit_features(adds=rows, rollback_on_failure=True)
@@ -621,24 +632,28 @@ class AGO():
                         result = self.layer_object.edit_features(deletes=rows, rollback_on_failure=True)
                 except Exception as e:
                     if 'request has timed out' in str(e):
-                        print(f'Request timed out, retrying. Error: {str(e)}')
-                        count += 1
-                        sleep(5)
+                        print(f'Request timed out, checking counts. Error: {str(e)}')
+                        tries += 1
+                        sleep(30)
+                        print(f'ago_count: {ago_count} == row_count: {row_count}')
+                        if ago_count == row_count:
+                            print(f'Request was actually successful, ago_count matches our current row count.')
+                            success = True
                         continue
                     if 'Unable to perform query' in str(e):
                         print(f'"Unable to perform query" error received, retrying. Error: {str(e)}')
-                        count += 1
+                        tries += 1
                         sleep(20)
                         continue
                     # Gateway error recieved, sleep for a bit longer.
                     if '502' in str(e):
                         print(f'502 Gateway error received, retrying. Error: {str(e)}')
-                        count += 1
+                        tries += 1
                         sleep(20)
                         continue
                     if '503' in str(e):
                         print(f'503 Service Unavailable received, retrying. Error: {str(e)}')
-                        count += 1
+                        tries += 1
                         sleep(20)
                         continue
                     else:
@@ -758,9 +773,11 @@ class AGO():
         row_dicts = rows.dicts()
         adds = []
         updates = []
-        batch_size = 2000
+        batch_size = 1000
         if not self.geometric:
             for i, row in enumerate(row_dicts):
+                row_count = i + 1
+
                 # We need an OBJECTID in our row for upserting. Assert that we have that, bomb out if we don't
                 assert row['objectid']
 
@@ -801,18 +818,18 @@ class AGO():
 
                 if (len(adds) != 0) and (len(adds) % batch_size == 0):
                     self.logger.info(f'(non geometric) Adding batch of appends, {len(adds)}, at row #: {i}...')
-                    self.edit_features(rows=adds, method='adds')
+                    self.edit_features(rows=adds, row_count=row_count, method='adds')
                     adds = []
                 if (len(updates) != 0) and (len(adds) % batch_size == 0):
                     self.logger.info(f'(non geometric) Adding batch of updates {len(updates)}, at row #: {i}...')
-                    self.edit_features(rows=updates, method='updates')
+                    self.edit_features(rows=updates, row_count=row_count, method='updates')
                     updates = []
             if adds:
                 self.logger.info(f'(non geometric) Adding last batch of appends, {len(adds)}, at row #: {i}...')
-                self.edit_features(rows=adds, method='adds')
+                self.edit_features(rows=adds, row_count=row_count, method='adds')
             if updates:
                 self.logger.info(f'(non geometric) Adding last batch of updates, {len(updates)}, at row #: {i}...')
-                self.edit_features(rows=updates, method='updates')
+                self.edit_features(rows=updates, row_count=row_count, method='updates')
 
         elif self.geometric:
             for i, row in enumerate(row_dicts):
@@ -928,52 +945,59 @@ class AGO():
                     updates.append(formatted_row)
 
                 if (len(adds) != 0) and (len(adds) % batch_size == 0):
-                    self.logger.info(f'Adding batch of appends, {len(adds)}, at row #: {i+1}...')
+                    row_count = i+1
+                    self.logger.info(f'Adding batch of appends, {len(adds)}, at row #: {row_count}...')
                     start = time()
-                    #self.add_features(adds, i)
+                    self.edit_features(rows=adds, row_count=row_count, method='adds')
 
-                    split_batches = np.array_split(adds,2)
+                    # Commenting out multithreading for now.
+                    #split_batches = np.array_split(adds,2)
                     # Where we actually append the rows to the dataset in AGO
-                    t1 = Thread(target=self.edit_features,
-                                args=(list(split_batches[0]), 'adds'))
-                    t2 = Thread(target=self.edit_features,
-                                args=(list(split_batches[1]), 'adds'))
-                    t1.start()
-                    t2.start()
+                    #t1 = Thread(target=self.edit_features,
+                    #            args=(list(split_batches[0]), 'adds'))
+                    #t2 = Thread(target=self.edit_features,
+                    #            args=(list(split_batches[1]), 'adds'))
+                    #t1.start()
+                    #t2.start()
 
-                    t1.join()
-                    t2.join()
+                    #t1.join()
+                    #t2.join()
+
                     adds = []
                     print(f'Duration: {time() - start}\n')
 
                 if (len(updates) != 0) and (len(updates) % batch_size == 0):
-                    self.logger.info(f'Adding batch of updates, {len(adds)}, at row #: {i+1}...')
+                    row_count = i+1
+                    self.logger.info(f'Adding batch of updates, {len(adds)}, at row #: {row_count}...')
                     start = time()
-                    #self.add_features(adds, i)
+                    self.edit_features(rows=adds, row_count=row_count, method='updates')
 
-                    split_batches = np.array_split(updates,2)
+                    # Commenting out multithreading for now.
+                    #split_batches = np.array_split(updates,2)
                     # Where we actually append the rows to the dataset in AGO
-                    t1 = Thread(target=self.edit_features,
-                                args=(list(split_batches[0]), 'updates'))
-                    t2 = Thread(target=self.edit_features,
-                                args=(list(split_batches[1]), 'updates'))
-                    t1.start()
-                    t2.start()
+                    #t1 = Thread(target=self.edit_features,
+                    #            args=(list(split_batches[0]), 'updates'))
+                    #t2 = Thread(target=self.edit_features,
+                    #            args=(list(split_batches[1]), 'updates'))
+                    #t1.start()
+                    #t2.start()
 
-                    t1.join()
-                    t2.join()
+                    #t1.join()
+                    #t2.join()
+
                     updates = []
                     print(f'Duration: {time() - start}\n')
             # add leftover rows outside the loop if they don't add up to 4000
             if adds:
+                row_count = i+1
                 start = time()
-                self.logger.info(f'Adding last batch of appends, {len(adds)}, at row #: {i+1}...')
-                self.edit_features(rows=adds, method='adds')
+                self.logger.info(f'Adding last batch of appends, {len(adds)}, at row #: {row_count}...')
+                self.edit_features(rows=adds, row_count=row_count, method='adds')
                 print(f'Duration: {time() - start}')
             if updates:
                 start = time()
-                self.logger.info(f'Adding last batch of updates, {len(updates)}, at row #: {i+1}...')
-                self.edit_features(rows=updates, method='updates')
+                self.logger.info(f'Adding last batch of updates, {len(updates)}, at row #: {row_count}...')
+                self.edit_features(rows=updates, row_count=row_count, method='updates')
                 print(f'Duration: {time() - start}')
 
         ago_count = self.layer_object.query(return_count_only=True)
@@ -983,9 +1007,9 @@ class AGO():
 
     # Wrapped AGO function in a retry while loop because AGO is very unreliable.
     def query_features(self, wherequery=None, outstats=None):
-        count = 0
+        tries = 0
         while True:
-            if count > 5:
+            if tries > 5:
                 raise RuntimeError("AGO keeps failing on our query!")
             try:
                 # outstats is used for grabbing the MAX value of updated_datetime.
@@ -997,24 +1021,24 @@ class AGO():
             except RuntimeError as e:
                 if 'request has timed out' in str(e):
                     print(f'Request timed out, retrying. Error: {str(e)}')
-                    count += 1
+                    tries += 1
                     sleep(5)
                     continue
                 # Ambiguous mysterious error returned to us sometimes1
                 if 'Unable to perform query' in str(e):
                     print(f'"Unable to perform query" error received, retrying. Error: {str(e)}')
-                    count += 1
+                    tries += 1
                     sleep(20)
                     continue
                 # Gateway error recieved, sleep for a bit longer.
                 if '502' in str(e):
                     print(f'502 Gateway error received, retrying. Error: {str(e)}')
-                    count += 1
+                    tries += 1
                     sleep(20)
                     continue
                 if '503' in str(e):
                     print(f'503 Gateway error received, retrying. Error: {str(e)}')
-                    count += 1
+                    tries += 1
                     sleep(20)
                     continue
                 else:
