@@ -57,7 +57,8 @@ class AGO():
         self.export_dir_path = kwargs.get('export_dir_path', os.getcwd() + '\\' + self.item_name.replace(' ', '_'))
         # unimportant since this will be run in AWS batch
         self.csv_path = '/home/worker/temp.csv'
-
+        # Global variable to inform other processes that we're upserting
+        self.upserting = None
 
     @property
     def logger(self):
@@ -592,15 +593,20 @@ class AGO():
                     result = self.layer_object.edit_features(deletes=rows, rollback_on_failure=True)
             except Exception as e:
                 if 'request has timed out' in str(e):
-                    print(f'Request timed out, checking counts. Error: {str(e)}')
-                    tries += 1
-                    sleep(30)
-                    ago_count = self.layer_object.query(return_count_only=True)
-                    print(f'ago_count: {ago_count} == row_count: {row_count}')
-                    if ago_count == row_count:
-                        print(f'Request was actually successful, ago_count matches our current row count.')
-                        success = True
-                    continue
+                    # If we're upserting, we obviously can't check counts
+                    # Instead we'll just have to assume success
+                    if self.upserting:
+                        print(f'Got a request timed out back, assuming it worked... Error: {str(e)}')
+                    if not self.upserting:
+                        print(f'Got a request timed out, checking counts. Error: {str(e)}')
+                        tries += 1
+                        sleep(30)
+                        ago_count = self.layer_object.query(return_count_only=True)
+                        print(f'ago_count: {ago_count} == row_count: {row_count}')
+                        if ago_count == row_count:
+                            print(f'Request was actually successful, ago_count matches our current row count.')
+                            success = True
+                        continue
                 if 'Unable to perform query' in str(e):
                     print(f'"Unable to perform query" error received, retrying. Error: {str(e)}')
                     tries += 1
@@ -632,14 +638,20 @@ class AGO():
                         result = self.layer_object.edit_features(deletes=rows, rollback_on_failure=True)
                 except Exception as e:
                     if 'request has timed out' in str(e):
-                        print(f'Request timed out, checking counts. Error: {str(e)}')
-                        tries += 1
-                        sleep(30)
-                        print(f'ago_count: {ago_count} == row_count: {row_count}')
-                        if ago_count == row_count:
-                            print(f'Request was actually successful, ago_count matches our current row count.')
-                            success = True
-                        continue
+                        # If we're upserting, we obviously can't check counts
+                        # Instead we'll just have to assume success
+                        if self.upserting:
+                            print(f'Got a request timed out back, assuming it worked... Error: {str(e)}')
+                        if not self.upserting:
+                            print(f'Got a request timed out, checking counts. Error: {str(e)}')
+                            tries += 1
+                            sleep(30)
+                            ago_count = self.layer_object.query(return_count_only=True)
+                            print(f'ago_count: {ago_count} == row_count: {row_count}')
+                            if ago_count == row_count:
+                                print(f'Request was actually successful, ago_count matches our current row count.')
+                                success = True
+                            continue
                     if 'Unable to perform query' in str(e):
                         print(f'"Unable to perform query" error received, retrying. Error: {str(e)}')
                         tries += 1
@@ -747,6 +759,9 @@ class AGO():
         '''
         # Assert we got a primary_key passed and it's not None.
         assert self.primary_key
+
+        # Global variable to inform other processes that we're upserting
+        self.upserting = True
 
         try:
             rows = etl.fromcsv(self.csv_path, encoding='utf-8')
