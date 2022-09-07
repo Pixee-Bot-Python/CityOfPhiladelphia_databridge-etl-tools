@@ -9,6 +9,7 @@ import botocore
 import pyproj
 import shapely.wkt
 import numpy as np
+import csv
 from pprint import pprint
 import pandas as pd
 from copy import deepcopy
@@ -54,11 +55,14 @@ class AGO():
         self.proxy_port = kwargs.get('proxy_port', None)
         self.export_format = kwargs.get('export_format', None)
         self.export_zipped = kwargs.get('export_zipped', False)
+        self.batch_size = kwargs.get('batch_size', 500)
         self.export_dir_path = kwargs.get('export_dir_path', os.getcwd() + '\\' + self.item_name.replace(' ', '_'))
         # unimportant since this will be run in AWS batch
         self.csv_path = '/home/worker/temp.csv'
         # Global variable to inform other processes that we're upserting
         self.upserting = None
+        if self.clean_columns:
+            print(f'Received clean_columns parameter, will clean these columns of invalid characters: {self.clean_columns}')
 
     @property
     def logger(self):
@@ -259,6 +263,27 @@ class AGO():
         self.logger.info('CSV successfully downloaded.\n'.format(self.s3_bucket, self.s3_key))
 
 
+    def write_errors_to_s3(self, rows):
+        try:
+            ts = int(time())
+            file_timestamp = f'-{ts}-errors.txt'
+            error_s3_key = self.s3_key.replace('.csv', file_timestamp)
+            print(f'Writing bad rows to file in s3 {error_s3_key}...')
+            error_filepath = '/home/worker/errors-temp.csv'
+            with open(error_filepath, 'a') as csv_file:
+                for i in rows:
+                    csv_file.write(str(i))
+                #csv_file.write(str(rows))
+                #writer = csv.writer(csv_file)
+                #writer.writerows(rows)
+
+            s3 = boto3.resource('s3')
+            s3.Object(self.s3_bucket, error_s3_key).put(Body=open(error_filepath, 'rb'))
+        except Exception as e:
+            print('Failed to put errors in csv and upload to S3.')
+            print(f'Error: {str(e)}')
+
+
     @property
     def transformer(self):
         '''transformer needs to be defined outside of our row loop to speed up projections.'''
@@ -391,7 +416,7 @@ class AGO():
             else:
                 print(f'Row differences found!: {row_differences}')
                 assert self.item_fields == rows.fieldnames()    
-        self.logger.info('Fields are the same! Continuing.\n')
+        self.logger.info('Fields are the same! Continuing.')
 
         # We're more sure that we'll succeed after prior checks, so let's truncate here..
         if truncate is True:
@@ -400,22 +425,25 @@ class AGO():
         self._num_rows_in_upload_file = rows.nrows()
         row_dicts = rows.dicts()
         adds = []
-        batch_size = 1000
         if not self.geometric:
             for i, row in enumerate(row_dicts):
                 # clean up row and perform basic non-geometric transformations
                 row = self.format_row(row)
 
                 adds.append({"attributes": row})
-                if (len(adds) != 0) and (len(adds) % batch_size == 0):
+                if (len(adds) != 0) and (len(adds) % self.batch_size == 0):
+                    start = time()
                     row_count = i+1
                     self.logger.info(f'Adding batch of {len(adds)}, at row #: {row_count}...')
                     self.edit_features(rows=adds, row_count=row_count, method='adds')
                     adds = []
+                    print(f'Duration: {time() - start}\n')
             if adds:
+                start = time()
                 row_count = i+1
                 self.logger.info(f'Adding last batch of {len(adds)}, at row #: {row_count}...')
                 self.edit_features(rows=adds, row_count=row_count, method='adds')
+                print(f'Duration: {time() - start}\n')
         elif self.geometric:
             for i, row in enumerate(row_dicts):
                 # clean up row and perform basic non-geometric transformations
@@ -494,7 +522,7 @@ class AGO():
                                  }
                 adds.append(formatted_row)
 
-                if (len(adds) != 0) and (len(adds) % batch_size == 0):
+                if (len(adds) != 0) and (len(adds) % self.batch_size == 0):
                     row_count = i + 1
                     self.logger.info(f'Adding batch of {len(adds)}, at row #: {row_count}...')
                     start = time()
@@ -563,6 +591,9 @@ class AGO():
                     if "error" in element and element["error"]["code"] == 1003:
                         print('Error code 1003 received, we are rolled back...')
                         return True
+                    elif "error" in element and element["error"]["code"] != 1000:
+                        print('Got a a character overflow error. Saving errors.') 
+                        self.write_errors_to_s3(rows)
                     elif "error" in element and element["error"]["code"] != 1003:
                         raise Exception(f'Got this error returned from AGO (unhandled error): {element["error"]}')
                 return False
@@ -581,7 +612,11 @@ class AGO():
             # Is it still rolled back after a retry?
             if result is not None:
                 if is_rolled_back(result):
-                    raise Exception("Retry on rollback didn't work.")
+                    #raise Exception("Retry on rollback didn't work.")
+                    print("Retry on rollback didn't work. Writing errors to file and continuing...")
+                    self.write_errors_to_s3(rows)
+                    success = True
+                    continue
 
             # Add the batch
             try:
@@ -593,35 +628,60 @@ class AGO():
                     result = self.layer_object.edit_features(deletes=rows, rollback_on_failure=True)
             except Exception as e:
                 if 'request has timed out' in str(e):
+                    tries += 1
                     # If we're upserting, we obviously can't check counts
-                    # Instead we'll just have to assume success
+                    # Instead we'll just have to assume success (which it usually appears to be?)
                     if self.upserting:
                         print(f'Got a request timed out back, assuming it worked... Error: {str(e)}')
                     if not self.upserting:
-                        print(f'Got a request timed out, checking counts. Error: {str(e)}')
-                        tries += 1
-                        sleep(30)
-                        ago_count = self.layer_object.query(return_count_only=True)
-                        print(f'ago_count: {ago_count} == row_count: {row_count}')
-                        if ago_count == row_count:
-                            print(f'Request was actually successful, ago_count matches our current row count.')
-                            success = True
+                        print(f'Got a request timed out back, assuming it worked... Error: {str(e)}')
+                        # slow down requests if we're getting timeouts
+                        sleep(60)
                         continue
-                if 'Unable to perform query' in str(e):
-                    print(f'"Unable to perform query" error received, retrying. Error: {str(e)}')
+
+                        #print(f'Got a request timed out, checking counts. Error: {str(e)}')
+                        #sleep(120)
+                        #ago_count = None
+                        # Account for timeouts everywhere
+                        #while not ago_count:
+                        #    try:
+                        #        ago_count = self.layer_object.query(return_count_only=True)
+                        #        # Yet another edge case, if our count is not divisible by our 
+                        #        # batch size, re-run it.
+                        #        if (ago_count % self.batch_size) != 0:
+                        #            sleep(60)
+                        #            ago_count = None
+                        #    except:
+                        #        sleep(10)
+                        #print(f'ago_count: {ago_count} == row_count: {row_count}')
+                        #if ago_count == row_count:
+                        #    print(f'Request was actually successful, ago_count matches our current row count.')
+                        #    success = True
+                        #elif ago_count > row_count:
+                        #    raise AssertionError('Error, ago_count is greater than our row_count! Some appends doubled up?')
+                        #elif ago_count < row_count:
+                        #    print(f'Request not successful, retrying.')
+                        #continue
+                elif 'Unable to perform query' in str(e):
+                    print(f'"Unable to perform query" error received, retrying.')
                     tries += 1
                     sleep(20)
                     continue
                 # Gateway error recieved, sleep for a bit longer.
-                if '502' in str(e):
+                elif '502' in str(e):
                     print(f'502 Gateway error received, retrying. Error: {str(e)}')
                     tries += 1
                     sleep(20)
                     continue
-                if '503' in str(e):
+                elif '503' in str(e):
                     print(f'503 Service Unavailable received, retrying. Error: {str(e)}')
                     tries += 1
                     sleep(20)
+                    continue
+                elif '504' in str(e):
+                    print(f'504 Gateway Timeout received, retrying. Error: {str(e)}')
+                    tries += 1
+                    sleep(60)
                     continue
                 else:
                     raise e
@@ -638,35 +698,62 @@ class AGO():
                         result = self.layer_object.edit_features(deletes=rows, rollback_on_failure=True)
                 except Exception as e:
                     if 'request has timed out' in str(e):
+                        tries += 1
                         # If we're upserting, we obviously can't check counts
-                        # Instead we'll just have to assume success
+                        # Instead we'll just have to assume success (which it usually appears to be?)
                         if self.upserting:
                             print(f'Got a request timed out back, assuming it worked... Error: {str(e)}')
                         if not self.upserting:
-                            print(f'Got a request timed out, checking counts. Error: {str(e)}')
-                            tries += 1
-                            sleep(30)
-                            ago_count = self.layer_object.query(return_count_only=True)
-                            print(f'ago_count: {ago_count} == row_count: {row_count}')
-                            if ago_count == row_count:
-                                print(f'Request was actually successful, ago_count matches our current row count.')
-                                success = True
+                            print(f'Got a request timed out back, assuming it worked... Error: {str(e)}')
+                            # slow down requests if we're getting timeouts
+                            sleep(60)
                             continue
-                    if 'Unable to perform query' in str(e):
-                        print(f'"Unable to perform query" error received, retrying. Error: {str(e)}')
+
+                            #print(f'Got a request timed out, checking counts. Error: {str(e)}')
+                            #sleep(120)
+                            #ago_count = None
+                            ## Account for timeouts everywhere
+                            #while not ago_count:
+                            #    try:
+                            #        ago_count = self.layer_object.query(return_count_only=True)
+                            #        # Yet another edge case, if our count is not divisible by our 
+                            #        # batch size, re-run it.
+                            #        if (ago_count % self.batch_size) != 0:
+                            #            sleep(60)
+                            #            ago_count = None
+                            #    except:
+                            #        print('timeout on ago_count')
+                            #        sleep(10)
+                            #ago_count = self.layer_object.query(return_count_only=True)
+                            #print(f'ago_count: {ago_count} == row_count: {row_count}')
+                            #if ago_count == row_count:
+                            #    print(f'Request was actually successful, ago_count matches our current row count.')
+                            #    success = True
+                            #elif ago_count > row_count:
+                            #    raise AssertionError('Error, ago_count is greater than our row_count! Some appends doubled up?')
+                            #elif ago_count < row_count:
+                            #    print(f'Request not successful, retrying.')
+                            #continue
+                    elif 'Unable to perform query' in str(e):
+                        print('"Unable to perform query" error received, retrying.')
                         tries += 1
                         sleep(20)
                         continue
                     # Gateway error recieved, sleep for a bit longer.
-                    if '502' in str(e):
+                    elif '502' in str(e):
                         print(f'502 Gateway error received, retrying. Error: {str(e)}')
                         tries += 1
                         sleep(20)
                         continue
-                    if '503' in str(e):
+                    elif '503' in str(e):
                         print(f'503 Service Unavailable received, retrying. Error: {str(e)}')
                         tries += 1
                         sleep(20)
+                        continue
+                    elif '504' in str(e):
+                        print(f'504 Gateway Timeout received, retrying. Error: {str(e)}')
+                        tries += 1
+                        sleep(60)
                         continue
                     else:
                         raise e
@@ -782,13 +869,12 @@ class AGO():
             else:
                 print(f'Row differences found!: {row_differences}')
                 assert self.item_fields == rows.fieldnames()
-        self.logger.info('Fields are the same! Continuing.\n')
+        self.logger.info('Fields are the same! Continuing.')
 
         self._num_rows_in_upload_file = rows.nrows()
         row_dicts = rows.dicts()
         adds = []
         updates = []
-        batch_size = 1000
         if not self.geometric:
             for i, row in enumerate(row_dicts):
                 row_count = i + 1
@@ -801,8 +887,7 @@ class AGO():
 
                 # Figure out if row exists in AGO, and what it's object ID is.
                 row_primary_key = row[self.primary_key]
-                wherequery = f"{self.primary_key} = {row_primary_key}"
-                #print(f'DEBUG! wherequery: {wherequery}')
+                wherequery = f"{self.primary_key} = '{row_primary_key}'"
                 ago_row = self.query_features(wherequery=wherequery)
 
                 # Should be length 0 or 1
@@ -840,20 +925,28 @@ class AGO():
                 if ago_objectid:
                     updates.append({"attributes": row})
 
-                if (len(adds) != 0) and (len(adds) % batch_size == 0):
+                if (len(adds) != 0) and (len(adds) % self.batch_size == 0):
+                    start = time()
                     self.logger.info(f'(non geometric) Adding batch of appends, {len(adds)}, at row #: {row_count}...')
                     self.edit_features(rows=adds, row_count=row_count, method='adds')
                     adds = []
-                if (len(updates) != 0) and (len(adds) % batch_size == 0):
+                    print(f'Duration: {time() - start}\n')
+                if (len(updates) != 0) and (len(adds) % self.batch_size == 0):
+                    start = time()
                     self.logger.info(f'(non geometric) Adding batch of updates {len(updates)}, at row #: {row_count}...')
                     self.edit_features(rows=updates, row_count=row_count, method='updates')
                     updates = []
+                    print(f'Duration: {time() - start}\n')
             if adds:
+                start = time()
                 self.logger.info(f'(non geometric) Adding last batch of appends, {len(adds)}, at row #: {row_count}...')
                 self.edit_features(rows=adds, row_count=row_count, method='adds')
+                print(f'Duration: {time() - start}\n')
             if updates:
+                start = time()
                 self.logger.info(f'(non geometric) Adding last batch of updates, {len(updates)}, at row #: {row_count}...')
                 self.edit_features(rows=updates, row_count=row_count, method='updates')
+                print(f'Duration: {time() - start}\n')
 
         elif self.geometric:
             for i, row in enumerate(row_dicts):
@@ -865,8 +958,7 @@ class AGO():
 
                 # Figure out if row exists in AGO, and what it's object ID is.
                 row_primary_key = row[self.primary_key]
-                wherequery = f"{self.primary_key} = {row_primary_key}"
-                #print(f'DEBUG! wherequery: {wherequery}')
+                wherequery = f"{self.primary_key} = '{row_primary_key}'"
                 ago_row = self.query_features(wherequery=wherequery)
 
                 # Should be length 0 or 1
@@ -968,7 +1060,7 @@ class AGO():
                 if ago_objectid:
                     updates.append(formatted_row)
 
-                if (len(adds) != 0) and (len(adds) % batch_size == 0):
+                if (len(adds) != 0) and (len(adds) % self.batch_size == 0):
                     row_count = i+1
                     self.logger.info(f'Adding batch of appends, {len(adds)}, at row #: {row_count}...')
                     start = time()
@@ -990,11 +1082,11 @@ class AGO():
                     adds = []
                     print(f'Duration: {time() - start}\n')
 
-                if (len(updates) != 0) and (len(updates) % batch_size == 0):
+                if (len(updates) != 0) and (len(updates) % self.batch_size == 0):
                     row_count = i+1
-                    self.logger.info(f'Adding batch of updates, {len(adds)}, at row #: {row_count}...')
+                    self.logger.info(f'Adding batch of updates, {len(updates)}, at row #: {row_count}...')
                     start = time()
-                    self.edit_features(rows=adds, row_count=row_count, method='updates')
+                    self.edit_features(rows=updates, row_count=row_count, method='updates')
 
                     # Commenting out multithreading for now.
                     #split_batches = np.array_split(updates,2)
@@ -1036,13 +1128,14 @@ class AGO():
             if tries > 5:
                 raise RuntimeError("AGO keeps failing on our query!")
             try:
+
                 # outstats is used for grabbing the MAX value of updated_datetime.
                 if outstats:
                     output = self.layer_object.query(outStatistics=outstats, outFields='*')
                 elif wherequery:
                     output = self.layer_object.query(where=wherequery)
                 return output
-            except RuntimeError as e:
+            except Exception as e:
                 if 'request has timed out' in str(e):
                     print(f'Request timed out, retrying. Error: {str(e)}')
                     tries += 1
@@ -1050,7 +1143,8 @@ class AGO():
                     continue
                 # Ambiguous mysterious error returned to us sometimes1
                 if 'Unable to perform query' in str(e):
-                    print(f'"Unable to perform query" error received, retrying. Error: {str(e)}')
+                    print('"Unable to perform query" error received, retrying.')
+                    print(f'wherequery used is: "{wherequery}"')
                     tries += 1
                     sleep(20)
                     continue
@@ -1062,6 +1156,11 @@ class AGO():
                     continue
                 if '503' in str(e):
                     print(f'503 Gateway error received, retrying. Error: {str(e)}')
+                    tries += 1
+                    sleep(20)
+                    continue
+                if '504' in str(e):
+                    print(f'503 Gateway Timeout received, retrying. Error: {str(e)}')
                     tries += 1
                     sleep(20)
                     continue

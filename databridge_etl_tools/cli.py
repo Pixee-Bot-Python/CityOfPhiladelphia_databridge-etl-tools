@@ -107,7 +107,9 @@ def postgres_extract(table_name, table_schema, connection_string, s3_bucket, s3_
             help='The SRID of the source datasets geometry features.')
 @click.option('--clean_columns', type=click.STRING, default=False, required=False,
             help='Column, or comma separated list of column names to clean of AGO invalid characters.')
-def ago_truncate_append(ago_org_url, ago_user, ago_pw, ago_item_name, s3_bucket, s3_key, in_srid=None, clean_columns=None):
+@click.option('--batch_size', type=click.INT, default=500, required=False,
+            help='Size of batch updates to send to AGO')
+def ago_truncate_append(ago_org_url, ago_user, ago_pw, ago_item_name, s3_bucket, s3_key, in_srid=None, clean_columns=None, batch_size=500):
     """Truncates a dataset in AGO and appends to it from a CSV. CSV needs to be made
     from the postgres-extract command."""
     ago = AGO(
@@ -118,7 +120,8 @@ def ago_truncate_append(ago_org_url, ago_user, ago_pw, ago_item_name, s3_bucket,
         s3_bucket=s3_bucket,
         s3_key=s3_key,
         in_srid=in_srid,
-        clean_columns=clean_columns)
+        clean_columns=clean_columns,
+        batch_size=batch_size)
     ago.get_csv_from_s3()
     ago.append(truncate=True)
     ago.verify_count()
@@ -136,7 +139,9 @@ def ago_truncate_append(ago_org_url, ago_user, ago_pw, ago_item_name, s3_bucket,
             help='The SRID of the source datasets geometry features.')
 @click.option('--clean_columns', type=click.STRING, default=False, required=False,
             help='Column, or comma separated list of column names to clean of AGO invalid characters.')
-def ago_append(ago_org_url, ago_user, ago_pw, ago_item_name, s3_bucket, s3_key, in_srid=None, clean_columns=None):
+@click.option('--batch_size', type=click.INT, default=500, required=False,
+            help='Size of batch updates to send to AGO')
+def ago_append(ago_org_url, ago_user, ago_pw, ago_item_name, s3_bucket, s3_key, in_srid=None, clean_columns=None, batch_size=500):
     """Appends records to AGO without truncating. NOTE that this is NOT an upsert 
     and will absolutely duplicate rows if you run this multiple times."""
     ago = AGO(
@@ -147,7 +152,8 @@ def ago_append(ago_org_url, ago_user, ago_pw, ago_item_name, s3_bucket, s3_key, 
         s3_bucket=s3_bucket,
         s3_key=s3_key,
         in_srid=in_srid,
-        clean_columns=clean_columns)
+        clean_columns=clean_columns,
+        batch_size=batch_size)
     ago.get_csv_from_s3()
     ago.append(truncate=False)
 
@@ -164,7 +170,9 @@ def ago_append(ago_org_url, ago_user, ago_pw, ago_item_name, s3_bucket, s3_key, 
             help='The SRID of the source datasets geometry features.')
 @click.option('--clean_columns', type=click.STRING, default=False, required=False,
             help='Column, or comma separated list of column names to clean of AGO invalid characters.')
-def ago_upsert(ago_org_url, ago_user, ago_pw, ago_item_name, s3_bucket, s3_key, primary_key, in_srid=None, clean_columns=None):
+@click.option('--batch_size', type=click.INT, default=500, required=False,
+            help='Size of batch updates to send to AGO')
+def ago_upsert(ago_org_url, ago_user, ago_pw, ago_item_name, s3_bucket, s3_key, primary_key, in_srid=None, clean_columns=None, batch_size=500):
     """Upserts records to AGO, requires a primary key. Upserts the entire CSV
     into AGO, it does not look for changes or differences."""
     ago = AGO(
@@ -176,7 +184,8 @@ def ago_upsert(ago_org_url, ago_user, ago_pw, ago_item_name, s3_bucket, s3_key, 
         s3_key=s3_key,
         primary_key=primary_key,
         in_srid=in_srid,
-        clean_columns=clean_columns)
+        clean_columns=clean_columns,
+        batch_size=batch_size)
     ago.get_csv_from_s3()
     ago.upsert()
 
