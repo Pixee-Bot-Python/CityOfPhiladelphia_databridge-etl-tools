@@ -806,6 +806,15 @@ class AGO():
                 ago_row = self.query_features(wherequery=wherequery)
 
                 # Should be length 0 or 1
+                # If we got two or more, we're doubled up and we can delete one.
+                if len(ago_row.sdf) == 2:
+                    print(f'Got two results for one primary key "{row_primary_key}". Deleting second one.')
+                    # Delete the 2nd one.
+                    del_objectid = ago_row.sdf.iloc[1]['OBJECTID']
+                    # Docs say you can simply pass only the ojbectid as a string and it should work.
+                    self.edit_features(rows=str(del_objectid), row_count=row_count, method='deletes')
+
+                # If it's more than 2, then just except out.
                 if len(ago_row.sdf) > 1:
                     raise AssertionError(f'Should have only gotten 1 or 0 rows from AGO! Instead we got: {len(ago_row.sdf)}')
 
@@ -832,18 +841,18 @@ class AGO():
                     updates.append({"attributes": row})
 
                 if (len(adds) != 0) and (len(adds) % batch_size == 0):
-                    self.logger.info(f'(non geometric) Adding batch of appends, {len(adds)}, at row #: {i}...')
+                    self.logger.info(f'(non geometric) Adding batch of appends, {len(adds)}, at row #: {row_count}...')
                     self.edit_features(rows=adds, row_count=row_count, method='adds')
                     adds = []
                 if (len(updates) != 0) and (len(adds) % batch_size == 0):
-                    self.logger.info(f'(non geometric) Adding batch of updates {len(updates)}, at row #: {i}...')
+                    self.logger.info(f'(non geometric) Adding batch of updates {len(updates)}, at row #: {row_count}...')
                     self.edit_features(rows=updates, row_count=row_count, method='updates')
                     updates = []
             if adds:
-                self.logger.info(f'(non geometric) Adding last batch of appends, {len(adds)}, at row #: {i}...')
+                self.logger.info(f'(non geometric) Adding last batch of appends, {len(adds)}, at row #: {row_count}...')
                 self.edit_features(rows=adds, row_count=row_count, method='adds')
             if updates:
-                self.logger.info(f'(non geometric) Adding last batch of updates, {len(updates)}, at row #: {i}...')
+                self.logger.info(f'(non geometric) Adding last batch of updates, {len(updates)}, at row #: {row_count}...')
                 self.edit_features(rows=updates, row_count=row_count, method='updates')
 
         elif self.geometric:
