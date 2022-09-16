@@ -896,9 +896,8 @@ class AGO():
                     del_objectid = ago_row.sdf.iloc[1]['OBJECTID']
                     # Docs say you can simply pass only the ojbectid as a string and it should work.
                     self.edit_features(rows=str(del_objectid), row_count=row_count, method='deletes')
-
                 # If it's more than 2, then just except out.
-                if len(ago_row.sdf) > 1:
+                elif len(ago_row.sdf) > 1:
                     raise AssertionError(f'Should have only gotten 1 or 0 rows from AGO! Instead we got: {len(ago_row.sdf)}')
 
                 # If our row is in AGO, then we need the objectid for the upsert/update
@@ -961,7 +960,15 @@ class AGO():
                 ago_row = self.query_features(wherequery=wherequery)
 
                 # Should be length 0 or 1
-                if len(ago_row.sdf) > 1:
+                # If we got two or more, we're doubled up and we can delete one.
+                if len(ago_row.sdf) == 2:
+                    print(f'Got two results for one primary key "{row_primary_key}". Deleting second one.')
+                    # Delete the 2nd one.
+                    del_objectid = ago_row.sdf.iloc[1]['OBJECTID']
+                    # Docs say you can simply pass only the ojbectid as a string and it should work.
+                    self.edit_features(rows=str(del_objectid), row_count=row_count, method='deletes')
+                # Should be length 0 or 1
+                elif len(ago_row.sdf) > 1:
                     raise AssertionError(f'Should have only gotten 1 or 0 rows from AGO! Instead we got: {len(ago_row.sdf)}')
 
                 # If our row is in AGO, then we need the objectid for the upsert/update
