@@ -61,7 +61,9 @@ class AGO():
         self.csv_path = '/home/worker/temp.csv'
         # Global variable to inform other processes that we're upserting
         self.upserting = None
-        if self.clean_columns:
+        if self.clean_columns == 'False':
+            self.clean_columns = None
+        if self.clean_columns is not None:
             print(f'Received clean_columns parameter, will clean these columns of invalid characters: {self.clean_columns}')
 
     @property
@@ -378,18 +380,14 @@ class AGO():
         # but don't convert date fields to empty strings,
         # Apparently arcgis API needs a None value to properly pass a value as 'null' to ago.
         for col in row.keys():
-            if col in ['introduction', 'planning_commission', 'rules', 'mayor_signed']:
-                if not row[col]:
-                    row[col] = None
-            elif not row[col]:
+            if not row[col]:
                 row[col] = ''
-
         # Check to make sure rows aren't incorrectly set as UTC. Convert to EST/EDT if so.
-        #    if row[col]:
-        #        if 'datetime' in col and '+0000' in row[col]:
-        #            dt_obj = datetime.strptime(row[col], "%Y-%m-%d %H:%M:%S %z")
-        #            local_dt_obj = obj.astimezone(pytz.timezone('US/Eastern'))
-        #            row[col] = local_db_obj.strftime("%Y-%m-%d %H:%M:%S %z")
+            if row[col]:
+                if 'datetime' in col and '+0000' in row[col]:
+                    dt_obj = datetime.strptime(row[col], "%Y-%m-%d %H:%M:%S %z")
+                    local_dt_obj = obj.astimezone(pytz.timezone('US/Eastern'))
+                    row[col] = local_db_obj.strftime("%Y-%m-%d %H:%M:%S %z")
         return row
 
 
@@ -446,6 +444,7 @@ class AGO():
                 print(f'Duration: {time() - start}\n')
         elif self.geometric:
             for i, row in enumerate(row_dicts):
+                row_count = i + 1
                 # clean up row and perform basic non-geometric transformations
                 row = self.format_row(row)
 
@@ -523,7 +522,6 @@ class AGO():
                 adds.append(formatted_row)
 
                 if (len(adds) != 0) and (len(adds) % self.batch_size == 0):
-                    row_count = i + 1
                     self.logger.info(f'Adding batch of {len(adds)}, at row #: {row_count}...')
                     start = time()
                     self.edit_features(rows=adds, row_count=row_count, method='adds')
@@ -950,6 +948,7 @@ class AGO():
 
         elif self.geometric:
             for i, row in enumerate(row_dicts):
+                row_count = i+1
                 # We need an OBJECTID in our row for upserting. Assert that we have that, bomb out if we don't
                 assert row['objectid']
 
@@ -1061,7 +1060,6 @@ class AGO():
                     updates.append(formatted_row)
 
                 if (len(adds) != 0) and (len(adds) % self.batch_size == 0):
-                    row_count = i+1
                     self.logger.info(f'Adding batch of appends, {len(adds)}, at row #: {row_count}...')
                     start = time()
                     self.edit_features(rows=adds, row_count=row_count, method='adds')
@@ -1083,7 +1081,6 @@ class AGO():
                     print(f'Duration: {time() - start}\n')
 
                 if (len(updates) != 0) and (len(updates) % self.batch_size == 0):
-                    row_count = i+1
                     self.logger.info(f'Adding batch of updates, {len(updates)}, at row #: {row_count}...')
                     start = time()
                     self.edit_features(rows=updates, row_count=row_count, method='updates')
@@ -1105,7 +1102,6 @@ class AGO():
                     print(f'Duration: {time() - start}\n')
             # add leftover rows outside the loop if they don't add up to 4000
             if adds:
-                row_count = i+1
                 start = time()
                 self.logger.info(f'Adding last batch of appends, {len(adds)}, at row #: {row_count}...')
                 self.edit_features(rows=adds, row_count=row_count, method='adds')
