@@ -48,7 +48,7 @@ class Db2():
 
 
     def signal_catch_setup(self):
-        print("DEBUG! Setting up signal catching")
+        #print("DEBUG! Setting up signal catching")
         # Handle terminations from AWS
         signal.signal(signal.SIGTERM, self.handleSigTERMKILL)
         # Handle ctrl+c
@@ -115,6 +115,14 @@ class Db2():
         if self._enterprise_dataset_name is None:
             self._enterprise_dataset_name = f'{self.account_name.replace("GIS_","").lower()}__{self.table_name}'
         return self._enterprise_dataset_name
+
+
+    def confirm_table_existence(self):
+        exist_stmt = f"SELECT to_regclass('{self.enterprise_schema}.{self.enterprise_dataset_name}');"
+        self.logger.info(f'Table exists statement: {exist_stmt}')
+        self.pg_cursor.execute(exist_stmt)
+        table_exists_check = self.pg_cursor.fetchone()[0]
+        assert table_exists_check
 
 
     def get_table_column_info_from_enterprise(self):
@@ -303,6 +311,7 @@ class Db2():
 
 
     def create_staging_from_enterprise(self):
+        self.confirm_table_existence()
         self.get_table_column_info_from_enterprise()
         self.get_geom_column_info()
         self.generate_ddl()
