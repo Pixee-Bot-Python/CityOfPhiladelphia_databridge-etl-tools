@@ -173,7 +173,7 @@ class Db2():
 
         # Get the type of geometry, e.g. point, line, polygon.. etc.
         # docs on this SDE function: https://desktop.arcgis.com/en/arcmap/latest/manage-data/using-sql-with-gdbs/st-geometrytype.htm
-        # NOTE!: if phl is empty, e.g. this is a first run, this will fail, as a backup get the value from XCOM
+        # NOTE!: if the entreprise_schema is empty, e.g. this is a first run, this will fail, as a backup get the value from XCOM
         # Which will be populated by our "get_geomtype" task.
         geom_type_stmt = f'''
             select public.st_geometrytype({geom_column}) as geom_type 
@@ -372,7 +372,7 @@ class Db2():
 
         # Reset what the objectid field will start incrementing from.
         reset_stmt=f'''
-            UPDATE phl.i{reg_id} SET base_id=1, last_id=1
+            UPDATE {self.enterprise_schema}.i{reg_id} SET base_id=1, last_id=1
             WHERE id_type = 2
         '''
         self.logger.info("Running reset_stmt: " + str(reset_stmt))
@@ -391,7 +391,7 @@ class Db2():
         ###############
         # Truncate is not 'MVCC-safe', which means concurrent select transactions will not be able to
         # view/select the data during the execution of the update_stmt.
-        #truncate_stmt = f'''TRUNCATE TABLE phl.{self.enterprise_dataset_name}'''
+        #truncate_stmt = f'''TRUNCATE TABLE {sel.enterprise_schema}.{self.enterprise_dataset_name}'''
         # DELTE FROM is 'MVCC-safe'.
 
         prod_table = f'{self.enterprise_schema}.{self.enterprise_dataset_name}'
@@ -453,7 +453,7 @@ class Db2():
             ALTER TABLE {prod_table} ADD objectid serial NOT NULL;
 
             -- Set these vals to our row_count so ESRIs next_rowid() increments without collisions
-            UPDATE phl.i{reg_id} SET base_id={row_count + 1}, last_id={row_count} WHERE id_type = 2;
+            UPDATE {self.enterprise_schema}.i{reg_id} SET base_id={row_count + 1}, last_id={row_count} WHERE id_type = 2;
 
             -- Set back to the ESRI objectid data type.
             ALTER TABLE {prod_table} ALTER COLUMN objectid TYPE int4;
