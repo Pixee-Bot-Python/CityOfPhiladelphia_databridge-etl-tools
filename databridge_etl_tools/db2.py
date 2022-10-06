@@ -495,12 +495,12 @@ class Db2():
 
         # Run a quick select statement to test.
         select_test_stmt = f'''
-        SELECT * FROM {self.enterprise_schema}.{self.enterprise_dataset_name} LIMIT 1
+        SELECT * FROM {self.enterprise_schema}.{self.enterprise_dataset_name} WHERE {oid_column} IS NOT NULL LIMIT 1
         '''
         self.logger.info("Running select_test_stmt: " + str(select_test_stmt))
 
         self.pg_cursor.execute(select_test_stmt)
-        result = self.pg_cursor.fetchone()[0]
+        result = self.pg_cursor.fetchone()
         self.logger.info('Result of select test:')
         self.logger.info(str(result))
         assert result
