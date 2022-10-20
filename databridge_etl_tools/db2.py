@@ -509,20 +509,32 @@ class Db2():
 
     def update_oracle_scn(self):
         
-
-        stmt = f'''SELECT MAX(ora_rowscn) FROM {self.account_name}.{self.table_name.upper()}'''
-        self.logger.info('Executing stmt: ' + str(stmt))
-        self.oracle_cursor.execute(stmt)
-        current_scn = self.oracle_cursor.fetchone()[0]
-
-        # If there is no SCN available, insert NULL which will work in an INT datatype column.
-        if current_scn is None:
-            current_scn = 'NULL'
+        # Commenting this out, instead lets pull the SCN from our recorded table
+        #stmt = f'''SELECT MAX(ora_rowscn) FROM {self.account_name}.{self.table_name.upper()}'''
+        #self.logger.info('Executing stmt: ' + str(stmt))
+        #self.oracle_cursor.execute(stmt)
+        #current_scn = self.oracle_cursor.fetchone()[0]
 
         stmt=f'''
             SELECT SCN FROM GIS_GSG.DB2_ORACLE_TRANSACTION_HISTORY
-            WHERE TABLE_OWNER = '{self.account_name}'
+            WHERE TABLE_OWNER = '{self.account_name.upper()}'
             AND TABLE_NAME = '{self.table_name.upper()}'
+            AND STATUS = 'RUNNING'
+        '''
+        self.oracle_cursor.execute(stmt)
+        current_scn = self.oracle_cursor.fetchone()
+
+        # If there is no SCN available, insert NULL which will work in an INT datatype column.
+        if not current_scn:
+            current_scn = 'NULL'
+        else:
+            current_scn = current_scn[0]
+
+        stmt=f'''
+            SELECT SCN FROM GIS_GSG.DB2_ORACLE_TRANSACTION_HISTORY
+            WHERE TABLE_OWNER = '{self.account_name.upper()}'
+            AND TABLE_NAME = '{self.table_name.upper()}'
+            AND STATUS = 'FINISHED'
         '''
         self.logger.info('Executing stmt: ' + str(stmt))
         self.oracle_cursor.execute(stmt)
@@ -532,16 +544,29 @@ class Db2():
         # either an insert or update depending if the row we want already exists.
         if old_scn is None:
             stmt = f'''
-            INSERT INTO GIS_GSG.DB2_ORACLE_TRANSACTION_HISTORY (TABLE_OWNER, TABLE_NAME, SCN)
-                VALUES('{self.account_name}', '{self.table_name.upper()}', {current_scn})
+            INSERT INTO GIS_GSG.DB2_ORACLE_TRANSACTION_HISTORY (TABLE_OWNER, TABLE_NAME, SCN, STATUS)
+                VALUES('{self.account_name.upper()}', '{self.table_name.upper()}', {current_scn}, 'FINISHED')
             '''
         elif old_scn:
             stmt = f'''
             UPDATE GIS_GSG.DB2_ORACLE_TRANSACTION_HISTORY SET SCN={current_scn}
-                WHERE TABLE_OWNER = '{self.account_name}' AND TABLE_NAME = '{self.table_name.upper()}'
+                WHERE TABLE_OWNER = '{self.account_name.upper()}'
+                AND TABLE_NAME = '{self.table_name.upper()}'
+                AND STATUS = 'FINISHED'
             '''
         self.logger.info('Executing stmt: ' + str(stmt))
         self.oracle_cursor.execute(stmt)
+    
+        # Remove RUNNING scn from the history table
+        if current_scn:
+            stmt=f'''
+                DELETE FROM GIS_GSG.DB2_ORACLE_TRANSACTION_HISTORY
+                WHERE TABLE_OWNER = '{self.account_name.upper()}'
+                AND TABLE_NAME = '{self.table_name.upper()}'
+                AND STATUS = 'RUNNING'
+            '''
+            self.logger.info('Executing stmt: ' + str(stmt))
+            self.oracle_cursor.execute(stmt)
 
 
 
