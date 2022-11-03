@@ -392,7 +392,7 @@ class AGO():
         # Apparently arcgis API needs a None value to properly pass a value as 'null' to ago.
         for col in row.keys():
             if not row[col]:
-                row[col] = ''
+                row[col] = None
         # Check to make sure rows aren't incorrectly set as UTC. Convert to EST/EDT if so.
             if row[col]:
                 if 'datetime' in col and '+0000' in row[col]:
