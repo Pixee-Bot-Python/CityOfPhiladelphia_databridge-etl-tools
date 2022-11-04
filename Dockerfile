@@ -1,6 +1,7 @@
 #FROM ubuntu:16.04
 #FROM python:3.6.15-slim-bullseye
-FROM python:3.7.12-slim-buster
+#FROM python:3.7.12-slim-buster
+FROM python:3.8.15-slim-buster
 
 # Add our worker users custom binaries to the path, some python packages are installed here.
 ENV PATH="/home/worker/.local/bin:${PATH}"
@@ -128,7 +129,7 @@ RUN pip3 install -e .[ago,carto,oracle,postgres,dev]
 #RUN pip3 install -e git+https://github.com/CityOfPhiladelphia/geopetl.git@389f7d78c734197df0f3130e87e6b9091c34d805#egg=geopetl
 
 # Quick hack to fix CSV dump issue from Oracle
-RUN   sed -i "s|MAX_NUM_POINTS_IN_GEOM_FOR_CHAR_CONVERSION_IN_DB = 150|MAX_NUM_POINTS_IN_GEOM_FOR_CHAR_CONVERSION_IN_DB = 100|g" /home/worker/.local/lib/python3.7/site-packages/geopetl/oracle_sde.py
+RUN   sed -i "s|MAX_NUM_POINTS_IN_GEOM_FOR_CHAR_CONVERSION_IN_DB = 150|MAX_NUM_POINTS_IN_GEOM_FOR_CHAR_CONVERSION_IN_DB = 100|g" /home/worker/.local/lib/python3.8/site-packages/geopetl/oracle_sde.py
 
 # Set aws access keys as an env var for use with boto3
 # do this under the worker user.

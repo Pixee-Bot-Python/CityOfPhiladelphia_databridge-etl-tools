@@ -12,6 +12,10 @@ import boto3
 import requests
 import petl as etl
 
+import pandas as pd
+import numpy as np
+import dateutil.parser
+
 
 csv.field_size_limit(sys.maxsize)
 
@@ -50,22 +54,21 @@ class Carto():
     _logger = None
     _user = None
     _api_key = None
-    _schema = None
     _geom_field = None
     _geom_srid = None
+    _geom_type = None
+    _schema = None
 
     def __init__(self, 
                  connection_string, 
                  table_name, 
                  s3_bucket, 
-                 json_schema_s3_key,
                  s3_key,
                  select_users,
                  index_fields=None):
         self.connection_string = connection_string
         self.table_name = table_name
         self.s3_bucket = s3_bucket
-        self.json_schema_s3_key = json_schema_s3_key
         self.s3_key = s3_key
         self.select_users = select_users
         self.index_fields = index_fields
@@ -135,100 +138,119 @@ class Carto():
            self._logger = logger
        return self._logger
 
-    @property
-    def json_schema_file_name(self):
-        # This expects the schema to be in a subfolder on S3
-        if ('/') in self.json_schema_s3_key:
-            json_schema_file_name = self.json_schema_s3_key.split('/')[1]
-        else:
-            json_schema_file_name = self.json_schema_s3_key
-        return json_schema_file_name
 
-    @property
-    def json_schema_path(self):
-        # On Windows, save to current directory
-        if os.name == 'nt':
-            json_schema_path = self.json_schema_file_name
-        # On Linux, save to tmp folder
-        else:
-            json_schema_directory = '/tmp'
-            json_schema_path = os.path.join(json_schema_directory, self.json_schema_file_name)
-        return json_schema_path
+    def geometric_detection(self):
+        if self._geom_field is None:
+            # Only read in the first 1000 rows into memory for faster detection
+            # in case the CSV is really really big
+            # Hopefully the first 5000 rows don't all contain null geometry
+            df = pd.read_csv(self.csv_path, nrows=5000)
+
+            # Field names
+            fields = df.columns.values.tolist()
+
+            candidate_shape = None
+            if 'shape' in fields:
+                candidate_shape = 'shape' 
+            elif 'geom' in fields:
+                candidate_shape = 'geom' 
+
+
+            if candidate_shape:
+                # Create a new df that drops rows with a null shape
+                non_null_df = df.dropna(subset='shape', how='any')
+
+                # If we still have data..
+                if not non_null_df.empty:
+                    # Extract a shape value
+                    example_shape = non_null_df.loc[1]['shape']
+                    if example_shape is not None:
+                        # Extract the SRID
+                        #print(example_shape.split(';'))
+                        self._geom_field = candidate_shape
+                        if 'SRID=' in example_shape:
+                            self._geom_srid = example_shape.split(';')[0].replace('SRID=','')
+
+                        # Extract the geom_type
+                        if ';' in example_shape:
+                            asplit = example_shape.split(';')[1].split('(')
+                            self._geom_type = asplit[0].strip()
+            else:
+                self._geom_field = None
+                self._geom_type = None
+                self._geom_srid = None
 
     @property
     def schema(self):
         if self._schema is None:
-            self.get_json_schema_from_s3()
+            # Only read in the first 1000 rows into memory for faster detection
+            # in case the CSV is really really big
+            # Hopefully the first 5000 rows don't all contain null geometry
+            df = pd.read_csv(self.csv_path, nrows=5000)
+            type_dict = df.dtypes.to_dict()
+            #print('\nPrinting dtypes...')
+            schema = ''
+            for k,v in type_dict.items():
+                atype = None
+                #print(f'field: {k},  detected type: {type(v)}, first value: {df[k].loc[1]}')
+                if v == np.int32:
+                    atype = 'int4'
+                elif v == np.int64:
+                    atype = 'int8'
+                elif v == np.float:
+                    atype = 'float4'
+                elif v == np.object:
+                    # if object, check if it's a datetime
+                    non_null_df = df.dropna(subset=k, how='any')
+                    ex_val = non_null_df.loc[0][k]
+                    if isinstance(ex_val, str):
+                        try:
+                            adate = dateutil.parser.parse(ex_val)
+                            #print(f'Detected a date: {adate}, field: {k}')
+                            atype = 'timestamp'
+                            if '+' in ex_val or '-' in ex_val:
+                                atype = 'timestamp with time zone'
+                        except dateutil.parser._parser.ParserError as e:
+                            pass
+                    # if we still don't have a type, assume string and check length
+                    # Also determine varchar length
+                    if atype is None:
+                        # Drop all null values for this column
+                        non_null_df = df.dropna(subset=k, how='any')
+                        max_len = non_null_df[k].str.len().max()
+                        print(max_len)
+                        atype = f'varchar({max_len+50})'
 
-            with open(self.json_schema_path) as json_file:
-                schema = json.load(json_file).get('fields', '')
-                if not schema:
-                    logger.error('Json schema malformatted...')
-                    raise
-                num_fields = len(schema)
-                schema_fmt = ''
-                for i, scheme in enumerate(schema):
-                    scheme_type = DATA_TYPE_MAP.get(scheme['type'].lower(), scheme['type'])
-                    if scheme_type == 'geometry':
-                        scheme_srid = scheme.get('srid', '')
-                        scheme_geometry_type = GEOM_TYPE_MAP.get(scheme.get('geometry_type', '').lower(), '')
-                        if scheme_srid and scheme_geometry_type:
-                            scheme_type = '''geometry ({}, {}) '''.format(scheme_geometry_type, scheme_srid)
-                        else:
-                            logger.error('srid and geometry_type must be provided with geometry field...')
-                            raise
-
-                    schema_fmt += ' {} {}'.format(scheme['name'], scheme_type)
-                    if i < num_fields - 1:
-                        schema_fmt += ','
-            self._schema = schema_fmt
+                if atype:
+                    schema = schema + f'{k} {atype}, '
+                print('DEBUG ', atype)
+            # strip last two characters
+            schema = schema[:-2]
+            print(f'Devised schema: {schema}')
+            self._schema = schema
         return self._schema
+
 
     @property
     def geom_field(self):
-        if self._geom_field is None:
-            with open(self.json_schema_path) as json_file:
-                schema = json.load(json_file).get('fields', None)
-                if not schema:
-                    self.logger.error('Json schema malformatted...')
-                    raise
-                for scheme in schema:
-                    scheme_type = DATA_TYPE_MAP.get(scheme['type'].lower(), scheme['type'])
-                    if scheme_type == 'geometry':
-                        geom_field = scheme.get('name', None)
-                        self._geom_field = geom_field
         return self._geom_field
 
     @property
+    def geom_type(self):
+        return self._geom_type
+
+    @property
     def geom_srid(self):
-        if self._geom_srid is None:
-            with open(self.json_schema_path) as json_file:
-                schema = json.load(json_file).get('fields', None)
-                if not schema:
-                    self.logger.error('Json schema malformatted...')
-                    raise
-                for scheme in schema:
-                    scheme_type = DATA_TYPE_MAP.get(scheme['type'].lower(), scheme['type'])
-                    if scheme_type == 'geometry':
-                        geom_srid = scheme.get('srid', None)
-                        self._geom_srid = geom_srid
         return self._geom_srid
 
-    def get_json_schema_from_s3(self):
-        self.logger.info('Fetching json schema: s3://{}/{}'.format(self.s3_bucket, self.json_schema_s3_key))
-
-        s3 = boto3.resource('s3')
-        s3.Object(self.s3_bucket, self.json_schema_s3_key).download_file(self.json_schema_path)
-
-        self.logger.info('Json schema successfully downloaded.\n'.format(self.s3_bucket, self.json_schema_s3_key))
 
     def get_csv_from_s3(self):
-        self.logger.info('Fetching csv s3://{}/{}'.format(self.s3_bucket, self.s3_key))
+        print('Fetching csv s3://{}/{}'.format(self.s3_bucket, self.s3_key))
 
         s3 = boto3.resource('s3')
         s3.Object(self.s3_bucket, self.s3_key).download_file(self.csv_path)
 
-        self.logger.info('CSV successfully downloaded.\n'.format(self.s3_bucket, self.s3_key))
+        print('CSV successfully downloaded.\n'.format(self.s3_bucket, self.s3_key))
 
     def execute_sql(self, stmt, fetch='many'):
         self.logger.info('Executing: {}'.format(stmt))
@@ -237,9 +259,8 @@ class Carto():
 
     def create_table(self):
         self.logger.info('Creating temp table...')
-        stmt = '''DROP TABLE IF EXISTS {table_name}; 
-                    CREATE TABLE {table_name} ({schema});'''.format(table_name=self.temp_table_name,
-                                                                    schema=self.schema)
+        stmt = f'''DROP TABLE IF EXISTS {self.temp_table_name}; 
+                    CREATE TABLE {self.temp_table_name} ({self.schema});'''
         self.execute_sql(stmt)
         check_table_sql = "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = '{}');".format(self.temp_table_name)
         response = self.execute_sql(check_table_sql, fetch='many')
@@ -274,7 +295,6 @@ class Carto():
         raise NotImplementedError
 
     def write(self):
-        self.get_csv_from_s3()
         try:
             rows = etl.fromcsv(self.csv_path, encoding='utf-8')
         except UnicodeError:
@@ -346,11 +366,14 @@ class Carto():
 
     def generate_select_grants(self):
         grants_sql = ''
-        select_users = self.select_users.split(',')
-        for user in select_users:
-            self.logger.info('{} - Granting SELECT to {}'.format(self.table_name, user))
-            grants_sql += 'GRANT SELECT ON "{}" TO "{}";'.format(self.table_name, user)
-        return grants_sql
+        if self.select_users:
+            select_users = self.select_users.split(',')
+            for user in select_users:
+                self.logger.info('{} - Granting SELECT to {}'.format(self.table_name, user))
+                grants_sql += 'GRANT SELECT ON "{}" TO "{}";'.format(self.table_name, user)
+            return grants_sql
+        else: 
+            return ''
 
     def cleanup(self):
         self.logger.info('Attempting to drop any temporary tables: {}'.format(self.temp_table_name))
@@ -360,7 +383,7 @@ class Carto():
 
         self.logger.info('Attempting to drop temp files...')
 
-        for f in [self.csv_path, self.temp_csv_path, self.json_schema_path]:
+        for f in [self.csv_path, self.temp_csv_path]:
             if os.path.isfile(f):
                 os.remove(f)
 
@@ -379,6 +402,9 @@ class Carto():
 
     def run_workflow(self):
         try:
+            self.get_csv_from_s3()
+            # Run our initial detection function using the CSV
+            self.geometric_detection()
             self.create_table()
             self.write()
             self.verify_count()
