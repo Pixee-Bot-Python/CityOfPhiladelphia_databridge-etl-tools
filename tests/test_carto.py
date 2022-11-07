@@ -3,16 +3,17 @@ import os
 
 from databridge_etl_tools.carto_ import Carto
 from .constants import (
-    S3_BUCKET, 
-    POINT_JSON_SCHEMA, POLYGON_JSON_SCHEMA, 
+    S3_BUCKET,  
     POINT_CSV, POLYGON_CSV,
 )
+from _pytest.assertion import truncate
+truncate.DEFAULT_MAX_LINES = 9999
+truncate.DEFAULT_MAX_CHARS = 9999
+
 
 
 CONNECTION_STRING            = 'carto://user:apikey'
 TABLE_NAME                   = 'table_name'
-JSON_SCHEMA_S3_KEY           = 'json_schema.json'
-JSON_SCHEMA_S3_KEY_SUBFOLDER = 'subfolder/json_schema.json'
 S3_KEY                   = 'csv.csv'
 SELECT_USERS                 = 'publicuser'
 
@@ -22,9 +23,7 @@ def carto():
         connection_string=CONNECTION_STRING,
         table_name=TABLE_NAME,
         s3_bucket=S3_BUCKET,
-        json_schema_s3_key=JSON_SCHEMA_S3_KEY,
-        s3_key=S3_KEY,
-        select_users=SELECT_USERS)
+        s3_key=S3_KEY)
     return carto_client
 
 
@@ -34,9 +33,7 @@ def carto_subfolder():
         connection_string=CONNECTION_STRING,
         table_name=TABLE_NAME,
         s3_bucket=S3_BUCKET,
-        json_schema_s3_key=JSON_SCHEMA_S3_KEY_SUBFOLDER,
-        s3_key=S3_KEY,
-        select_users=SELECT_USERS)
+        s3_key=S3_KEY)
     return carto_client
 
 @pytest.fixture
@@ -45,9 +42,7 @@ def carto_point():
         connection_string=CONNECTION_STRING,
         table_name=TABLE_NAME,
         s3_bucket=S3_BUCKET,
-        json_schema_s3_key=POINT_JSON_SCHEMA,
-        s3_key=POINT_CSV,
-        select_users=SELECT_USERS)
+        s3_key=POINT_CSV)
     return carto_client
 
 @pytest.fixture
@@ -56,9 +51,7 @@ def carto_polygon():
         connection_string=CONNECTION_STRING,
         table_name=TABLE_NAME,
         s3_bucket=S3_BUCKET,
-        json_schema_s3_key=POLYGON_JSON_SCHEMA,
-        s3_key=POLYGON_CSV,
-        select_users=SELECT_USERS)
+        s3_key=POLYGON_CSV)
     return carto_client
 
 def test_user(carto):
@@ -82,41 +75,19 @@ def test_temp_csv_path(carto):
     else:
         assert carto.temp_csv_path == '/tmp/table_name_t.csv'
 
-def test_json_schema_file_name_no_subfolder(carto):
-    assert carto.json_schema_file_name == 'json_schema.json'
+#def test_point_schema(carto_point, s3_point_schema):
+#    expected_point_schema = ' objectid numeric, textfield text, datefield date, numericfield numeric, shape geometry (Point, 2272) '
+#    assert carto_point.schema == expected_point_schema
 
-def test_json_schema_file_name_with_subfolder(carto_subfolder):
-    assert carto_subfolder.json_schema_file_name == 'json_schema.json'
+#def test_polygon_schema(carto_polygon, s3_polygon_schema):
+#    expected_polygon_schema = ' objectid numeric, textfield text, datefield date, numericfield numeric, shape geometry (MultiPolygon, 2272) '
+#    assert carto_polygon.schema == expected_polygon_schema
 
-def test_json_schema_path_no_subfolder(carto):
-    if os.name == 'nt':
-        assert carto.json_schema_path == 'json_schema.json'
-    else:
-        assert carto.json_schema_path == '/tmp/json_schema.json'
+#def test_geom_field(carto_point, s3_point_schema):
+#    assert carto_point.geom_field == 'shape'
 
-def test_json_schema_path_with_subfolder(carto_subfolder):
-    if os.name == 'nt':
-        assert carto_subfolder.json_schema_path == 'json_schema.json'
-    else:
-        assert carto_subfolder.json_schema_path == '/tmp/json_schema.json'
-
-def test_get_json_schema_from_s3(carto_point, s3_point_schema):
-    carto_point.get_json_schema_from_s3()
-    assert os.path.isfile(carto_point.json_schema_path)
-
-def test_point_schema(carto_point, s3_point_schema):
-    expected_point_schema = ' objectid numeric, textfield text, datefield date, numericfield numeric, shape geometry (Point, 2272) '
-    assert carto_point.schema == expected_point_schema
-
-def test_polygon_schema(carto_polygon, s3_polygon_schema):
-    expected_polygon_schema = ' objectid numeric, textfield text, datefield date, numericfield numeric, shape geometry (MultiPolygon, 2272) '
-    assert carto_polygon.schema == expected_polygon_schema
-
-def test_geom_field(carto_point, s3_point_schema):
-    assert carto_point.geom_field == 'shape'
-
-def test_geom_srid(carto_point, s3_point_schema):
-    assert carto_point.geom_srid == 2272
+#def test_geom_srid(carto_point, s3_point_schema):
+#    assert carto_point.geom_srid == 2272
 
 def test_get_csv_from_s3(carto_point, s3_point_csv):
     carto_point.get_csv_from_s3()

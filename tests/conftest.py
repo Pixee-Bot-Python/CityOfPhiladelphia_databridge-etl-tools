@@ -10,6 +10,10 @@ from .constants import (
     POINT_JSON_SCHEMA, POLYGON_JSON_SCHEMA, 
     POINT_CSV, POLYGON_CSV,
 )
+from _pytest.assertion import truncate
+truncate.DEFAULT_MAX_LINES = 9999
+truncate.DEFAULT_MAX_CHARS = 9999
+
 
 
 FIXTURES_DIR = os.path.join(

@@ -22,31 +22,6 @@ csv.field_size_limit(sys.maxsize)
 USR_BASE_URL = "https://{user}.carto.com/"
 CONNECTION_STRING_REGEX = r'^carto://(.+):(.+)'
 
-DATA_TYPE_MAP = {
-    'string':           'text',
-    'number':           'numeric',
-    'float':            'numeric',
-    'double precision': 'numeric',
-    'integer':          'integer',
-    'boolean':          'boolean',
-    'object':           'jsonb',
-    'array':            'jsonb',
-    'date':             'date',
-    'time':             'time',
-    'datetime':         'timestamp',
-    'geom':             'geometry',
-    'geometry':         'geometry'
-}
-
-GEOM_TYPE_MAP = {
-    'point':           'Point',
-    'line':            'Linestring',
-    'linestring':      'Linestring',
-    'polygon':         'MultiPolygon',
-    'multipolygon':    'MultiPolygon',
-    'multilinestring': 'MultiLineString',
-    'geometry':        'Geometry',
-}
 
 class Carto():
 
@@ -64,14 +39,14 @@ class Carto():
                  table_name, 
                  s3_bucket, 
                  s3_key,
-                 select_users,
-                 index_fields=None):
+                 **kwargs):
         self.connection_string = connection_string
         self.table_name = table_name
         self.s3_bucket = s3_bucket
         self.s3_key = s3_key
-        self.select_users = select_users
-        self.index_fields = index_fields
+        self.select_users = kwargs.get('select_users', None)
+        self.index_fields = kwargs.get('index_fields', None)
+        self.override_datatypes = kwargs.get('override_datatypes', None)
 
     @property
     def user(self):
@@ -182,48 +157,77 @@ class Carto():
 
     @property
     def schema(self):
+        '''
+        Auto detect data types by using pandas dtype detection and some
+        custom methods such as attempting to parse dates and trying to 
+        figure out the top length of a string field.
+        We only pull in the first 5000 rows so this doesn't take forever
+        on larger datasets.
+        '''
         if self._schema is None:
-            # Only read in the first 1000 rows into memory for faster detection
+            # Only read in the first 5000 rows into memory for faster detection
             # in case the CSV is really really big
             # Hopefully the first 5000 rows don't all contain null geometry
             df = pd.read_csv(self.csv_path, nrows=5000)
+            # Get all our fields and possible types in a dictionary to loop through
             type_dict = df.dtypes.to_dict()
             #print('\nPrinting dtypes...')
+            # Parse any possible override data type args we got
+
             schema = ''
+            # Loop through fields/columns
             for k,v in type_dict.items():
+                # Check to see if we got passed a direct datatype for this one
                 atype = None
-                #print(f'field: {k},  detected type: {type(v)}, first value: {df[k].loc[1]}')
-                if v == np.int32:
-                    atype = 'int4'
-                elif v == np.int64:
-                    atype = 'int8'
-                elif v == np.float:
-                    atype = 'float4'
-                elif v == np.object:
-                    # if object, check if it's a datetime
-                    non_null_df = df.dropna(subset=k, how='any')
-                    ex_val = non_null_df.loc[0][k]
-                    if isinstance(ex_val, str):
-                        try:
-                            adate = dateutil.parser.parse(ex_val)
-                            #print(f'Detected a date: {adate}, field: {k}')
-                            atype = 'timestamp'
-                            if '+' in ex_val or '-' in ex_val:
-                                atype = 'timestamp with time zone'
-                        except dateutil.parser._parser.ParserError as e:
-                            pass
-                    # if we still don't have a type, assume string and check length
-                    # Also determine varchar length
-                    if atype is None:
-                        # Drop all null values for this column
+                if self.override_datatypes:
+                    overrides = self.override_datatypes.split(',')
+                    for o in overrides:
+                        if k == o.split(':')[0]:
+                            atype = o.split(':')[1]
+                if atype == None:
+                    #print(f'field: {k},  detected type: {type(v)}, first value: {df[k].loc[1]}')
+                    if v == np.int32:
+                        atype = 'int4'
+                    elif v == np.int64:
+                        atype = 'int8'
+                    elif v == np.float:
+                        atype = 'float4'
+                    elif v == np.object:
+                        # if object, check if it's a datetime
                         non_null_df = df.dropna(subset=k, how='any')
-                        max_len = non_null_df[k].str.len().max()
-                        print(max_len)
-                        atype = f'varchar({max_len+50})'
+                        #print(f'DEBUG: {k}')
+                        ex_val = non_null_df.loc[1][k]
+                        if isinstance(ex_val, str):
+                            # Account for odd values like "9:30 PM" by putting a length lmit.
+                            # The date parser will parse this, but when we attempt to upload to carto
+                            # it won't accept it as a date.
+                            if len(ex_val) > 8:
+                                try:
+                                    adate = dateutil.parser.parse(ex_val)
+                                    print(f'Detected a date: {adate}, field: {k}')
+                                    if adate.tzinfo is not None:
+                                        atype = 'timestamp with time zone'
+                                    if adate.tzinfo is None:
+                                        atype = 'timestamp without time zone'
+                                    #if not adate.year:
+                                    #    atype = 'time'
+                                    #if '+' in ex_val or '-' in ex_val:
+                                        #atype = 'timestamp with time zone'
+                                except dateutil.parser._parser.ParserError as e:
+                                    pass
+                        # if we still don't have a type, assume string and check length
+                        # Also determine varchar length
+                        if atype is None:
+                            # Drop all null values for this column
+                            non_null_df = df.dropna(subset=k, how='any')
+                            max_len = non_null_df[k].str.len().max()
+                            atype = f'varchar({max_len+50})'
 
                 if atype:
                     schema = schema + f'{k} {atype}, '
-                print('DEBUG ', atype)
+                elif not atype:
+                    raise TypeError(f'Could not determine a data type for field {k}!! Please pass an override via the override_datatypes argument (see its help text in cli.py)')
+                    #print('DEBUG ', atype)
             # strip last two characters
             schema = schema[:-2]
             print(f'Devised schema: {schema}')

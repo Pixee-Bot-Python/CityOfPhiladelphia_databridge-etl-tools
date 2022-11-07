@@ -36,7 +36,14 @@ def oracle_extract(table_name, table_schema, connection_string, s3_bucket, s3_ke
 @click.option('--s3_key')
 @click.option('--select_users', required=False, default=None)
 @click.option('--index_fields', required=False, default=None)
-def carto_update(table_name, connection_string, s3_bucket, s3_key, select_users, index_fields):
+@click.option('--override_datatypes', required=False, default=None,
+        help='''Directly specify some field's direct postgres data type,
+        otherwise the data type will be automatically inferred.
+        Examples:
+        --override-datatypes="some_field=varchar(255),some_int=int4"
+        --override-datatypes="some_date=timestamp with timezone"
+        ''')
+def carto_update(table_name, connection_string, s3_bucket, s3_key, select_users, index_fields, override_datatypes):
     """Loads a datasets from S3 into carto"""
     carto = Carto(
         table_name=table_name,
@@ -44,7 +51,8 @@ def carto_update(table_name, connection_string, s3_bucket, s3_key, select_users,
         s3_bucket=s3_bucket,
         s3_key=s3_key,
         select_users=select_users,
-        index_fields=index_fields)
+        index_fields=index_fields,
+        override_datatypes=override_datatypes)
     carto.run_workflow()
 
 
