@@ -173,8 +173,12 @@ class Carto():
             type_dict = df.dtypes.to_dict()
             #print('\nPrinting dtypes...')
             # Parse any possible override data type args we got
+            if self.override_datatypes:
+                self.override_datatypes = self.override_datatypes.strip('\'')
+                self.override_datatypes = self.override_datatypes.strip('\"')
 
             schema = ''
+            # In batch sometimes the var gets communicated with extra quotes
             # Loop through fields/columns
             for k,v in type_dict.items():
                 # Check to see if we got passed a direct datatype for this one
@@ -182,6 +186,7 @@ class Carto():
                 if self.override_datatypes:
                     overrides = self.override_datatypes.split(',')
                     for o in overrides:
+                        #print(f"{k} == {o.split(':')[0]} ?")
                         if k == o.split(':')[0]:
                             atype = o.split(':')[1]
                 if atype == None:
