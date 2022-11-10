@@ -251,8 +251,18 @@ class AGO():
         try:
             self.layer_object.manager.truncate()
         except Exception as e:
-            if '502' in str(e):
-                sleep(20)
+            if 'Your request has timed out' in str(e) or '504' in str(e):
+                print('Request timed out. Checking count after sleep...')
+                sleep(60)
+                count = self.layer_object.query(return_count_only=True)
+                if count == 0:
+                    pass
+                else:
+                    # if count is not 0, assume it actually failed and try again after another long sleep
+                    sleep(120)
+                    self.layer_object.manager.truncate()
+            elif '502' in str(e):
+                sleep(60)
                 self.layer_object.manager.truncate()
             else:
                 raise e
