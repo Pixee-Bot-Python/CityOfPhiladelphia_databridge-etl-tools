@@ -4,39 +4,45 @@ from distutils.core import setup
 
 setup(
     name='databridge_etl_tools',
-    version='0.1.0',
+    version='0.2.0',
     packages=['databridge_etl_tools',],
     install_requires=[
-        'boto3==1.9.137',
-        'botocore==1.12.137',
-        'certifi==2019.3.9',
-        'chardet==3.0.4',
-        'click==7.0',
-        'docutils==0.14',
-        'future==0.17.1',
-        'idna==2.8',
-        'jmespath==0.9.4',
-        'petl==1.2.0',
-        'pyrestcli==0.6.8',
-        'python-dateutil==2.8.0',
-        'requests==2.21.0',
-        's3transfer==0.2.0',
-        'six==1.12.0',
-        'urllib3==1.24.2'
+        'boto3==1.21.15',
+        'botocore==1.24.15',
+        'certifi==2021.10.8',
+        'chardet==4.0.0',
+        'click==8.0.4',
+        'docutils==0.15.2',
+        'future==0.18.2',
+        'idna==3.3',
+        'jmespath==0.10.0',
+        'mock==4.0.3',
+        'petl==1.7.8',
+        'pyrestcli==0.6.11',
+        'python-dateutil==2.8.2',
+        'requests==2.27.1',
+        's3transfer==0.5.2',
+        'six==1.16.0',
+        'Shapely==1.8.1.post1',
+        'geopetl @ https://github.com/CityOfPhiladelphia/geopetl/tarball/master'
     ],
     extras_require={
-        'carto': ['carto==1.4.0'],
-        'oracle': ['cx_Oracle==7.1.3'],
-        'postgres': ['psycopg2-binary==2.8.2'],
+        'ago': [
+                'arcgis==2.0.0',
+                'Shapely==1.8.1.post1',
+                'pyproj<=3.2.1',
+                'numpy==1.21.5'
+                ],
+        'carto': ['carto==1.11.3'],
+        'oracle': ['cx_Oracle==8.3.0'],
+        'postgres': ['psycopg2-binary==2.9.3',
+                    'psycopg2==2.9.3'],
         'dev': [
-            'moto==1.3.8',
-            'pytest==4.4.1',
-            'requests-mock==1.6.0'
+            'moto==3.0.7',
+            'pytest==7.0.1',
+            'requests-mock==1.9.3'
         ]
     },
-    dependency_links=[
-        'https://github.com/CityOfPhiladelphia/geopetl/tarball/b80a38cf1dae2cec9ce2c619281cc513795bf608'
-    ],
     entry_points={
         'console_scripts': [
             'databridge_etl_tools=databridge_etl_tools:main',
