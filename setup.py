@@ -31,7 +31,7 @@ setup(
                 'arcgis==2.0.0',
                 'Shapely==1.8.1.post1',
                 'pyproj<=3.2.1',
-                'numpy==1.21.5'
+                'numpy==1.22.0'
                 ],
         'carto': ['carto==1.11.3'],
         'oracle': ['cx_Oracle==8.3.0'],
