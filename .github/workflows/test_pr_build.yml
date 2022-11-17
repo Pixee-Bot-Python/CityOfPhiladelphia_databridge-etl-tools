@@ -20,7 +20,7 @@ jobs:
     # This is a github function? Ref doc: https://github.com/actions/checkout#checkout-a-different-branch
     - uses: actions/checkout@v2
       with:
-        ref: roland-testing-2-2-22
+        ref: master
 
   # https://github.com/marketplace/actions/microsoft-teams-deploy-card
   # Using replacement fork for toko-bifrost, context for why: https://github.com/toko-bifrost/ms-teams-deploy-card/issues/33#issuecomment-888466503 
@@ -36,7 +36,6 @@ jobs:
         custom-facts: |
           - name: Job Progress
             value: Building databridge-etl-tools
-
     
     # https://github.com/aws-actions/amazon-ecr-login
     - name: Configure AWS credentials
@@ -66,17 +65,3 @@ jobs:
 
     - name: Start docker container and run pytests
       run: docker run --rm --name dbtools airflow-dbtools-testing pytest -vvv -ra --disable-warnings --showlocals --tb=native tests
-
-    # https://github.com/aws-actions/amazon-ecr-login
-    - name: Login to Amazon ECR
-      id: login-ecr
-      uses: aws-actions/amazon-ecr-login@v1
-
-    - name: Docker Push to ECR
-      env:
-        AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        ECR_REPOSITORY_URL: ${{ secrets.ECR_REPOSITORY_URL }}
-      run: |
-        docker tag airflow-dbtools-testing:latest $ECR_REPOSITORY_URL:latest
-        docker push $ECR_REPOSITORY_URL:latest
