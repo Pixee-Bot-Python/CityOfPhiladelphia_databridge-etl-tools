@@ -226,7 +226,9 @@ class Carto():
                             # Drop all null values for this column
                             non_null_df = df.dropna(subset=k, how='any')
                             max_len = non_null_df[k].str.len().max()
-                            atype = f'varchar({max_len+50})'
+                            #atype = f'varchar({max_len+50})'
+                            # nvm just do text which has no length
+                            atype = 'text'
 
                 if atype:
                     schema = schema + f'{k} {atype}, '
