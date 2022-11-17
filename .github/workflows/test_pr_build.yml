@@ -1,7 +1,7 @@
 name: Build, test, and push docker image to ECR
 
 on:
-  push:
+  pull_request:
     branches:
       - '**'
 
@@ -19,8 +19,6 @@ jobs:
     # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
     # This is a github function? Ref doc: https://github.com/actions/checkout#checkout-a-different-branch
     - uses: actions/checkout@v2
-      with:
-        ref: master
 
   # https://github.com/marketplace/actions/microsoft-teams-deploy-card
   # Using replacement fork for toko-bifrost, context for why: https://github.com/toko-bifrost/ms-teams-deploy-card/issues/33#issuecomment-888466503 
