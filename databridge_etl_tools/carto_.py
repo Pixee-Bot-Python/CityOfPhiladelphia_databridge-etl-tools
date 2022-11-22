@@ -133,7 +133,7 @@ class Carto():
 
             if candidate_shape:
                 # Create a new df that drops rows with a null shape
-                non_null_df = df.dropna(subset='shape', how='any')
+                non_null_df = df.dropna(subset=['shape'], how='any')
 
                 # If we still have data..
                 if not non_null_df.empty:
@@ -359,9 +359,9 @@ class Carto():
         if num_rows_in_table != num_rows_expected:
             self.logger.error('Did not insert all rows, reverting...')
             stmt = 'BEGIN;' + \
-                    'DROP TABLE if exists "{}" cascade;'.format(temp_table_name) + \
+                    'DROP TABLE if exists "{}" cascade;'.format(self.temp_table_name) + \
                     'COMMIT;'
-            execute_sql(stmt)
+            self.execute_sql(stmt)
             exit(1)
         self.logger.info('Row count verified.\n')
 

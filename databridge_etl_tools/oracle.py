@@ -101,28 +101,27 @@ class Oracle():
         '''
         Extract data from database and save as a CSV file. Any fields that contain 
         datetime information will be converted to US/Eastern time zone (with historical 
-        accuracy for Daylight Savings Time). However, fields that are type 'date' 
-        (note 'datetime') will also become datetimes with US/Eastern time zone information. 
+        accuracy for Daylight Savings Time). Oracle also stories DATE fields with a 
+        time component as well, so "DATE" fields that may appear without time information
+        will also have timezone niformation added.
         Append CSV file to S3 bucket.
         '''
         self.logger.info('Starting extract from {}'.format(self.schema_table_name))
         import geopetl
 
+        data = etl.fromoraclesde(self.conn, self.schema_table_name, geom_with_srid=True)
+        datetime_fields = []
+        for field in data.fieldnames(): 
+            if 'datetime' in etl.typeset(data, field): 
+                datetime_fields.append(field)
+        print(f'Converting {datetime_fields} fields to Eastern timezone datetime')
+        data = etl.convert(data, datetime_fields, pytz.timezone('US/Eastern').localize)
+        
         try:
-            # Date columns become datetimes columns because of cx_oracle and petl 
-            # To avoid that, one might want to convert first to Pandas
-            data = etl.fromoraclesde(self.conn, self.schema_table_name, geom_with_srid=True)
-            datetime_fields = []
-            for field in data.fieldnames(): 
-                if 'datetime' in etl.typeset(data, field): 
-                    datetime_fields.append(field)
-            print(f'Converting {datetime_fields} fields to Eastern timezone datetime')
-            etl.convert(data, datetime_fields, pytz.timezone('US/Eastern').localize) \
-                .tocsv(self.csv_path, encoding='utf-8')
+            etl.tocsv(data, self.csv_path, encoding='utf-8')
         except UnicodeError:
             self.logger.info("Exception encountered trying to extract to CSV with utf-8 encoding, trying latin-1...")
-            etl.fromoraclesde(self.conn, self.schema_table_name, geom_with_srid=True) \
-               .tocsv(self.csv_path, encoding='latin-1')
+            etl.tocsv(data, self.csv_path, encoding='latin-1')
 
         # Confirm CSV isn't empty
         try:
