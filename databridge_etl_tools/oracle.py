@@ -114,8 +114,9 @@ class Oracle():
         for field in data.fieldnames(): 
             if 'datetime' in etl.typeset(data, field): 
                 datetime_fields.append(field)
-        print(f'Converting {datetime_fields} fields to Eastern timezone datetime')
-        data = etl.convert(data, datetime_fields, pytz.timezone('US/Eastern').localize)
+        if datetime_fields:
+            print(f'Converting {datetime_fields} fields to Eastern timezone datetime')
+            data = etl.convert(data, datetime_fields, pytz.timezone('US/Eastern').localize)
         
         try:
             etl.tocsv(data, self.csv_path, encoding='utf-8')
