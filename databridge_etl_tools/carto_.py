@@ -41,7 +41,7 @@ class Carto():
                  s3_key,
                  **kwargs):
         self.connection_string = connection_string
-        self.table_name = table_name
+        self.table_name = table_name.lower()
         self.s3_bucket = s3_bucket
         self.s3_key = s3_key
         self.select_users = kwargs.get('select_users', None)
@@ -133,7 +133,7 @@ class Carto():
 
             if candidate_shape:
                 # Create a new df that drops rows with a null shape
-                non_null_df = df.dropna(subset='shape', how='any')
+                non_null_df = df.dropna(subset=['shape'], how='any')
 
                 # If we still have data..
                 if not non_null_df.empty:
@@ -199,7 +199,7 @@ class Carto():
                         atype = 'float4'
                     elif v == np.object:
                         # if object, check if it's a datetime
-                        non_null_df = df.dropna(subset=k, how='any')
+                        non_null_df = df.dropna(subset=[k], how='any')
                         #print(f'DEBUG: {k}')
                         ex_val = non_null_df.loc[1][k]
                         if isinstance(ex_val, str):
@@ -224,7 +224,7 @@ class Carto():
                         # Also determine varchar length
                         if atype is None:
                             # Drop all null values for this column
-                            non_null_df = df.dropna(subset=k, how='any')
+                            non_null_df = df.dropna(subset=[k], how='any')
                             max_len = non_null_df[k].str.len().max()
                             #atype = f'varchar({max_len+50})'
                             # nvm just do text which has no length
@@ -359,9 +359,9 @@ class Carto():
         if num_rows_in_table != num_rows_expected:
             self.logger.error('Did not insert all rows, reverting...')
             stmt = 'BEGIN;' + \
-                    'DROP TABLE if exists "{}" cascade;'.format(temp_table_name) + \
+                    'DROP TABLE if exists "{}" cascade;'.format(self.temp_table_name) + \
                     'COMMIT;'
-            execute_sql(stmt)
+            self.execute_sql(stmt)
             exit(1)
         self.logger.info('Row count verified.\n')
 
