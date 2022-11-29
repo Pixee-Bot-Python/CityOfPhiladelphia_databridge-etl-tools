@@ -109,6 +109,7 @@ class AGO():
         if self._item is None:
             try:
                 # "Feature Service" seems to pull up both spatial and table items in AGO
+                assert self.item_name.strip()
                 search_query = f'''owner:"{self.ago_user}" AND title:"{self.item_name}" AND type:"Feature Service"'''
                 print(f'Searching for item with query: {search_query}')
                 items = self.org.content.search(search_query, outside_org=False)
