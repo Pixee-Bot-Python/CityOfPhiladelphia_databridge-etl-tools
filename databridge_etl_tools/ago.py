@@ -18,6 +18,7 @@ from shapely.ops import transform as shapely_transformer
 from arcgis import GIS
 from arcgis.features import FeatureLayerCollection
 from time import sleep, time
+import dateutil.parser
 
 
 class AGO():
@@ -404,12 +405,21 @@ class AGO():
         for col in row.keys():
             if not row[col]:
                 row[col] = None
-        # Check to make sure rows aren't incorrectly set as UTC. Convert to EST/EDT if so.
+            # check if dates need to be converted to a datetime object. arcgis api will handle that
+            # and will also take timezones that way.
             if row[col]:
-                if 'datetime' in col and '+0000' in row[col]:
-                    dt_obj = datetime.strptime(row[col], "%Y-%m-%d %H:%M:%S %z")
-                    local_dt_obj = obj.astimezone(pytz.timezone('US/Eastern'))
-                    row[col] = local_db_obj.strftime("%Y-%m-%d %H:%M:%S %z")
+                if len(row[col]) > 8:
+                    try:
+                        adate = dateutil.parser.parse(row[col])
+                        # if parse above works, convert
+                        row[col] = adate
+                    except dateutil.parser._parser.ParserError as e:
+                        pass
+                #if 'datetime' in col and '+0000' in row[col]:
+                #    dt_obj = datetime.strptime(row[col], "%Y-%m-%d %H:%M:%S %z")
+                #    local_dt_obj = obj.astimezone(pytz.timezone('US/Eastern'))
+                #    row[col] = local_db_obj.strftime("%Y-%m-%d %H:%M:%S %z")
+
         return row
 
 
