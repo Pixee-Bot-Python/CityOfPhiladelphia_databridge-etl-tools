@@ -243,7 +243,9 @@ class Carto():
                     "BLOB": "bytea",
                     "FLOAT": "float",
                     "NUMBER": "integer",
-                    "DATE": "date",
+                    # just force timezones for now on date types
+                    #"DATE": "date",
+                    "DATE": "timestamptz",
                     "TIMESTAMP": "timestamp",
                     "TIMESTAMP WITH TIME ZONE": "timestamptz",
                     "TIMESTAMP(6) WITH TIME ZONE": "timestamptz"
