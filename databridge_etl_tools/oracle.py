@@ -5,12 +5,14 @@ import csv
 import pytz
 import boto3
 import petl as etl
+import json
 
 
 class Oracle():
 
     _conn = None
     _logger = None
+    _json_schema = None
 
     def __init__(self, connection_string, table_name, table_schema, s3_bucket, s3_key):
         self.connection_string = connection_string
@@ -58,13 +60,41 @@ class Oracle():
            self._logger = logger
        return self._logger
 
-    def load_csv_to_s3(self):
+    @property 
+    def json_schema(self):
+        if self._json_schema is None:
+            stmt=f'''
+            SELECT
+                COLUMN_NAME,
+                DATA_TYPE,
+                DATA_LENGTH
+            FROM ALL_TAB_COLUMNS
+            WHERE OWNER = '{self.table_schema.upper()}'
+            AND TABLE_NAME = '{self.table_name.upper()}'
+            '''
+            cursor = self.conn.cursor()
+            cursor.execute(stmt)
+            results = cursor.fetchall()
+            self._json_schema = json.dumps(results)
+        return self._json_schema
+
+
+    def load_csv_and_schema_to_s3(self):
         self.logger.info('Starting load to s3: {}'.format(self.s3_key))
 
         s3 = boto3.resource('s3')
         s3.Object(self.s3_bucket, self.s3_key).put(Body=open(self.csv_path, 'rb'))
         
         self.logger.info('Successfully loaded to s3: {}'.format(self.s3_key))
+
+        json_schema_path = self.csv_path.replace('.csv','') + '_schema.json'
+        json_s3_key = self.s3_key.replace('.csv','') + '_schema.json'
+        with open(json_schema_path, 'w') as f:
+            f.write(self.json_schema)
+
+        s3.Object(self.s3_bucket, json_s3_key).put(Body=open(json_schema_path, 'rb'))
+        self.logger.info('Successfully loaded to s3: {}'.format(json_s3_key))
+
 
     def check_remove_nulls(self):
         '''
@@ -136,7 +166,7 @@ class Oracle():
         if num_rows_in_csv == 0:
             raise AssertionError('Error! Dataset is empty? Line count of CSV is 0.')
 
-        self.load_csv_to_s3()
+        self.load_csv_and_schema_to_s3()
         os.remove(self.csv_path)
 
         self.logger.info('Successfully extracted from {}'.format(self.schema_table_name))

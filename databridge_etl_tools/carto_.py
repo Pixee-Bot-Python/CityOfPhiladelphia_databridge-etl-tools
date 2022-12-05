@@ -16,6 +16,10 @@ import pandas as pd
 import numpy as np
 import dateutil.parser
 
+# import solely so we can catch boto errors
+from botocore.exceptions import ClientError as BotoClientError
+
+
 
 csv.field_size_limit(sys.maxsize)
 
@@ -47,6 +51,8 @@ class Carto():
         self.select_users = kwargs.get('select_users', None)
         self.index_fields = kwargs.get('index_fields', None)
         self.override_datatypes = kwargs.get('override_datatypes', None)
+        self.schema_file = None
+        self.schema_file_path = None
 
     @property
     def user(self):
@@ -165,6 +171,53 @@ class Carto():
         on larger datasets.
         '''
         if self._schema is None:
+            # Check to see if there is a schema file in S3
+            try:
+                self.schema_file = f'{self.s3_key.replace(".csv","") + "_schema.json"}'
+                self.schema_file_path = f'/tmp/{self.table_name + "_schema.json"}'
+                s3 = boto3.resource('s3')
+                s3.Object(self.s3_bucket, self.schema_file).download_file(self.schema_file_path)
+                print(f'Downloaded schema file to {self.schema_file_path}')
+            except BotoClientError as e:
+                if 'HeadObject operation: Not Found' in str(e):
+                    print(f'Schema file {self.schema_file} does not exist. Attempting to guess schema data types..')
+                    self.schema_file_path = None
+                else:
+                    raise e
+        # If we found a schema file path, make our schema from it that we'll use to make the carto table later.
+        if self.schema_file_path:
+            # reference https://www.cybertec-postgresql.com/en/mapping-oracle-datatypes-to-postgresql/
+            o2p_typemap = {
+                    "CHAR": "text",
+                    "NCHAR": "text",
+                    "VARCHAR": "text",
+                    "VARCHAR2": "text",
+                    "NVARCHAR2": "text",
+                    "CLOB": "text",
+                    "RAW": "bytea",
+                    "BLOB": "bytea",
+                    "FLOAT": "float8",
+                    "NUMBER": "int8",
+                    "DATE": "date",
+                    "TIMESTAMP": "timestamp",
+                    "TIMESTAMP WITH TIME ZONE": "timestamptz",
+                    "TIMESTAMP(6) WITH TIME ZONE": "timestamptz"
+                    }
+
+            with open(self.schema_file_path) as f:
+                oracle_schema = json.load(f)
+
+            # Create schema by mapping the oracle type to the postgres type
+            schema = ''
+            for field in oracle_schema:
+                schema = schema + f'{field[0].lower()} {o2p_typemap[field[1]]}, '
+            # strip last two characters, which will be a trailing ', '
+            schema = schema[:-2]
+            print(f'Devised schema: {schema}')
+            self._schema = schema
+        
+        # Make educated guesses on schema type based on the data in the CSV
+        if self.schema_file_path is None:
             # Only read in the first 5000 rows into memory for faster detection
             # in case the CSV is really really big
             # Hopefully the first 5000 rows don't all contain null geometry
@@ -272,6 +325,8 @@ class Carto():
         self.logger.info('Creating temp table...')
         stmt = f'''DROP TABLE IF EXISTS {self.temp_table_name}; 
                     CREATE TABLE {self.temp_table_name} ({self.schema});'''
+        print('\nCreating temp table with statement:')
+        print(stmt)
         self.execute_sql(stmt)
         check_table_sql = "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = '{}');".format(self.temp_table_name)
         response = self.execute_sql(check_table_sql, fetch='many')
@@ -343,7 +398,7 @@ class Carto():
                 self.logger.info('Carto Write Successful: {} rows imported.\n'.format(status['total_rows']))
 
     def verify_count(self):
-        self.logger.info('Verifying row count...')
+        print('Verifying row count...')
 
         data = self.execute_sql('SELECT count(*) FROM "{}";'.format(self.temp_table_name), fetch='many')
         num_rows_in_table = data['rows'][0]['count']
@@ -355,7 +410,7 @@ class Carto():
             num_rows_expected,
             num_rows_inserted
         )
-        self.logger.info(message)
+        print(message)
         if num_rows_in_table != num_rows_expected:
             self.logger.error('Did not insert all rows, reverting...')
             stmt = 'BEGIN;' + \
@@ -363,7 +418,7 @@ class Carto():
                     'COMMIT;'
             self.execute_sql(stmt)
             exit(1)
-        self.logger.info('Row count verified.\n')
+        print('Row count verified.\n')
 
     def cartodbfytable(self):
         self.logger.info('Cartodbfytable\'ing table: {}'.format(self.temp_table_name))
