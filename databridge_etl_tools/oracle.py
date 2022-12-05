@@ -67,7 +67,8 @@ class Oracle():
             SELECT
                 COLUMN_NAME,
                 DATA_TYPE,
-                DATA_LENGTH
+                DATA_PRECISION,
+                DATA_SCALE
             FROM ALL_TAB_COLUMNS
             WHERE OWNER = '{self.table_schema.upper()}'
             AND TABLE_NAME = '{self.table_name.upper()}'
@@ -86,9 +87,10 @@ class Oracle():
         s3.Object(self.s3_bucket, self.s3_key).put(Body=open(self.csv_path, 'rb'))
         
         self.logger.info('Successfully loaded to s3: {}'.format(self.s3_key))
-
-        json_schema_path = self.csv_path.replace('.csv','') + '_schema.json'
-        json_s3_key = self.s3_key.replace('.csv','') + '_schema.json'
+    
+        # Now load the schema
+        json_schema_path = self.csv_path.replace('.csv','') + '_oracle_schema.json'
+        json_s3_key = self.s3_key.replace('.csv','') + '_oracle_schema.json'
         with open(json_schema_path, 'w') as f:
             f.write(self.json_schema)
 

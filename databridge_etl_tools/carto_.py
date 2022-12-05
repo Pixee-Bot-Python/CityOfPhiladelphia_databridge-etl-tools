@@ -164,28 +164,73 @@ class Carto():
     @property
     def schema(self):
         '''
-        Auto detect data types by using pandas dtype detection and some
+        First check for schema json files in S3 to determine the schema to use
+        for table creation.
+        If they don't exist, attempt to auto detect data types by using pandas dtype detection and some
         custom methods such as attempting to parse dates and trying to 
         figure out the top length of a string field.
         We only pull in the first 5000 rows so this doesn't take forever
         on larger datasets.
         '''
+        self.oracle_schema_file_path = None
+        self.oracle_schema_file = None
+        self.postgres_schema_file_path = None
+        self.postgres_schema_file = None
         if self._schema is None:
-            # Check to see if there is a schema file in S3
+            # Check to see if there is an Postgres schema file in S3. Default to it first before oracle.
             try:
-                self.schema_file = f'{self.s3_key.replace(".csv","") + "_schema.json"}'
-                self.schema_file_path = f'/tmp/{self.table_name + "_schema.json"}'
+                self.postgres_schema_file = f'{self.s3_key.replace(".csv","") + "_postgres_schema.json"}'
+                self.postgres_schema_file_path = f'/tmp/{self.table_name + "_postgres_schema.json"}'
                 s3 = boto3.resource('s3')
-                s3.Object(self.s3_bucket, self.schema_file).download_file(self.schema_file_path)
-                print(f'Downloaded schema file to {self.schema_file_path}')
+                s3.Object(self.s3_bucket, self.postgres_schema_file).download_file(self.postgres_schema_file_path)
+                print(f'Downloaded schema file to {self.postgres_schema_file_path}')
             except BotoClientError as e:
                 if 'HeadObject operation: Not Found' in str(e):
-                    print(f'Schema file {self.schema_file} does not exist. Attempting to guess schema data types..')
-                    self.schema_file_path = None
+                    print(f'Schema file {self.postgres_schema_file} does not exist.')
+                    self.postgres_schema_file_path = None
+                    self.postgres_schema_file = None
                 else:
                     raise e
-        # If we found a schema file path, make our schema from it that we'll use to make the carto table later.
-        if self.schema_file_path:
+            # IF we didn't get a postgres schema file, check for oracle
+            if self.postgres_schema_file_path == None:
+                # Check to see if there is an Oracle schema file in S3
+                try:
+                    self.oracle_schema_file = f'{self.s3_key.replace(".csv","") + "_oracle_schema.json"}'
+                    self.oracle_schema_file_path = f'/tmp/{self.table_name + "_oracle_schema.json"}'
+                    s3 = boto3.resource('s3')
+                    s3.Object(self.s3_bucket, self.oracle_schema_file).download_file(self.oracle_schema_file_path)
+                    print(f'Downloaded schema file to {self.oracle_schema_file_path}')
+                except BotoClientError as e:
+                    if 'HeadObject operation: Not Found' in str(e):
+                        print(f'Schema file {self.oracle_schema_file} does not exist.')
+                        self.oracle_schema_file_path = None
+                        self.oracle_schema_file = None
+                    else:
+                        raise e
+        # If we found a postgres schema file, make our schema from it that we'll use to make the carto table later.
+        if self.postgres_schema_file_path:
+            with open(self.postgres_schema_file_path) as f:
+                postgres__schema = json.load(f)
+
+            # Create schema by mapping the oracle type to the postgres type
+            schema = ''
+            # Indices are:
+            # [0] == field name
+            # [1] == data type
+            # [2] == precision (digits)
+            # [3] == scale (digits after decimal)
+            for i in postgres_schema:
+                fname = i[0]
+                dtype = i[1]
+                prec = i[2]
+                scale = i[3]
+                schema = schema + f'{fname.lower()} {dtype}, '
+            schema = schema[:-2]
+            print(f'Devised schema: {schema}')
+            self._schema = schema
+
+        # If we found an oracle schema file, make our schema from it that we'll use to make the carto table later.
+        elif self.oracle_schema_file_path:
             # reference https://www.cybertec-postgresql.com/en/mapping-oracle-datatypes-to-postgresql/
             o2p_typemap = {
                     "CHAR": "text",
@@ -196,28 +241,66 @@ class Carto():
                     "CLOB": "text",
                     "RAW": "bytea",
                     "BLOB": "bytea",
-                    "FLOAT": "float8",
-                    "NUMBER": "int8",
+                    "FLOAT": "float",
+                    "NUMBER": "integer",
                     "DATE": "date",
                     "TIMESTAMP": "timestamp",
                     "TIMESTAMP WITH TIME ZONE": "timestamptz",
                     "TIMESTAMP(6) WITH TIME ZONE": "timestamptz"
                     }
 
-            with open(self.schema_file_path) as f:
+            with open(self.oracle_schema_file_path) as f:
                 oracle_schema = json.load(f)
 
             # Create schema by mapping the oracle type to the postgres type
             schema = ''
-            for field in oracle_schema:
-                schema = schema + f'{field[0].lower()} {o2p_typemap[field[1]]}, '
+            # Indices are:
+            # [0] == field name
+            # [1] == oracle type
+            # [2] == precision (digits)
+            # [3] == scale (digits after decimal)
+            for i in oracle_schema:
+                fname = i[0]
+                otype = i[1]
+                prec = i[2]
+                scale = i[3]
+                if otype == 'NUMBER' or otype == 'FLOAT':
+                    # First check to see if it's a simple number.
+                    if (scale == None or scale == 0) and (prec == None or prec == 0):
+                        schema = schema + f'{fname.lower()} integer, '
+                    # if there's no scale, use precision to determine int
+                    if (not scale or scale == 0):
+                        if (prec and prec > 0):
+                            # If the length (field[2]) is 5 or less, make it a smallint
+                            if prec <= 5:
+                                schema = schema + f'{fname.lower()} smallint, '
+                            # If the length (field[2]) is greater than 10, make it a bigint
+                            elif prec > 10:
+                                schema = schema + f'{fname.lower()} bigint, '
+                            else:
+                                schema = schema + f'{fname.lower()} integer, '
+
+                    # if there's a scale, it's a float
+                    elif (scale and scale > 0):
+                        if scale <= 6:
+                            schema = schema + f'{fname.lower()} float4, '
+                        elif scale > 6:
+                            schema = schema + f'{fname.lower()} float8, '
+                        else:
+                            schema = schema + f'{fname.lower()} float, '
+                    else:
+                        schema = schema + f'{fname.lower()} bigint, '
+
+                else:
+                    schema = schema + f'{fname.lower()} {o2p_typemap[otype]}, '
             # strip last two characters, which will be a trailing ', '
             schema = schema[:-2]
             print(f'Devised schema: {schema}')
             self._schema = schema
         
         # Make educated guesses on schema type based on the data in the CSV
-        if self.schema_file_path is None:
+        if self._schema is None and postgres_schema_file_path is None and oracle_schema_file_path is None:
+            print('Schema file not found, attempting to guess data types from CSV data..')
             # Only read in the first 5000 rows into memory for faster detection
             # in case the CSV is really really big
             # Hopefully the first 5000 rows don't all contain null geometry
@@ -317,7 +400,7 @@ class Carto():
         print('CSV successfully downloaded.\n'.format(self.s3_bucket, self.s3_key))
 
     def execute_sql(self, stmt, fetch='many'):
-        self.logger.info('Executing: {}'.format(stmt))
+        #self.logger.info('Executing: {}'.format(stmt))
         response = self.conn.send(stmt)
         return response
 

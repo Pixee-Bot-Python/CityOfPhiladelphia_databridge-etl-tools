@@ -46,6 +46,7 @@ class Postgres():
     _conn = None
     _logger = None
     _schema = None
+    _export_json_schema = None
 
     def __init__(self, 
                  table_name, 
@@ -96,6 +97,7 @@ class Postgres():
             json_schema_file_name = self.json_schema_s3_key
         return json_schema_file_name
 
+
     @property
     def json_schema_path(self):
         if self.json_schema_file_name == None:
@@ -109,6 +111,7 @@ class Postgres():
             json_schema_path = os.path.join(json_schema_directory, self.json_schema_file_name)
         return json_schema_path
 
+
     @property
     def conn(self):
         if self._conn is None:
@@ -117,6 +120,22 @@ class Postgres():
             self._conn = conn
             print('Connected to postgres.\n')
         return self._conn
+
+    @property
+    def export_json_schema(self):
+        '''Json schema to export to s3 during extraction, for use when uploading to places like Carto.'''
+        if self._export_json_schema is None:
+            stmt = f'''
+            SELECT column_name, data_type, numeric_precision, numeric_scale
+            FROM information_schema.columns
+            WHERE table_schema = '{self.table_schema}'
+            AND table_name = '{self.table_name}'
+            '''
+            results = self.execute_sql(stmt, fetch='all')
+            print(f'DEBUG: {results}')
+            self._export_json_schema = json.dumps(results)
+        return self._export_json_schema
+
 
     @property
     def geom_field(self):
@@ -276,6 +295,10 @@ class Postgres():
 
             elif fetch == 'many':
                 result = cursor.fetchmany()
+                return result
+
+            elif fetch == 'all':
+                result = cursor.fetchall()
                 return result
 
     def get_json_schema_from_s3(self):
@@ -444,7 +467,6 @@ class Postgres():
                         pass
 
 
-
     def load(self):
         try:
             self.write()
@@ -461,13 +483,21 @@ class Postgres():
             self.cleanup()
 
 
-    def load_csv_to_s3(self):
+    def load_csv_and_schema_to_s3(self):
         print('Starting load to s3: {}'.format(self.s3_key))
 
         s3 = boto3.resource('s3')
         s3.Object(self.s3_bucket, self.s3_key).put(Body=open(self.csv_path, 'rb'))
         
         print('Successfully loaded to s3: {}'.format(self.s3_key))
+
+        json_schema_path = self.csv_path.replace('.csv','') + '_postgres_schema.json'
+        json_s3_key = self.s3_key.replace('.csv','') + '_postgres_schema.json'
+        with open(json_schema_path, 'w') as f:
+            f.write(self.export_json_schema)
+
+        s3.Object(self.s3_bucket, json_s3_key).put(Body=open(json_schema_path, 'rb'))
+        self.logger.info('Successfully loaded to s3: {}'.format(json_s3_key))
 
 
     def extract_verify_row_count(self):
@@ -531,5 +561,5 @@ class Postgres():
             rows.tocsv(self.csv_path, 'latin-1')
 
         self.check_remove_nulls()
-        self.load_csv_to_s3()
+        self.load_csv_and_schema_to_s3()
 
