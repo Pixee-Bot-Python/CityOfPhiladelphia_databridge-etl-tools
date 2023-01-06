@@ -19,12 +19,14 @@ class Db2():
     def __init__(self,
                 table_name,
                 account_name,
+                copy_from_source_schema = None,
                 enterprise_schema = None,
                 oracle_conn_string = None,
                 libpq_conn_string = None
                 ):
         self.table_name = table_name
         self.account_name = account_name
+        self.copy_from_source_schema = copy_from_source_schema
         self.enterprise_schema = enterprise_schema
         self.libpq_conn_string = libpq_conn_string
         self.oracle_conn_string = oracle_conn_string
@@ -79,7 +81,7 @@ class Db2():
     @property
     def pg_cursor(self):
         if self._pg_cursor is None: 
-            self.conn = psycopg2.connect(self.libpq_conn_string)
+            self.conn = psycopg2.connect(self.libpq_conn_string, connect_timeout=6)
             assert self.conn.closed == 0
             self.conn.autocommit = False
             self.conn.set_session(autocommit=False)
@@ -318,7 +320,7 @@ class Db2():
         self.run_ddl()
 
 
-    def copy_staging_to_enterprise(self):
+    def copy_to_enterprise(self):
         get_enterprise_columns_stmt = f'''
         SELECT array_agg(COLUMN_NAME::text order by COLUMN_NAME)
         FROM information_schema.columns
@@ -374,10 +376,11 @@ class Db2():
         self.pg_cursor.execute(reg_stmt)
         reg_id = self.pg_cursor.fetchone()[0]
 
-        row_count_stmt=f'select count(*) from {self.staging_schema}.{self.enterprise_dataset_name}'
+
+        # Get enterprise row_count, needed for resetting the objectid counter in our delta table
+        row_count_stmt=f'select count(*) from {self.enterprise_schema}.{self.enterprise_dataset_name}'
         self.pg_cursor.execute(row_count_stmt)
         row_count = self.pg_cursor.fetchone()[0]
-
 
         # Reset what the objectid field will start incrementing from.
         reset_stmt=f'''
@@ -411,7 +414,7 @@ class Db2():
         insert_stmt = f'''
             INSERT INTO {prod_table} ({enterprise_columns_str})
             SELECT {select_fields}
-            FROM {self.staging_schema}.{self.enterprise_dataset_name}
+            FROM {self.copy_from_source_schema}.{self.table_name}
             '''
         # NOTE: this method of copying from etl_staging into a copy of the table, and then renaming,
         # does not seem to be faster at all.
@@ -437,14 +440,14 @@ class Db2():
         #    END;
         #    '''
 
-        update_stmt = f'''
-            BEGIN;
-            -- Truncate our table (won't show until commit) 
-            {truncate_stmt};
-            -- Insert into our table from etl_staging
-            {insert_stmt};
-            END;
-            '''
+        #update_stmt = f'''
+        #    BEGIN;
+        #    -- Truncate our table (won't show until commit) 
+        #    {truncate_stmt};
+        #    -- Insert into our table from etl_staging (or dept schema)
+        #    {insert_stmt};
+        #    END;
+        #    '''
 
         new_update_stmt = f'''
         BEGIN;
@@ -454,7 +457,7 @@ class Db2():
 
             -- Truncate our table (won't show until commit) 
             {truncate_stmt};
-            -- Our delete and insert from etl_staging statement.
+            -- Our delete and insert from etl_staging (or dept schema) statement.
             {insert_stmt};
 
             -- Recreate it as an autoincrementer SERIAL column, it is much much faster,
@@ -484,10 +487,12 @@ class Db2():
             raise e
 
         # If successful, drop the etl_staging and old table when we're done to save space.
-        self.pg_cursor.execute(f'DROP TABLE {self.staging_schema}.{self.enterprise_dataset_name}')
+        if self.copy_from_source_schema == 'etl_staging':
+            self.pg_cursor.execute(f'DROP TABLE etl_staging.{self.enterprise_dataset_name}')
+            self.pg_cursor.execute('COMMIT')
+
         #self.pg_cursor.execute(f'DROP TABLE IF EXISTS {table_copy}')
         #self.pg_cursor.execute(f'DROP TABLE IF EXISTS {table_old}')
-        self.pg_cursor.execute('COMMIT')
 
         # Manually run a vacuum on our tables for database performance
         self.pg_cursor.execute(f'VACUUM VERBOSE {self.enterprise_schema}.{self.enterprise_dataset_name}')
@@ -504,6 +509,7 @@ class Db2():
         self.logger.info('Result of select test:')
         self.logger.info(str(result))
         assert result
+        print('Success!')
 
 
 

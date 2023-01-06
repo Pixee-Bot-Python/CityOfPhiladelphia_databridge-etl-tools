@@ -232,16 +232,35 @@ def create_staging_from_enterprise(table_name, account_name, enterprise_schema, 
 @main.command()
 @click.option('--table_name', required=True)
 @click.option('--account_name', required=True)
+@click.option('--copy_from_source_schema', required=True)
 @click.option('--enterprise_schema', required=True)
 @click.option('--libpq_conn_string', required=True)
-def copy_staging_to_enterprise(table_name, account_name, enterprise_schema, libpq_conn_string):
+def copy_dept_to_enterprise(table_name, account_name, copy_from_source_schema, enterprise_schema, libpq_conn_string):
+    """Copy from the dept table to the staging table"""
+    db2 = Db2(
+        table_name=table_name,
+        account_name=account_name,
+        copy_from_source_schema=account_name,
+        enterprise_schema=enterprise_schema,
+        libpq_conn_string=libpq_conn_string)
+    db2.copy_to_enterprise()
+
+
+@main.command()
+@click.option('--table_name', required=True)
+@click.option('--account_name', required=True)
+@click.option('--copy_from_source_schema', required=True)
+@click.option('--enterprise_schema', required=True)
+@click.option('--libpq_conn_string', required=True)
+def copy_staging_to_enterprise(table_name, account_name, copy_from_source_schema, enterprise_schema, libpq_conn_string):
     """Copies from etl_staging to the specified enterprise authoritative dataset."""
     db2 = Db2(
         table_name=table_name,
         account_name=account_name,
+        copy_from_source_schema='etl_staging',
         enterprise_schema=enterprise_schema,
         libpq_conn_string=libpq_conn_string)
-    db2.copy_staging_to_enterprise()
+    db2.copy_to_enterprise()
 
 
 @main.command()
