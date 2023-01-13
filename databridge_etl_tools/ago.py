@@ -484,6 +484,10 @@ class AGO():
                 # and also store in 'wkt' var (well known text) so we can project it
                 wkt = row.pop('shape')
 
+                # Set WKT to empty string so next conditional doesn't fail on a Nonetype
+                if wkt is None:
+                    wkt = ''
+
                 # if the wkt is not empty, and SRID isn't in it, fail out.
                 # empty geometries come in with some whitespace, so test truthiness
                 # after stripping whitespace.
