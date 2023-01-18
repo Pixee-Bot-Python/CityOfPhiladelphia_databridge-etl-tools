@@ -107,12 +107,14 @@ class Oracle():
         has_null_bytes = False
         with open(self.csv_path, 'r', encoding='utf-8') as infile:
             for i, line in enumerate(infile):
+                if has_null_bytes:
+                # Break the cycle if we already found them 
+                    break
                 if i >= 500:
                     break
                 for char in line:
                     #if char == '\0' or char == u'\xa0' or char == b'\xc2\xa0':
                     if char == '\0' or char == u'\xa0':
-                        print('Found null bytes')
                         has_null_bytes = True
                         break
 
