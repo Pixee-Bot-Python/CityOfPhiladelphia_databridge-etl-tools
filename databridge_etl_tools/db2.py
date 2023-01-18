@@ -407,6 +407,7 @@ class Db2():
         # DELTE FROM is 'MVCC-safe'.
 
         prod_table = f'{self.enterprise_schema}.{self.enterprise_dataset_name}'
+        stage_table = f'{self.copy_from_source_schema}.{self.enterprise_dataset_name}'
 
         truncate_stmt = f'''DELETE FROM {prod_table}'''
 
@@ -414,7 +415,7 @@ class Db2():
         insert_stmt = f'''
             INSERT INTO {prod_table} ({enterprise_columns_str})
             SELECT {select_fields}
-            FROM {self.copy_from_source_schema}.{self.table_name}
+            FROM {stage_table}
             '''
         # NOTE: this method of copying from etl_staging into a copy of the table, and then renaming,
         # does not seem to be faster at all.
