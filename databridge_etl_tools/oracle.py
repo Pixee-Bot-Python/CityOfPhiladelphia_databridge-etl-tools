@@ -122,11 +122,12 @@ class Oracle():
         if has_null_bytes:
             self.logger.info("Dataset has null bytes, removing...")
             temp_file = self.csv_path.replace('.csv', '_fmt.csv')
-            with open(self.csv_path, 'r') as infile:
-                with open(temp_file, 'w') as outfile:
-                    reader = csv.reader((line.replace('\0', '') for line in infile), delimiter=",")
-                    reader = csv.reader((line.replace(u'\xa0', '') for line in infile), delimiter=",")
-                    #reader = csv.reader((line.replace(b'\xc2\xa0', '') for line in infile), delimiter=",")
+            with open(self.csv_path, 'r', encoding='utf-8') as infile:
+                with open(temp_file, 'w', encoding='utf-8') as outfile:
+                    reader = csv.reader((line.replace('\0', '') \
+                                            .replace(u'\xa0', '') \
+                                            .replace(u'\x00', '') \
+                            for line in infile), delimiter=",")
                     writer = csv.writer(outfile)
                     writer.writerows(reader)
             os.replace(temp_file, self.csv_path)
@@ -144,10 +145,15 @@ class Oracle():
         import geopetl
 
         data = etl.fromoraclesde(self.conn, self.schema_table_name, geom_with_srid=True)
+
         datetime_fields = []
-        for field in data.fieldnames(): 
-            if 'datetime' in etl.typeset(data, field): 
-                datetime_fields.append(field)
+        fields = json.loads(self.json_schema)
+        # Do not use etl.typeset to determine data types because otherwise it causes geopetl to
+        # read the database multiple times
+        for field in fields: 
+            if 'TIMESTAMP' in field[1].upper() or 'DATE' in field[1].upper():
+                datetime_fields.append(field[0].lower())
+
         if datetime_fields:
             print(f'Converting {datetime_fields} fields to Eastern timezone datetime')
             data = etl.convert(data, datetime_fields, pytz.timezone('US/Eastern').localize)
