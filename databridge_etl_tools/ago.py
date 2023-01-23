@@ -550,11 +550,21 @@ class AGO():
                     geom_dict = {"paths": [paths],
                                  "spatial_reference": {"wkid": self.ago_srid[1]}
                                  }
+                else:
+                    print('Did not recognize geometry in our WKT. Did we extract the dataset properly?')
+                    print(f'Geometry value is: {wkt}')
+                    raise AssertionError('Unexpected/unreadable geometry value')
 
                 # Create our formatted row after geometric stuff
-                formatted_row = {"attributes": row,
-                                 "geometry": geom_dict
-                                 }
+                try:
+                    formatted_row = {"attributes": row,
+                                     "geometry": geom_dict
+                                     }
+                except UnboundLocalError as e:
+                    # If somehow geom_dict is unbound, print the wkt to help figure out why
+                    print(f'DEBUG! {wkt}')
+                    raise e
+
                 adds.append(formatted_row)
 
                 if (len(adds) != 0) and (len(adds) % self.batch_size == 0):
