@@ -117,8 +117,8 @@ class AGO():
                 for item in items:
                     # For items with spaces in their titles, AGO will smartly change out spaces to underscores
                     # Test for this too.
-                    self.logger.info(f'Seeing if item title is a match: "{item.title}"..')
-                    if (item.title == self.item_name) or (item.title == self.item_name.replace(' ', '_')):
+                    self.logger.info(f'Seeing if item title is a match: "{item.title}" to "{self.item_name}"..')
+                    if (item.title.lower() == self.item_name.lower()) or (item.title == self.item_name.replace(' ', '_')):
                         self._item = item
                         self.logger.info(f'Found item, url and id: {self.item.url}, {self.item.id}')
                         return self._item
@@ -133,18 +133,21 @@ class AGO():
 
     @property
     def item_fields(self):
-        '''Fields of the dataset in AGO'''
-        fields = [i.name.lower() for i in self.layer_object.properties.fields]
+        '''Dictionary of the fields and data types of the dataset in AGO'''
+        if self._item_fields:
+            return self._item_fields
+        #fields = [i.name.lower() for i in self.layer_object.properties.fields]
+        fields = {i.name.lower(): i.type.lower() for i in self.layer_object.properties.fields }
         # shape field isn't included in this property of the AGO item, so check it its geometric first
         # so we can accurately use this variables for field comparisions
-        if self.geometric and 'shape' not in fields:
-            fields.append('shape')
+        if self.geometric and 'shape' not in fields.keys():
+            fields['shape'] = self.geometric
         # AGO will show these fields for lines and polygons, so remove them for an accurate comparison to the CSV headers.
-        if 'shape__area' in fields:
+        if 'shape__area' in fields.keys():
             fields.remove('shape__area')
-        if 'shape__length' in fields:
+        if 'shape__length' in fields.keys():
             fields.remove('shape__length')
-        fields = tuple(fields)
+        #fields = tuple(fields)
         self._item_fields = fields
         return self._item_fields
 
@@ -183,7 +186,8 @@ class AGO():
 
     @property
     def geometric(self):
-        '''Boolean telling us whether the item is geometric or just a table?'''
+        '''Var telling us whether the item is geometric or just a table?
+        If it's geometric, var will have geom type. Otherwise it is False.'''
         if self._geometric is None:
             self.logger.info('Determining geometric?...')
             geometry_type = None
@@ -407,14 +411,17 @@ class AGO():
                 row[col] = None
             # check if dates need to be converted to a datetime object. arcgis api will handle that
             # and will also take timezones that way.
-            if row[col]:
-                if len(row[col]) > 8:
-                    try:
-                        adate = dateutil.parser.parse(row[col])
-                        # if parse above works, convert
-                        row[col] = adate
-                    except dateutil.parser._parser.ParserError as e:
-                        pass
+            # First get it's type from ago:
+            data_type = self.item_fields[col]
+            # Then make sure this row isn't empty and is of a date type in AGO
+            if row[col] and data_type == 'esrifieldtypedate':
+                # then try parsing with dateutil parser
+                try:
+                    adate = dateutil.parser.parse(row[col])
+                    # if parse above works, convert
+                    row[col] = adate
+                except dateutil.parser._parser.ParserError as e:
+                    pass
                 #if 'datetime' in col and '+0000' in row[col]:
                 #    dt_obj = datetime.strptime(row[col], "%Y-%m-%d %H:%M:%S %z")
                 #    local_dt_obj = obj.astimezone(pytz.timezone('US/Eastern'))
@@ -435,8 +442,8 @@ class AGO():
         # Compare headers in the csv file vs the fields in the ago item.
         # If the names don't match and we were to upload to AGO anyway, AGO will not actually do 
         # anything with our rows but won't tell us anything is wrong!
-        self.logger.info(f'Comparing AGO fields: "{self.item_fields}" and CSV fields: "{rows.fieldnames()}"')
-        row_differences = set(self.item_fields) - set(rows.fieldnames())
+        self.logger.info(f'Comparing AGO fields: "{tuple(self.item_fields.keys())}" and CSV fields: "{rows.fieldnames()}"')
+        row_differences = set(self.item_fields.keys()) - set(rows.fieldnames())
         if row_differences:
             # Ignore differences if it's just objectid.
             if 'objectid' in row_differences and len(row_differences) == 1:
@@ -445,15 +452,52 @@ class AGO():
                 pass
             else:
                 print(f'Row differences found!: {row_differences}')
-                assert self.item_fields == rows.fieldnames()    
+                assert tuple(self.item_fields.keys()) == rows.fieldnames()    
         self.logger.info('Fields are the same! Continuing.')
+
+        # Check CSV file rows match the rows we pulled in
+        # We've had these not match in the past.
+        self._num_rows_in_upload_file = rows.nrows()
+        row_dicts = rows.dicts()
+
+        # First we should check that we can parse geometry before proceeding with truncate
+        if self.geometric:
+            # keep looping until we get a non-blank geom value
+            for i, row in enumerate(row_dicts):
+                wkt = row.pop('shape')
+
+                # Set WKT to empty string so next conditional doesn't fail on a Nonetype
+                if wkt is None:
+                    continue
+                if 'SRID=' not in wkt and bool(wkt.strip()) is False and (not self.in_srid):
+                    raise AssertionError("Receieved a row with blank geometry, you need to pass an --in_srid so we know if we need to project!")
+                if 'SRID=' not in wkt and bool(wkt.strip()) is True and (not self.in_srid):
+                    raise AssertionError("SRID not found in shape row! Please export your dataset with 'geom_with_srid=True'.")
+                if 'POINT' in wkt:
+                    assert self.geometric == 'esriGeometryPoint'
+                    break
+                elif 'MULTIPOINT' in wkt:
+                    raise NotImplementedError("MULTIPOINTs not implemented yet..")
+                elif 'MULTIPOLYGON' in wkt:
+                    assert self.geometric == 'esriGeometryPolygon'
+                    break
+                elif 'POLYGON' in wkt:
+                    assert self.geometric == 'esriGeometryPolygon'
+                    break
+                elif 'LINESTRING' in wkt:
+                    assert self.geometric == 'esriGeometryPolyline'
+                    break
+                else:
+                    print('Did not recognize geometry in our WKT. Did we extract the dataset properly?')
+                    print(f'Geometry value is: {wkt}')
+                    raise AssertionError('Unexpected/unreadable geometry value')
+
 
         # We're more sure that we'll succeed after prior checks, so let's truncate here..
         if truncate is True:
             self.truncate()
 
-        self._num_rows_in_upload_file = rows.nrows()
-        row_dicts = rows.dicts()
+        # loop through and accumulate appends into adds[]
         adds = []
         if not self.geometric:
             for i, row in enumerate(row_dicts):
@@ -523,37 +567,39 @@ class AGO():
                         raise TypeError(f'Unexpected geomtry type!: {self.geometric}')
                 # For different types we can consult this for the proper json format:
                 # https://developers.arcgis.com/documentation/common-data-types/geometry-objects.htm
-                if 'POINT' in wkt:
-                    projected_x, projected_y = self.project_and_format_shape(wkt)
-                    # Format our row, following the docs on this one, see section "In [18]":
-                    # https://developers.arcgis.com/python/sample-notebooks/updating-features-in-a-feature-layer/
-                    # create our formatted point geometry
-                    geom_dict = {"x": projected_x,
-                                 "y": projected_y,
-                                 "spatial_reference": {"wkid": self.ago_srid[1]}
-                                 }
-                elif 'MULTIPOINT' in wkt:
-                    raise NotImplementedError("MULTIPOINTs not implemented yet..")
-                elif 'MULTIPOLYGON' in wkt:
-                    rings = self.project_and_format_shape(wkt)
-                    geom_dict = {"rings": rings,
-                                 "spatial_reference": {"wkid": self.ago_srid[1]}
-                                 }
-                elif 'POLYGON' in wkt:
-                    #xlist, ylist = return_coords_only(wkt)
-                    ring = self.project_and_format_shape(wkt)
-                    geom_dict = {"rings": [ring],
-                                 "spatial_reference": {"wkid": self.ago_srid[1]}
-                                 }
-                elif 'LINESTRING' in wkt:
-                    paths = self.project_and_format_shape(wkt)
-                    geom_dict = {"paths": [paths],
-                                 "spatial_reference": {"wkid": self.ago_srid[1]}
-                                 }
-                else:
-                    print('Did not recognize geometry in our WKT. Did we extract the dataset properly?')
-                    print(f'Geometry value is: {wkt}')
-                    raise AssertionError('Unexpected/unreadable geometry value')
+                # If it's not blank,
+                if bool(wkt.strip()): 
+                    if 'POINT' in wkt:
+                        projected_x, projected_y = self.project_and_format_shape(wkt)
+                        # Format our row, following the docs on this one, see section "In [18]":
+                        # https://developers.arcgis.com/python/sample-notebooks/updating-features-in-a-feature-layer/
+                        # create our formatted point geometry
+                        geom_dict = {"x": projected_x,
+                                     "y": projected_y,
+                                     "spatial_reference": {"wkid": self.ago_srid[1]}
+                                     }
+                    elif 'MULTIPOINT' in wkt:
+                        raise NotImplementedError("MULTIPOINTs not implemented yet..")
+                    elif 'MULTIPOLYGON' in wkt:
+                        rings = self.project_and_format_shape(wkt)
+                        geom_dict = {"rings": rings,
+                                     "spatial_reference": {"wkid": self.ago_srid[1]}
+                                     }
+                    elif 'POLYGON' in wkt:
+                        #xlist, ylist = return_coords_only(wkt)
+                        ring = self.project_and_format_shape(wkt)
+                        geom_dict = {"rings": [ring],
+                                     "spatial_reference": {"wkid": self.ago_srid[1]}
+                                     }
+                    elif 'LINESTRING' in wkt:
+                        paths = self.project_and_format_shape(wkt)
+                        geom_dict = {"paths": [paths],
+                                     "spatial_reference": {"wkid": self.ago_srid[1]}
+                                     }
+                    else:
+                        print('Did not recognize geometry in our WKT. Did we extract the dataset properly?')
+                        print(f'Geometry value is: {wkt}')
+                        raise AssertionError('Unexpected/unreadable geometry value')
 
                 # Create our formatted row after geometric stuff
                 try:
@@ -902,8 +948,8 @@ class AGO():
         # Compare headers in the csv file vs the fields in the ago item.
         # If the names don't match and we were to upload to AGO anyway, AGO will not actually do
         # anything with our rows but won't tell us anything is wrong!
-        self.logger.info(f'Comparing AGO fields: "{self.item_fields}" and CSV fields: "{rows.fieldnames()}"')
-        row_differences = set(self.item_fields) - set(rows.fieldnames())
+        self.logger.info(f'Comparing AGO fields: "{tuple(self.item_fields.keys())}" and CSV fields: "{rows.fieldnames()}"')
+        row_differences = set(self.item_fields.keys()) - set(rows.fieldnames())
         if row_differences:
             # Ignore differences if it's just objectid.
             if 'objectid' in row_differences and len(row_differences) == 1:
@@ -912,7 +958,7 @@ class AGO():
                 pass
             else:
                 print(f'Row differences found!: {row_differences}')
-                assert self.item_fields == rows.fieldnames()
+                assert tuple(self.item_fields.keys()) == rows.fieldnames()
         self.logger.info('Fields are the same! Continuing.')
 
         self._num_rows_in_upload_file = rows.nrows()
@@ -1068,33 +1114,38 @@ class AGO():
                         raise TypeError(f'Unexpected geomtry type!: {self.geometric}')
                 # For different types we can consult this for the proper json format:
                 # https://developers.arcgis.com/documentation/common-data-types/geometry-objects.htm
-                if 'POINT' in wkt:
-                    projected_x, projected_y = self.project_and_format_shape(wkt)
-                    # Format our row, following the docs on this one, see section "In [18]":
-                    # https://developers.arcgis.com/python/sample-notebooks/updating-features-in-a-feature-layer/
-                    # create our formatted point geometry
-                    geom_dict = {"x": projected_x,
-                                 "y": projected_y,
-                                 "spatial_reference": {"wkid": self.ago_srid[1]}
-                                 }
-                elif 'MULTIPOINT' in wkt:
-                    raise NotImplementedError("MULTIPOINTs not implemented yet..")
-                elif 'MULTIPOLYGON' in wkt:
-                    rings = self.project_and_format_shape(wkt)
-                    geom_dict = {"rings": rings,
-                                 "spatial_reference": {"wkid": self.ago_srid[1]}
-                                 }
-                elif 'POLYGON' in wkt:
-                    #xlist, ylist = return_coords_only(wkt)
-                    ring = self.project_and_format_shape(wkt)
-                    geom_dict = {"rings": [ring],
-                                 "spatial_reference": {"wkid": self.ago_srid[1]}
-                                 }
-                elif 'LINESTRING' in wkt:
-                    paths = self.project_and_format_shape(wkt)
-                    geom_dict = {"paths": [paths],
-                                 "spatial_reference": {"wkid": self.ago_srid[1]}
-                                 }
+                if bool(wkt.strip()): 
+                    if 'POINT' in wkt:
+                        projected_x, projected_y = self.project_and_format_shape(wkt)
+                        # Format our row, following the docs on this one, see section "In [18]":
+                        # https://developers.arcgis.com/python/sample-notebooks/updating-features-in-a-feature-layer/
+                        # create our formatted point geometry
+                        geom_dict = {"x": projected_x,
+                                     "y": projected_y,
+                                     "spatial_reference": {"wkid": self.ago_srid[1]}
+                                     }
+                    elif 'MULTIPOINT' in wkt:
+                        raise NotImplementedError("MULTIPOINTs not implemented yet..")
+                    elif 'MULTIPOLYGON' in wkt:
+                        rings = self.project_and_format_shape(wkt)
+                        geom_dict = {"rings": rings,
+                                     "spatial_reference": {"wkid": self.ago_srid[1]}
+                                     }
+                    elif 'POLYGON' in wkt:
+                        #xlist, ylist = return_coords_only(wkt)
+                        ring = self.project_and_format_shape(wkt)
+                        geom_dict = {"rings": [ring],
+                                     "spatial_reference": {"wkid": self.ago_srid[1]}
+                                     }
+                    elif 'LINESTRING' in wkt:
+                        paths = self.project_and_format_shape(wkt)
+                        geom_dict = {"paths": [paths],
+                                     "spatial_reference": {"wkid": self.ago_srid[1]}
+                                     }
+                    else:
+                        print('Did not recognize geometry in our WKT. Did we extract the dataset properly?')
+                        print(f'Geometry value is: {wkt}')
+                        raise AssertionError('Unexpected/unreadable geometry value')
 
                 # Once we're done our shape stuff, put our row into it's final format
                 formatted_row = {"attributes": row,
