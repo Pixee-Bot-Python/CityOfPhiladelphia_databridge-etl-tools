@@ -23,7 +23,8 @@ def carto():
         connection_string=CONNECTION_STRING,
         table_name=TABLE_NAME,
         s3_bucket=S3_BUCKET,
-        s3_key=S3_KEY)
+        s3_key=S3_KEY,
+        select_users=SELECT_USERS)
     return carto_client
 
 
@@ -33,7 +34,8 @@ def carto_subfolder():
         connection_string=CONNECTION_STRING,
         table_name=TABLE_NAME,
         s3_bucket=S3_BUCKET,
-        s3_key=S3_KEY)
+        s3_key=S3_KEY,
+        select_users=SELECT_USERS)
     return carto_client
 
 @pytest.fixture
@@ -42,7 +44,8 @@ def carto_point():
         connection_string=CONNECTION_STRING,
         table_name=TABLE_NAME,
         s3_bucket=S3_BUCKET,
-        s3_key=POINT_CSV)
+        s3_key=POINT_CSV,
+        select_users=SELECT_USERS)
     return carto_client
 
 @pytest.fixture
@@ -51,7 +54,8 @@ def carto_polygon():
         connection_string=CONNECTION_STRING,
         table_name=TABLE_NAME,
         s3_bucket=S3_BUCKET,
-        s3_key=POLYGON_CSV)
+        s3_key=POLYGON_CSV,
+        select_users=SELECT_USERS)
     return carto_client
 
 def test_user(carto):
