@@ -12,7 +12,8 @@ class Oracle():
 
     _conn = None
     _logger = None
-    _json_schema = None
+    _json_schema_path = None
+    _fields = None
 
     def __init__(self, connection_string, table_name, table_schema, s3_bucket, s3_key):
         self.connection_string = connection_string
@@ -25,6 +26,23 @@ class Oracle():
     def schema_table_name(self):
         schema_table_name = '{}.{}'.format(self.table_schema, self.table_name)
         return schema_table_name
+
+    @property
+    def fields(self):
+        if self._fields:
+            return self._fields
+        stmt=f'''
+        SELECT
+            COLUMN_NAME,
+            DATA_TYPE
+        FROM ALL_TAB_COLUMNS
+        WHERE OWNER = '{self.table_schema.upper()}'
+        AND TABLE_NAME = '{self.table_name.upper()}'
+        '''
+        cursor = self.conn.cursor()
+        cursor.execute(stmt)
+        self._fields = cursor.fetchall()
+        return self._fields
 
     @property
     def conn(self):
@@ -50,6 +68,14 @@ class Oracle():
             csv_path = '/tmp/{}.csv'.format(csv_file_name)
         return csv_path
 
+
+    @property
+    def json_schema_path(self):
+        if self._json_schema_path:
+            return self._json_schema_path
+        self._json_schema_path = self.csv_path.replace('.csv','') + '_schema.json'
+        return self._json_schema_path
+
     @property
     def logger(self):
        if self._logger is None:
@@ -59,25 +85,6 @@ class Oracle():
            logger.addHandler(sh)
            self._logger = logger
        return self._logger
-
-    @property 
-    def json_schema(self):
-        if self._json_schema is None:
-            stmt=f'''
-            SELECT
-                COLUMN_NAME,
-                DATA_TYPE,
-                DATA_PRECISION,
-                DATA_SCALE
-            FROM ALL_TAB_COLUMNS
-            WHERE OWNER = '{self.table_schema.upper()}'
-            AND TABLE_NAME = '{self.table_name.upper()}'
-            '''
-            cursor = self.conn.cursor()
-            cursor.execute(stmt)
-            results = cursor.fetchall()
-            self._json_schema = json.dumps(results)
-        return self._json_schema
 
 
     def load_csv_and_schema_to_s3(self):
@@ -89,12 +96,10 @@ class Oracle():
         self.logger.info('Successfully loaded to s3: {}'.format(self.s3_key))
     
         # Now load the schema
-        json_schema_path = self.csv_path.replace('.csv','') + '_oracle_schema.json'
-        json_s3_key = self.s3_key.replace('.csv','') + '_oracle_schema.json'
-        with open(json_schema_path, 'w') as f:
-            f.write(self.json_schema)
+        json_s3_key = self.s3_key.replace('.csv','') + '_schema.json'
+        json_s3_key = json_s3_key.replace('staging', 'schemas')
 
-        s3.Object(self.s3_bucket, json_s3_key).put(Body=open(json_schema_path, 'rb'))
+        s3.Object(self.s3_bucket, json_s3_key).put(Body=open(self.json_schema_path, 'rb'))
         self.logger.info('Successfully loaded to s3: {}'.format(json_s3_key))
 
 
@@ -132,6 +137,8 @@ class Oracle():
                     writer.writerows(reader)
             os.replace(temp_file, self.csv_path)
 
+
+
     def extract(self):
         '''
         Extract data from database and save as a CSV file. Any fields that contain 
@@ -146,11 +153,13 @@ class Oracle():
 
         data = etl.fromoraclesde(self.conn, self.schema_table_name, geom_with_srid=True)
 
+        # Now load the schema
+        etl.extract_table_schema(dbo=self.conn, table_name=self.schema_table_name, table_schema_output_path=self.json_schema_path)
+
         datetime_fields = []
-        fields = json.loads(self.json_schema)
         # Do not use etl.typeset to determine data types because otherwise it causes geopetl to
         # read the database multiple times
-        for field in fields: 
+        for field in self.fields: 
             if 'TIMESTAMP' in field[1].upper() or 'DATE' in field[1].upper():
                 datetime_fields.append(field[0].lower())
 

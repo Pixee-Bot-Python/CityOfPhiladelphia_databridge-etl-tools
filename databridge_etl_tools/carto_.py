@@ -12,20 +12,37 @@ import boto3
 import requests
 import petl as etl
 
-import pandas as pd
-import numpy as np
-import dateutil.parser
-
-# import solely so we can catch boto errors
-from botocore.exceptions import ClientError as BotoClientError
-
-
 
 csv.field_size_limit(sys.maxsize)
 
 USR_BASE_URL = "https://{user}.carto.com/"
 CONNECTION_STRING_REGEX = r'^carto://(.+):(.+)'
 
+DATA_TYPE_MAP = {
+    'string':           'text',
+    'number':           'numeric',
+    'float':            'numeric',
+    'double precision': 'numeric',
+    'integer':          'integer',
+    'boolean':          'boolean',
+    'object':           'jsonb',
+    'array':            'jsonb',
+    'date':             'date',
+    'time':             'time',
+    'datetime':         'timestamp',
+    'geom':             'geometry',
+    'geometry':         'geometry'
+}
+
+GEOM_TYPE_MAP = {
+    'point':           'Point',
+    'line':            'Linestring',
+    'linestring':      'Linestring',
+    'polygon':         'MultiPolygon',
+    'multipolygon':    'MultiPolygon',
+    'multilinestring': 'MultiLineString',
+    'geometry':        'Geometry',
+}
 
 class Carto():
 
@@ -33,26 +50,24 @@ class Carto():
     _logger = None
     _user = None
     _api_key = None
+    _schema = None
     _geom_field = None
     _geom_srid = None
-    _geom_type = None
-    _schema = None
+    _json_schema_s3_key = None
 
     def __init__(self, 
                  connection_string, 
                  table_name, 
                  s3_bucket, 
                  s3_key,
-                 **kwargs):
+                 select_users,
+                 index_fields=None):
         self.connection_string = connection_string
-        self.table_name = table_name.lower()
+        self.table_name = table_name
         self.s3_bucket = s3_bucket
         self.s3_key = s3_key
-        self.select_users = kwargs.get('select_users', None)
-        self.index_fields = kwargs.get('index_fields', None)
-        self.override_datatypes = kwargs.get('override_datatypes', None)
-        self.schema_file = None
-        self.schema_file_path = None
+        self.select_users = select_users
+        self.index_fields = index_fields
 
     @property
     def user(self):
@@ -61,6 +76,14 @@ class Carto():
             user = creds[0]
             self._user = user
         return self._user
+
+
+    @property
+    def json_schema_s3_key(self):
+        if self._json_schema_s3_key is None:
+            self._json_schema_s3_key = self.s3_key.replace('staging', 'schemas').replace('.csv', '_schema.json')
+        return self._json_schema_s3_key
+
 
     @property
     def api_key(self):
@@ -119,299 +142,111 @@ class Carto():
            self._logger = logger
        return self._logger
 
+    @property
+    def json_schema_file_name(self):
+        # This expects the schema to be in a subfolder on S3
+        if ('/') in self.json_schema_s3_key:
+            json_schema_file_name = self.json_schema_s3_key.split('/')[1]
+        else:
+            json_schema_file_name = self.json_schema_s3_key
+        return json_schema_file_name
 
-    def geometric_detection(self):
-        if self._geom_field is None:
-            # Only read in the first 1000 rows into memory for faster detection
-            # in case the CSV is really really big
-            # Hopefully the first 5000 rows don't all contain null geometry
-            df = pd.read_csv(self.csv_path, nrows=5000)
-
-            # Field names
-            fields = df.columns.values.tolist()
-
-            candidate_shape = None
-            if 'shape' in fields:
-                candidate_shape = 'shape' 
-            elif 'geom' in fields:
-                candidate_shape = 'geom' 
-
-
-            if candidate_shape:
-                # Create a new df that drops rows with a null shape
-                non_null_df = df.dropna(subset=['shape'], how='any')
-
-                # If we still have data..
-                if not non_null_df.empty:
-                    # Extract a shape value
-                    example_shape = non_null_df.loc[1]['shape']
-                    if example_shape is not None:
-                        # Extract the SRID
-                        #print(example_shape.split(';'))
-                        self._geom_field = candidate_shape
-                        if 'SRID=' in example_shape:
-                            self._geom_srid = example_shape.split(';')[0].replace('SRID=','')
-
-                        # Extract the geom_type
-                        if ';' in example_shape:
-                            asplit = example_shape.split(';')[1].split('(')
-                            self._geom_type = asplit[0].strip()
-            else:
-                self._geom_field = None
-                self._geom_type = None
-                self._geom_srid = None
+    @property
+    def json_schema_path(self):
+        # On Windows, save to current directory
+        if os.name == 'nt':
+            json_schema_path = self.json_schema_file_name
+        # On Linux, save to tmp folder
+        else:
+            json_schema_directory = '/tmp'
+            json_schema_path = os.path.join(json_schema_directory, self.json_schema_file_name)
+        return json_schema_path
 
     @property
     def schema(self):
-        '''
-        First check for schema json files in S3 to determine the schema to use
-        for table creation.
-        If they don't exist, attempt to auto detect data types by using pandas dtype detection and some
-        custom methods such as attempting to parse dates and trying to 
-        figure out the top length of a string field.
-        We only pull in the first 5000 rows so this doesn't take forever
-        on larger datasets.
-        '''
-        self.oracle_schema_file_path = None
-        self.oracle_schema_file = None
-        self.postgres_schema_file_path = None
-        self.postgres_schema_file = None
         if self._schema is None:
-            # Check to see if there is an Postgres schema file in S3. Default to it first before oracle.
-            try:
-                self.postgres_schema_file = f'{self.s3_key.replace(".csv","") + "_postgres_schema.json"}'
-                self.postgres_schema_file_path = f'/tmp/{self.table_name + "_postgres_schema.json"}'
-                s3 = boto3.resource('s3')
-                s3.Object(self.s3_bucket, self.postgres_schema_file).download_file(self.postgres_schema_file_path)
-                print(f'Downloaded schema file to {self.postgres_schema_file_path}')
-            except BotoClientError as e:
-                if 'HeadObject operation: Not Found' in str(e):
-                    print(f'Schema file {self.postgres_schema_file} does not exist.')
-                    self.postgres_schema_file_path = None
-                    self.postgres_schema_file = None
-                else:
-                    raise e
-            # IF we didn't get a postgres schema file, check for oracle
-            if self.postgres_schema_file_path == None:
-                # Check to see if there is an Oracle schema file in S3
-                try:
-                    self.oracle_schema_file = f'{self.s3_key.replace(".csv","") + "_oracle_schema.json"}'
-                    self.oracle_schema_file_path = f'/tmp/{self.table_name + "_oracle_schema.json"}'
-                    s3 = boto3.resource('s3')
-                    s3.Object(self.s3_bucket, self.oracle_schema_file).download_file(self.oracle_schema_file_path)
-                    print(f'Downloaded schema file to {self.oracle_schema_file_path}')
-                except BotoClientError as e:
-                    if 'HeadObject operation: Not Found' in str(e):
-                        print(f'Schema file {self.oracle_schema_file} does not exist.')
-                        self.oracle_schema_file_path = None
-                        self.oracle_schema_file = None
-                    else:
-                        raise e
-        # If we found a postgres schema file, make our schema from it that we'll use to make the carto table later.
-        if self.postgres_schema_file_path:
-            with open(self.postgres_schema_file_path) as f:
-                postgres__schema = json.load(f)
+            self.get_json_schema_from_s3()
 
-            # Create schema by mapping the oracle type to the postgres type
-            schema = ''
-            # Indices are:
-            # [0] == field name
-            # [1] == data type
-            # [2] == precision (digits)
-            # [3] == scale (digits after decimal)
-            for i in postgres_schema:
-                fname = i[0]
-                dtype = i[1]
-                prec = i[2]
-                scale = i[3]
-                schema = schema + f'{fname.lower()} {dtype}, '
-            schema = schema[:-2]
-            print(f'Devised schema: {schema}')
-            self._schema = schema
-
-        # If we found an oracle schema file, make our schema from it that we'll use to make the carto table later.
-        elif self.oracle_schema_file_path:
-            # reference https://www.cybertec-postgresql.com/en/mapping-oracle-datatypes-to-postgresql/
-            o2p_typemap = {
-                    "CHAR": "text",
-                    "NCHAR": "text",
-                    "VARCHAR": "text",
-                    "VARCHAR2": "text",
-                    "NVARCHAR2": "text",
-                    "CLOB": "text",
-                    "RAW": "bytea",
-                    "BLOB": "bytea",
-                    "FLOAT": "float",
-                    "NUMBER": "integer",
-                    # just force timezones for now on date types
-                    #"DATE": "date",
-                    "DATE": "timestamptz",
-                    "TIMESTAMP": "timestamp",
-                    "TIMESTAMP WITH TIME ZONE": "timestamptz",
-                    "TIMESTAMP(6) WITH TIME ZONE": "timestamptz"
-                    }
-
-            with open(self.oracle_schema_file_path) as f:
-                oracle_schema = json.load(f)
-
-            # Create schema by mapping the oracle type to the postgres type
-            schema = ''
-            # Indices are:
-            # [0] == field name
-            # [1] == oracle type
-            # [2] == precision (digits)
-            # [3] == scale (digits after decimal)
-            for i in oracle_schema:
-                fname = i[0]
-                otype = i[1]
-                prec = i[2]
-                scale = i[3]
-                if otype == 'NUMBER' or otype == 'FLOAT':
-                    # First check to see if it's a simple number.
-                    if (scale == None or scale == 0) and (prec == None or prec == 0):
-                        schema = schema + f'{fname.lower()} integer, '
-                    # if there's no scale, use precision to determine int
-                    if (not scale or scale == 0):
-                        if (prec and prec > 0):
-                            # If the length (field[2]) is 5 or less, make it a smallint
-                            if prec <= 5:
-                                schema = schema + f'{fname.lower()} smallint, '
-                            # If the length (field[2]) is greater than 10, make it a bigint
-                            elif prec > 10:
-                                schema = schema + f'{fname.lower()} bigint, '
-                            else:
-                                schema = schema + f'{fname.lower()} integer, '
-
-                    # if there's a scale, it's a float
-                    elif (scale and scale > 0):
-                        if scale <= 6:
-                            schema = schema + f'{fname.lower()} float4, '
-                        elif scale > 6:
-                            schema = schema + f'{fname.lower()} float8, '
+            with open(self.json_schema_path) as json_file:
+                schema = json.load(json_file).get('fields', '')
+                if not schema:
+                    logger.error('Json schema malformatted...')
+                    raise
+                num_fields = len(schema)
+                schema_fmt = ''
+                for i, scheme in enumerate(schema):
+                    scheme_type = DATA_TYPE_MAP.get(scheme['type'].lower(), scheme['type'])
+                    if scheme_type == 'geometry':
+                        scheme_srid = scheme.get('srid', '')
+                        scheme_geometry_type = GEOM_TYPE_MAP.get(scheme.get('geometry_type', '').lower(), '')
+                        if scheme_srid and scheme_geometry_type:
+                            scheme_type = '''geometry ({}, {}) '''.format(scheme_geometry_type, scheme_srid)
                         else:
-                            schema = schema + f'{fname.lower()} float, '
-                    else:
-                        schema = schema + f'{fname.lower()} bigint, '
+                            logger.error('srid and geometry_type must be provided with geometry field...')
+                            raise
 
-                else:
-                    schema = schema + f'{fname.lower()} {o2p_typemap[otype]}, '
-            # strip last two characters, which will be a trailing ', '
-            schema = schema[:-2]
-            print(f'Devised schema: {schema}')
-            self._schema = schema
-        
-        # Make educated guesses on schema type based on the data in the CSV
-        if self._schema is None and postgres_schema_file_path is None and oracle_schema_file_path is None:
-            print('Schema file not found, attempting to guess data types from CSV data..')
-            # Only read in the first 5000 rows into memory for faster detection
-            # in case the CSV is really really big
-            # Hopefully the first 5000 rows don't all contain null geometry
-            df = pd.read_csv(self.csv_path, nrows=5000)
-            # Get all our fields and possible types in a dictionary to loop through
-            type_dict = df.dtypes.to_dict()
-            #print('\nPrinting dtypes...')
-            # Parse any possible override data type args we got
-            if self.override_datatypes:
-                self.override_datatypes = self.override_datatypes.strip('\'')
-                self.override_datatypes = self.override_datatypes.strip('\"')
-
-            schema = ''
-            # In batch sometimes the var gets communicated with extra quotes
-            # Loop through fields/columns
-            for k,v in type_dict.items():
-                # Check to see if we got passed a direct datatype for this one
-                atype = None
-                if self.override_datatypes:
-                    overrides = self.override_datatypes.split(',')
-                    for o in overrides:
-                        #print(f"{k} == {o.split(':')[0]} ?")
-                        if k == o.split(':')[0]:
-                            atype = o.split(':')[1]
-                if atype == None:
-                    #print(f'field: {k},  detected type: {type(v)}, first value: {df[k].loc[1]}')
-                    if v == np.int32:
-                        atype = 'int4'
-                    elif v == np.int64:
-                        atype = 'int8'
-                    elif v == np.float:
-                        atype = 'float4'
-                    elif v == np.object:
-                        # if object, check if it's a datetime
-                        non_null_df = df.dropna(subset=[k], how='any')
-                        #print(f'DEBUG: {k}')
-                        ex_val = non_null_df.loc[1][k]
-                        if isinstance(ex_val, str):
-                            # Account for odd values like "9:30 PM" by putting a length lmit.
-                            # The date parser will parse this, but when we attempt to upload to carto
-                            # it won't accept it as a date.
-                            if len(ex_val) > 8:
-                                try:
-                                    adate = dateutil.parser.parse(ex_val)
-                                    print(f'Detected a date: {adate}, field: {k}')
-                                    if adate.tzinfo is not None:
-                                        atype = 'timestamp with time zone'
-                                    if adate.tzinfo is None:
-                                        atype = 'timestamp without time zone'
-                                    #if not adate.year:
-                                    #    atype = 'time'
-                                    #if '+' in ex_val or '-' in ex_val:
-                                        #atype = 'timestamp with time zone'
-                                except dateutil.parser._parser.ParserError as e:
-                                    pass
-                        # if we still don't have a type, assume string and check length
-                        # Also determine varchar length
-                        if atype is None:
-                            # Drop all null values for this column
-                            non_null_df = df.dropna(subset=[k], how='any')
-                            max_len = non_null_df[k].str.len().max()
-                            #atype = f'varchar({max_len+50})'
-                            # nvm just do text which has no length
-                            atype = 'text'
-
-                if atype:
-                    schema = schema + f'{k} {atype}, '
-                elif not atype:
-                    raise TypeError(f'Could not determine a data type for field {k}!! Please pass an override via the override_datatypes argument (see its help text in cli.py)')
-                    #print('DEBUG ', atype)
-            # strip last two characters
-            schema = schema[:-2]
-            print(f'Devised schema: {schema}')
-            self._schema = schema
+                    schema_fmt += ' {} {}'.format(scheme['name'], scheme_type)
+                    if i < num_fields - 1:
+                        schema_fmt += ','
+            self._schema = schema_fmt
         return self._schema
-
 
     @property
     def geom_field(self):
+        if self._geom_field is None:
+            with open(self.json_schema_path) as json_file:
+                schema = json.load(json_file).get('fields', None)
+                if not schema:
+                    self.logger.error('Json schema malformatted...')
+                    raise
+                for scheme in schema:
+                    scheme_type = DATA_TYPE_MAP.get(scheme['type'].lower(), scheme['type'])
+                    if scheme_type == 'geometry':
+                        geom_field = scheme.get('name', None)
+                        self._geom_field = geom_field
         return self._geom_field
 
     @property
-    def geom_type(self):
-        return self._geom_type
-
-    @property
     def geom_srid(self):
+        if self._geom_srid is None:
+            with open(self.json_schema_path) as json_file:
+                schema = json.load(json_file).get('fields', None)
+                if not schema:
+                    self.logger.error('Json schema malformatted...')
+                    raise
+                for scheme in schema:
+                    scheme_type = DATA_TYPE_MAP.get(scheme['type'].lower(), scheme['type'])
+                    if scheme_type == 'geometry':
+                        geom_srid = scheme.get('srid', None)
+                        self._geom_srid = geom_srid
         return self._geom_srid
 
+    def get_json_schema_from_s3(self):
+        self.logger.info('Fetching json schema: s3://{}/{}'.format(self.s3_bucket, self.json_schema_s3_key))
+
+        s3 = boto3.resource('s3')
+        s3.Object(self.s3_bucket, self.json_schema_s3_key).download_file(self.json_schema_path)
+
+        self.logger.info('Json schema successfully downloaded.\n'.format(self.s3_bucket, self.json_schema_s3_key))
 
     def get_csv_from_s3(self):
-        print('Fetching csv s3://{}/{}'.format(self.s3_bucket, self.s3_key))
+        self.logger.info('Fetching csv s3://{}/{}'.format(self.s3_bucket, self.s3_key))
 
         s3 = boto3.resource('s3')
         s3.Object(self.s3_bucket, self.s3_key).download_file(self.csv_path)
 
-        print('CSV successfully downloaded.\n'.format(self.s3_bucket, self.s3_key))
+        self.logger.info('CSV successfully downloaded.\n'.format(self.s3_bucket, self.s3_key))
 
     def execute_sql(self, stmt, fetch='many'):
-        #self.logger.info('Executing: {}'.format(stmt))
+        self.logger.info('Executing: {}'.format(stmt))
         response = self.conn.send(stmt)
         return response
 
     def create_table(self):
         self.logger.info('Creating temp table...')
-        stmt = f'''DROP TABLE IF EXISTS {self.temp_table_name}; 
-                    CREATE TABLE {self.temp_table_name} ({self.schema});'''
-        print('\nCreating temp table with statement:')
-        print(stmt)
+        stmt = '''DROP TABLE IF EXISTS {table_name}; 
+                    CREATE TABLE {table_name} ({schema});'''.format(table_name=self.temp_table_name,
+                                                                    schema=self.schema)
         self.execute_sql(stmt)
         check_table_sql = "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = '{}');".format(self.temp_table_name)
         response = self.execute_sql(check_table_sql, fetch='many')
@@ -446,6 +281,7 @@ class Carto():
         raise NotImplementedError
 
     def write(self):
+        self.get_csv_from_s3()
         try:
             rows = etl.fromcsv(self.csv_path, encoding='utf-8')
         except UnicodeError:
@@ -463,9 +299,10 @@ class Carto():
 
         self.logger.info('Writing to temp table...')
         # format geom field:
-        if self.geom_field and self.geom_srid:
-            rows = rows.convert(self.geom_field,
-                                lambda c: 'SRID={srid};{geom}'.format(srid=self.geom_srid, geom=c) if c else '')
+        # commenting this out because we have geopetl placing the SRID in the geom field
+        #if self.geom_field and self.geom_srid:
+        #    rows = rows.convert(self.geom_field,
+        #                lambda c: 'SRID={srid};{geom}'.format(srid=self.geom_srid, geom=c) if c else '')
         write_file = self.temp_csv_path
         rows.tocsv(write_file)
         q = "COPY {table_name} ({header}) FROM STDIN WITH (FORMAT csv, HEADER true)".format(
@@ -483,7 +320,7 @@ class Carto():
                 self.logger.info('Carto Write Successful: {} rows imported.\n'.format(status['total_rows']))
 
     def verify_count(self):
-        print('Verifying row count...')
+        self.logger.info('Verifying row count...')
 
         data = self.execute_sql('SELECT count(*) FROM "{}";'.format(self.temp_table_name), fetch='many')
         num_rows_in_table = data['rows'][0]['count']
@@ -495,15 +332,15 @@ class Carto():
             num_rows_expected,
             num_rows_inserted
         )
-        print(message)
+        self.logger.info(message)
         if num_rows_in_table != num_rows_expected:
             self.logger.error('Did not insert all rows, reverting...')
             stmt = 'BEGIN;' + \
-                    'DROP TABLE if exists "{}" cascade;'.format(self.temp_table_name) + \
+                    'DROP TABLE if exists "{}" cascade;'.format(temp_table_name) + \
                     'COMMIT;'
-            self.execute_sql(stmt)
+            execute_sql(stmt)
             exit(1)
-        print('Row count verified.\n')
+        self.logger.info('Row count verified.\n')
 
     def cartodbfytable(self):
         self.logger.info('Cartodbfytable\'ing table: {}'.format(self.temp_table_name))
@@ -517,14 +354,11 @@ class Carto():
 
     def generate_select_grants(self):
         grants_sql = ''
-        if self.select_users:
-            select_users = self.select_users.split(',')
-            for user in select_users:
-                self.logger.info('{} - Granting SELECT to {}'.format(self.table_name, user))
-                grants_sql += 'GRANT SELECT ON "{}" TO "{}";'.format(self.table_name, user)
-            return grants_sql
-        else: 
-            return ''
+        select_users = self.select_users.split(',')
+        for user in select_users:
+            self.logger.info('{} - Granting SELECT to {}'.format(self.table_name, user))
+            grants_sql += 'GRANT SELECT ON "{}" TO "{}";'.format(self.table_name, user)
+        return grants_sql
 
     def cleanup(self):
         self.logger.info('Attempting to drop any temporary tables: {}'.format(self.temp_table_name))
@@ -534,7 +368,7 @@ class Carto():
 
         self.logger.info('Attempting to drop temp files...')
 
-        for f in [self.csv_path, self.temp_csv_path]:
+        for f in [self.csv_path, self.temp_csv_path, self.json_schema_path]:
             if os.path.isfile(f):
                 os.remove(f)
 
@@ -553,9 +387,6 @@ class Carto():
 
     def run_workflow(self):
         try:
-            self.get_csv_from_s3()
-            # Run our initial detection function using the CSV
-            self.geometric_detection()
             self.create_table()
             self.write()
             self.verify_count()
@@ -568,3 +399,4 @@ class Carto():
             raise e
         finally:
             self.cleanup()
+
