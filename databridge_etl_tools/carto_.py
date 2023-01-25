@@ -19,19 +19,22 @@ USR_BASE_URL = "https://{user}.carto.com/"
 CONNECTION_STRING_REGEX = r'^carto://(.+):(.+)'
 
 DATA_TYPE_MAP = {
-    'string':           'text',
-    'number':           'numeric',
-    'float':            'numeric',
-    'double precision': 'numeric',
-    'integer':          'integer',
-    'boolean':          'boolean',
-    'object':           'jsonb',
-    'array':            'jsonb',
-    'date':             'date',
-    'time':             'time',
-    'datetime':         'timestamp',
-    'geom':             'geometry',
-    'geometry':         'geometry'
+    'string':                       'text',
+    'number':                       'numeric',
+    'float':                        'numeric',
+    'double precision':             'numeric',
+    'integer':                      'integer',
+    'boolean':                      'boolean',
+    'object':                       'jsonb',
+    'array':                        'jsonb',
+    'time':                         'time',
+    # Make all these have a timezone, because Carto always does time zones
+    'date':                         'timestamp with time zone',
+    'datetime':                     'timestamp with time zone',
+    'timestamp':                    'timestamp with time zone',
+    'timestamp without time zone':  'timestamp with time zone',
+    'geom':                         'geometry',
+    'geometry':                     'geometry'
 }
 
 GEOM_TYPE_MAP = {
@@ -60,7 +63,7 @@ class Carto():
                  table_name, 
                  s3_bucket, 
                  s3_key,
-                 select_users,
+                 select_users=None,
                  index_fields=None):
         self.connection_string = connection_string
         self.table_name = table_name
