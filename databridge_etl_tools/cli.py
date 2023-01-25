@@ -155,6 +155,28 @@ def ago_append(ago_org_url, ago_user, ago_pw, ago_item_name, s3_bucket, s3_key, 
     ago.get_csv_from_s3()
     ago.append(truncate=False)
 
+@main.command()
+@click.option('--ago_org_url', required=True)
+@click.option('--ago_user', required=True)
+@click.option('--ago_pw', required=True)
+@click.option('--ago_org_id', required=True)
+@click.option('--ago_item_name', required=True)
+@click.option('--s3_bucket', required=True)
+@click.option('--s3_key', required=True)
+@click.option('--index_fields', required=True)
+def ago_post_index_fields(ago_org_url, ago_user, ago_pw, ago_org_id, ago_item_name, s3_bucket, s3_key, index_fields):
+    '''Post index fields to AGO'''
+    ago = AGO(
+        ago_org_url=ago_org_url,
+        ago_user=ago_user,
+        ago_pw=ago_pw,
+        ago_org_id=ago_org_id,
+        ago_item_name=ago_item_name,
+        s3_bucket=s3_bucket,
+        s3_key=s3_key,
+        index_fields=index_fields)
+    ago.post_index_fields()
+
 # AGO Upsert
 @main.command()
 @click.option('--ago_org_url', required=True)
