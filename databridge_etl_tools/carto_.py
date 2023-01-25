@@ -81,7 +81,7 @@ class Carto():
     @property
     def json_schema_s3_key(self):
         if self._json_schema_s3_key is None:
-            self._json_schema_s3_key = self.s3_key.replace('staging', 'schemas').replace('.csv', '_schema.json')
+            self._json_schema_s3_key = self.s3_key.replace('staging', 'schemas').replace('.csv', '.json')
         return self._json_schema_s3_key
 
 

@@ -87,7 +87,7 @@ class Oracle():
        return self._logger
 
 
-    def load_csv_and_schema_to_s3(self):
+    def load_csv_to_s3(self):
         self.logger.info('Starting load to s3: {}'.format(self.s3_key))
 
         s3 = boto3.resource('s3')
@@ -95,12 +95,16 @@ class Oracle():
         
         self.logger.info('Successfully loaded to s3: {}'.format(self.s3_key))
     
-        # Now load the schema
-        json_s3_key = self.s3_key.replace('.csv','') + '_schema.json'
-        json_s3_key = json_s3_key.replace('staging', 'schemas')
 
-        s3.Object(self.s3_bucket, json_s3_key).put(Body=open(self.json_schema_path, 'rb'))
-        self.logger.info('Successfully loaded to s3: {}'.format(json_s3_key))
+
+    def load_json_schema_to_s3(self):
+        raise NotImplementedError()
+        # Don't do this on the fly for now for stability's sake
+        # Now load the schema
+        #json_s3_key = self.s3_key.replace('.csv','') + '_schema.json'
+        #json_s3_key = json_s3_key.replace('staging', 'schemas')
+        #s3.Object(self.s3_bucket, json_s3_key).put(Body=open(self.json_schema_path, 'rb'))
+        #self.logger.info('Successfully loaded to s3: {}'.format(json_s3_key))
 
 
     def check_remove_nulls(self):
@@ -186,7 +190,7 @@ class Oracle():
         if num_rows_in_csv == 0:
             raise AssertionError('Error! Dataset is empty? Line count of CSV is 0.')
 
-        self.load_csv_and_schema_to_s3()
+        self.load_csv_to_s3()
         os.remove(self.csv_path)
 
         self.logger.info('Successfully extracted from {}'.format(self.schema_table_name))
