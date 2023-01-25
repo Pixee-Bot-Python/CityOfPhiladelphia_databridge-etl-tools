@@ -142,10 +142,10 @@ class Oracle():
     def extract(self):
         '''
         Extract data from database and save as a CSV file. Any fields that contain 
-        datetime information will be converted to US/Eastern time zone (with historical 
-        accuracy for Daylight Savings Time). Oracle also stories DATE fields with a 
-        time component as well, so "DATE" fields that may appear without time information
-        will also have timezone niformation added.
+        datetime information without a timezone offset will be converted to US/Eastern 
+        time zone (with historical accuracy for Daylight Savings Time). Oracle also 
+        stores DATE fields with a time component as well, so "DATE" fields that may appear 
+        without time information will also have timezone niformation added.
         Append CSV file to S3 bucket.
         '''
         self.logger.info('Starting extract from {}'.format(self.schema_table_name))
@@ -160,7 +160,8 @@ class Oracle():
         # Do not use etl.typeset to determine data types because otherwise it causes geopetl to
         # read the database multiple times
         for field in self.fields: 
-            if 'TIMESTAMP' in field[1].upper() or 'DATE' in field[1].upper():
+            # Create list of datetime type fields that aren't timezone aware:
+            if ('TIMESTAMP' in field[1].upper() or 'DATE' in field[1].upper()) and ('TZ' not in field[1].upper() and 'TIMEZONE' not in field[1].upper() and 'TIME ZONE' not in field[1].upper()):
                 datetime_fields.append(field[0].lower())
 
         if datetime_fields:
