@@ -475,12 +475,17 @@ class AGO():
 
         # First we should check that we can parse geometry before proceeding with truncate
         if self.geometric:
-            # keep looping until we get a non-blank geom value
+            loop_counter = 0
+            # keep looping for awhile until we get a non-blank geom value
             for i, row in enumerate(row_dicts):
+                # Bomb out at 500 rows and hope our geometry is good
+                if loop_counter > 500:
+                    break
+                loop_counter =+ 1
                 wkt = row.pop('shape')
 
                 # Set WKT to empty string so next conditional doesn't fail on a Nonetype
-                if wkt is None:
+                if not wkt.strip():
                     continue
                 if 'SRID=' not in wkt and bool(wkt.strip()) is False and (not self.in_srid):
                     raise AssertionError("Receieved a row with blank geometry, you need to pass an --in_srid so we know if we need to project!")
