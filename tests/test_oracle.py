@@ -32,7 +32,7 @@ def oracle(user, password, host, database):
         s3_key=s3_key)
     return oracle_client
 
-def test_oracle_extract(oracle):
+def test_oracle_extract_and_assert_one_db_call(oracle):
     oracle.extract()
     # Assert db only called once
     # can't do separate test, object seems to be lost between tests?
