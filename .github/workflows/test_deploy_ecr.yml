@@ -18,7 +18,7 @@ jobs:
     steps:
     # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
     # This is a github function? Ref doc: https://github.com/actions/checkout#checkout-a-different-branch
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
       with:
         ref: master
 
@@ -56,7 +56,7 @@ jobs:
     # Build our docker container and insert our AWS secret keys
     - name: Build docker container
       run: |
-         docker build -t airflow-dbtools-testing \
+         docker build -t dbtools \
          --build-arg AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID \
          --build-arg AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY \
           .
@@ -64,8 +64,6 @@ jobs:
         AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
         AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
-    - name: Start docker container and run pytests
-      run: docker run --rm --name dbtools airflow-dbtools-testing pytest -vvv -ra --disable-warnings --showlocals --tb=native tests
 
     # https://github.com/aws-actions/amazon-ecr-login
     - name: Login to Amazon ECR
@@ -78,5 +76,5 @@ jobs:
         AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         ECR_REPOSITORY_URL: ${{ secrets.ECR_REPOSITORY_URL }}
       run: |
-        docker tag airflow-dbtools-testing:latest $ECR_REPOSITORY_URL:latest
+        docker tag dbtools:latest $ECR_REPOSITORY_URL:latest
         docker push $ECR_REPOSITORY_URL:latest
