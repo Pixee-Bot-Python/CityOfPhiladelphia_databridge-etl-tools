@@ -171,20 +171,27 @@ class Oracle():
 
         if datetime_fields:
             print(f'Converting {datetime_fields} fields to Eastern timezone datetime')
-            data = etl.convert(data, datetime_fields, pytz.timezone('US/Eastern').localize)
-        
-        # Write to a CSV
-        try:
-            etl.tocsv(data, self.csv_path, encoding='utf-8')
-        except UnicodeError:
-            self.logger.info("Exception encountered trying to extract to CSV with utf-8 encoding, trying latin-1...")
-            etl.tocsv(data, self.csv_path, encoding='latin-1')
+            #data = etl.convert(data, datetime_fields, pytz.timezone('US/Eastern').localize)
+            # Reasign to new object, so below "times_db_called" works
+            # data_conv unbecomes a geopetl object after a convert() and becomes a 'petl.transform.conversions.FieldConvertView' object
+            data_conv = etl.convert(data, datetime_fields, pytz.timezone('US/Eastern').localize)
+            # Write to a CSV
+            try:
+                etl.tocsv(data_conv, self.csv_path, encoding='utf-8')
+            except UnicodeError:
+                self.logger.info("Exception encountered trying to extract to CSV with utf-8 encoding, trying latin-1...")
+                etl.tocsv(data_conv, self.csv_path, encoding='latin-1')
+        else:
+            # Write to a CSV
+            try:
+                etl.tocsv(data, self.csv_path, encoding='utf-8')
+            except UnicodeError:
+                self.logger.info("Exception encountered trying to extract to CSV with utf-8 encoding, trying latin-1...")
+                etl.tocsv(data, self.csv_path, encoding='latin-1')
 
-        # note, this debug shows in pytests that the data object type changes
-        # only in pytest and we lose geopetl functionality. No idea why.
-        print(f'DEBUG: {type(data)}')
         # Used solely in pytest to ensure database is called only once.
         self.times_db_called = data.times_db_called
+        print(f'Times database queried: {self.times_db_called}')
 
         # Confirm CSV isn't empty
         try:
