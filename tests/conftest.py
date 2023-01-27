@@ -1,6 +1,6 @@
 '''pytest makes all the fixtures in this file available to all other test files without having to import them.'''
 import pytest
-import os
+import os,sys
 
 from moto.s3 import mock_s3
 import boto3
@@ -10,11 +10,11 @@ from .constants import (
     POINT_JSON_SCHEMA, POLYGON_JSON_SCHEMA, 
     POINT_CSV, POLYGON_CSV,
 )
+
+# Makes it so output doesn't get truncated
 from _pytest.assertion import truncate
 truncate.DEFAULT_MAX_LINES = 9999
 truncate.DEFAULT_MAX_CHARS = 9999
-
-
 
 FIXTURES_DIR = os.path.join(
     os.path.dirname(os.path.realpath(__file__)),
@@ -22,6 +22,31 @@ FIXTURES_DIR = os.path.join(
     )
 SCHEMA_DIR = 'schemas'
 STAGING_DIR = 'staging'
+
+# Command line options to be used in our test python files
+# Note: docs say this should only be in the conftest.py file.
+def pytest_addoption(parser):
+    parser.addoption("--user", action="store", default='GIS_TEST', help="db user name")
+    parser.addoption("--host", action="store", default='some-host.gov', help="db host")
+    parser.addoption("--password", action="store", default='password', help="db user password")
+    parser.addoption("--database", action="store", default='adatabase',  help="db database name")
+
+# Necessary for our tests to access the parameters/args as specified
+# Fixtures are just functions that return objects that can be used by
+# multiple tests
+# in conftest.py
+@pytest.fixture
+def user(pytestconfig):
+    return pytestconfig.getoption("user")
+@pytest.fixture
+def host(pytestconfig):
+    return pytestconfig.getoption("host")
+@pytest.fixture
+def password(pytestconfig):
+    return pytestconfig.getoption("password")
+@pytest.fixture
+def database(pytestconfig):
+    return pytestconfig.getoption("database")
 
 @pytest.fixture
 def s3_client():

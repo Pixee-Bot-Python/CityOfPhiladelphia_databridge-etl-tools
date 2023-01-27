@@ -21,6 +21,7 @@ class Oracle():
         self.table_schema = table_schema
         self.s3_bucket = s3_bucket
         self.s3_key = s3_key
+        self.times_db_called = 0
 
     @property
     def schema_table_name(self):
@@ -142,7 +143,6 @@ class Oracle():
             os.replace(temp_file, self.csv_path)
 
 
-
     def extract(self):
         '''
         Extract data from database and save as a CSV file. Any fields that contain 
@@ -155,6 +155,7 @@ class Oracle():
         self.logger.info('Starting extract from {}'.format(self.schema_table_name))
         import geopetl
 
+        # Note: data isn't read just yet at this point
         data = etl.fromoraclesde(self.conn, self.schema_table_name, geom_with_srid=True)
 
         # Now load the schema
@@ -172,11 +173,18 @@ class Oracle():
             print(f'Converting {datetime_fields} fields to Eastern timezone datetime')
             data = etl.convert(data, datetime_fields, pytz.timezone('US/Eastern').localize)
         
+        # Write to a CSV
         try:
             etl.tocsv(data, self.csv_path, encoding='utf-8')
         except UnicodeError:
             self.logger.info("Exception encountered trying to extract to CSV with utf-8 encoding, trying latin-1...")
             etl.tocsv(data, self.csv_path, encoding='latin-1')
+
+        # note, this debug shows in pytests that the data object type changes
+        # only in pytest and we lose geopetl functionality. No idea why.
+        print(f'DEBUG: {type(data)}')
+        # Used solely in pytest to ensure database is called only once.
+        self.times_db_called = data.times_db_called
 
         # Confirm CSV isn't empty
         try:
@@ -184,6 +192,7 @@ class Oracle():
         except UnicodeError:
             rows = etl.fromcsv(self.csv_path, encoding='latin-1')
 
+        # Remove bad null characters from the csv
         self.check_remove_nulls()
 
         num_rows_in_csv = rows.nrows()
@@ -192,7 +201,7 @@ class Oracle():
 
         self.load_csv_to_s3()
         os.remove(self.csv_path)
-
+    
         self.logger.info('Successfully extracted from {}'.format(self.schema_table_name))
 
     def write(self):

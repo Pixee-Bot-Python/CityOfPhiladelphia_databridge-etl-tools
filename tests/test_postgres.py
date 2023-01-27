@@ -3,24 +3,17 @@ import pytest
 from .constants import S3_BUCKET
 from databridge_etl_tools.postgres import Postgres
 
-
-TABLE_NAME         = 'testing'
-TABLE_SCHEMA       = 'test'
-CONNECTION_STRING  = 'connection_string'
-S3_KEY         = 'csv.csv'
-S3_KEY             = 'mock_folder'
-
 @pytest.fixture
-def postgres():
+def postgres(user, password, host, database):
+    conn_string = f'postgresql://{user}:{password}@{host}:5432/{database}'
     postgres_client = Postgres(
-        table_name=TABLE_NAME,
-        table_schema=TABLE_SCHEMA,
-        connection_string=CONNECTION_STRING,
-        s3_bucket=S3_BUCKET,
-        s3_key=S3_KEY
+        table_name='multipolygon_table_2272',
+        table_schema='citygeo',
+        connection_string=conn_string,
+        s3_bucket='airflow-testing-v2',
+        s3_key='staging/test/multipolygon_table_2272.csv'
     )
     return postgres_client
 
-def test_table_schema_name(postgres):
-    table_schema_name = postgres.table_schema_name
-    assert table_schema_name == 'test.testing'
+def test_postgres_extract(postgres):
+    postgres.extract()

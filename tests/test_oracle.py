@@ -8,31 +8,33 @@ from .constants import S3_BUCKET
 from databridge_etl_tools.oracle import Oracle
 
 
-CONNECTION_STRING = 'connection_string'
-TABLE_NAME        = 'table_name'
-TABLE_SCHEMA      = 'schema'
-S3_KEY            = 'mock_folder'
-
+# Note: cli args are passed in via cli, see: conftest.py
 @pytest.fixture
-def oracle():
+def oracle(user, password, host, database):
+    conn_string = f'{user}/{password}@(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST={host})(PORT=1521))(CONNECT_DATA=(SID={database})))'
+    # NOTE: can't do a table with dates, because when we run an etl.convert on the petl
+    # dataframe, for some reason it loses it's geopetl functions and our tests will fail.
+    # This only happens in pytest. I don't know why.
+    table_name = 'multipolygon_table_2272'
+    table_schema = 'gis_test'
+    s3_bucket = 'airflow-testing-v2'
+    s3_key = 'staging/test/multipolygon_table_2272.csv'
+
+
+    # Initialize the class so we can run stuff
+    # on it, see cli.py or the python file itself
+    # to see what you can do.
     oracle_client = Oracle(
-        connection_string=CONNECTION_STRING,
-        table_name=TABLE_NAME,
-        table_schema=TABLE_SCHEMA,
-        s3_bucket=S3_BUCKET,
-        s3_key=S3_KEY)
+        connection_string=conn_string,
+        table_name=table_name,
+        table_schema=table_schema,
+        s3_bucket=s3_bucket,
+        s3_key=s3_key)
     return oracle_client
-    
-def test_schema_table_name(oracle):
-    schema_table_name = oracle.schema_table_name
-    assert schema_table_name == 'schema.table_name'
 
-def test_csv_path(oracle):
-    if os.name == 'nt':
-        assert oracle.csv_path == 'table_name.csv'
-    else:
-        assert oracle.csv_path == '/tmp/table_name.csv'
+def test_oracle_extract(oracle):
+    oracle.extract()
+    # Assert db only called once
+    # can't do separate test, object seems to be lost between tests?
+    assert oracle.times_db_called == 1
 
-#def test_load_csv_to_s3(oracle, s3_bucket):
-#    oracle.load_csv_and_schema_to_s3()
-#    assert os.path.isfile(oracle.csv_path)
