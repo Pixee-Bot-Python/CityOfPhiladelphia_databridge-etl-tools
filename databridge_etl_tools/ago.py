@@ -792,7 +792,12 @@ class AGO():
                     sleep(60)
                     continue
                 else:
-                    raise e
+                    print(f'Unexpected Exception from AGO on this batch! Writing these rows to error file and continuing to next batch...')
+                    print('If this is a fail on a specific row, consider passing it into the --clean_columns arg.')
+                    print(f'Exception error: {str(e)}')
+                    self.write_errors_to_s3(rows)
+                    success = True
+                    continue
 
             if is_rolled_back(result):
                 print("Results rolled back, retrying our batch adds in 60 seconds....")
@@ -864,7 +869,12 @@ class AGO():
                         sleep(60)
                         continue
                     else:
-                        raise e
+                        print(f'Unexpected Exception from AGO on this batch! Writing these rows to error file and continuing to next batch...')
+                        print('If this is a fail on a specific row, consider passing it into the --clean_columns arg.')
+                        print(f'Exception error: {str(e)}')
+                        self.write_errors_to_s3(rows)
+                        success = True
+                        continue
 
             # If we didn't get rolled back, batch of adds successfully added.
             else:
