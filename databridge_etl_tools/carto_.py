@@ -356,12 +356,16 @@ class Carto():
         self.logger.info('Vacuum analyze complete.\n')
 
     def generate_select_grants(self):
-        grants_sql = ''
-        select_users = self.select_users.split(',')
-        for user in select_users:
-            self.logger.info('{} - Granting SELECT to {}'.format(self.table_name, user))
-            grants_sql += 'GRANT SELECT ON "{}" TO "{}";'.format(self.table_name, user)
-        return grants_sql
+        if self.select_users:
+            grants_sql = ''
+            select_users = self.select_users.split(',')
+            for user in select_users:
+                self.logger.info('{} - Granting SELECT to {}'.format(self.table_name, user))
+                grants_sql += 'GRANT SELECT ON "{}" TO "{}";'.format(self.table_name, user)
+            return grants_sql
+        else:
+            print(f'Did not get any carto users to grant select privileges to, did you mean to do this?')
+            return ''
 
     def cleanup(self):
         self.logger.info('Attempting to drop any temporary tables: {}'.format(self.temp_table_name))
