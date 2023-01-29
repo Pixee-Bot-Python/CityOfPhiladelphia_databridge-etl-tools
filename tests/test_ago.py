@@ -2,33 +2,22 @@ import pytest
 
 from .constants import S3_BUCKET
 from databridge_etl_tools.ago import AGO
-import boto3
-
-
-AGO_ORG_URL         = 'phl.maps.arcgis.com'
-AGO_ITEM_NAME       = 'mock_item_name'
-AGO_USER            = 'auser'
-AGO_PW              = 'password'
-S3_KEY              = 'csv.csv'
-S3_BUCKET           = 'airflow-testing-v2'
-IN_SRID             = 2272
 
 @pytest.fixture
-def ago():
+def ago(ago_user, ago_password):
     ago_client = AGO(
-        ago_org_url=AGO_ORG_URL,
-        ago_item_name=AGO_ITEM_NAME,
-        ago_user=AGO_USER,
-        ago_pw=AGO_PW,
-        s3_bucket=S3_BUCKET,
-        s3_key=S3_KEY,
-        in_srid=IN_SRID
+        ago_org_url='https://phl.maps.arcgis.com',
+        ago_item_name='POINT_TABLE_2272',
+        ago_user=ago_user,
+        ago_pw=ago_password,
+        s3_bucket='airflow-testing-v2',
+        s3_key='staging/test/point_table_2272.csv',
+        in_srid=2272
     )
     return ago_client
 
-def test_ago_auth(ago):
-    print('Testing ago auth which ensures we have our AWS key env vars configured...')
-    client = boto3.setup_default_session(region_name='us-east-1')
-    s3_client = boto3.client('s3')
-    s3_client.list_objects(Bucket=S3_BUCKET)
-    print('Success.')
+def test_ago_truncate_append(ago):
+    ago.get_csv_from_s3()
+    ago.append(truncate=True)
+    ago.verify_count()
+

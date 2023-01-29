@@ -82,8 +82,8 @@ jobs:
     - name: Postgres pytests
       run: |
           docker run --rm dbtools \
-          pytest tests/test_postgres.py \
-          -vvv -ra --showlocals --tb=long --disable-warnings \
+            pytest tests/test_postgres.py \
+            -vvv -ra --showlocals --tb=long --disable-warnings \
             --user citygeo \
             --password $POSTGRES_PASSWORD \
             --host $POSTGRES_HOST \
@@ -92,6 +92,17 @@ jobs:
         POSTGRES_HOST: ${{ secrets.POSTGRES_HOST }}
         POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
         POSTGRES_DB: ${{ secrets.POSTGRES_DB }}
+
+    - name: AGO pytests
+      run: |
+          docker run --rm dbtools \
+            pytest tests/test_ago.py \
+            -s -vvv -ra --showlocals --tb=long --disable-warnings  \
+            --ago_user $AGO_USER \
+            --ago_password $AGO_PASSWORD
+      env:
+        AGO_USER: ${{ secrets.AGO_USER }}
+        AGO_PASSWORD: ${{ secrets.AGO_PASSWORD }}
 
 
     # https://github.com/aws-actions/amazon-ecr-login

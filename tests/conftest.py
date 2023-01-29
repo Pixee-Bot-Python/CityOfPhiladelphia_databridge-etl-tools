@@ -30,6 +30,8 @@ def pytest_addoption(parser):
     parser.addoption("--host", action="store", default='some-host.gov', help="db host")
     parser.addoption("--password", action="store", default='password', help="db user password")
     parser.addoption("--database", action="store", default='adatabase',  help="db database name")
+    parser.addoption("--ago_user", action="store", default='some_user',  help="user for AGO login")
+    parser.addoption("--ago_password", action="store", default='some_user',  help="pw for AGO login")
 
 # Necessary for our tests to access the parameters/args as specified
 # Fixtures are just functions that return objects that can be used by
@@ -47,6 +49,12 @@ def password(pytestconfig):
 @pytest.fixture
 def database(pytestconfig):
     return pytestconfig.getoption("database")
+@pytest.fixture
+def ago_user(pytestconfig):
+    return pytestconfig.getoption("ago_user")
+@pytest.fixture
+def ago_password(pytestconfig):
+    return pytestconfig.getoption("ago_password")
 
 @pytest.fixture
 def s3_client():
