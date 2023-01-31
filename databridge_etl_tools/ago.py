@@ -455,8 +455,18 @@ class AGO():
         # Compare headers in the csv file vs the fields in the ago item.
         # If the names don't match and we were to upload to AGO anyway, AGO will not actually do 
         # anything with our rows but won't tell us anything is wrong!
-        self.logger.info(f'Comparing AGO fields: "{tuple(self.item_fields.keys())}" and CSV fields: "{rows.fieldnames()}"')
-        row_differences = set(self.item_fields.keys()) - set(rows.fieldnames())
+        print(f'Comparing AGO fields: {set(self.item_fields.keys())} ')
+        print()
+        print(f'To CSV fields: {set(rows.fieldnames())} ')
+
+        # Apparently we need to compare both ways even though we're sorting them into sets
+        # Otherwise we'll miss out on differences.
+        row_differences1 = set(self.item_fields.keys()) - set(rows.fieldnames())
+        row_differences2 = set(rows.fieldnames()) - set(self.item_fields.keys())
+        
+        # combine both difference subtractions with a union
+        row_differences = row_differences1.union(row_differences2)
+
         if row_differences:
             # Ignore differences if it's just objectid.
             if 'objectid' in row_differences and len(row_differences) == 1:
