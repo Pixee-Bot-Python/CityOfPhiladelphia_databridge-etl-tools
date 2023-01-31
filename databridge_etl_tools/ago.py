@@ -156,10 +156,10 @@ class AGO():
         if self.geometric and 'shape' not in fields.keys():
             fields['shape'] = self.geometric
         # AGO will show these fields for lines and polygons, so remove them for an accurate comparison to the CSV headers.
-        if 'shape__area' in fields.keys():
-            fields.remove('shape__area')
-        if 'shape__length' in fields.keys():
-            fields.remove('shape__length')
+        if 'shape__area' in fields:
+            del fields['shape__area']
+        if 'shape__length' in fields:
+            del fields['shape__length']
         #fields = tuple(fields)
         self._item_fields = fields
         return self._item_fields

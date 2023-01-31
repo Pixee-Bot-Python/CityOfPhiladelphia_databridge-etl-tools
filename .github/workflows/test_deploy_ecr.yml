@@ -64,6 +64,19 @@ jobs:
         AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
         AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
        
+    - name: Postgres pytests
+      run: |
+          docker run --rm dbtools \
+            pytest tests/test_postgres.py \
+            -vvv -ra --showlocals --tb=long --disable-warnings \
+            --user citygeo \
+            --password $POSTGRES_PASSWORD \
+            --host $POSTGRES_HOST \
+            --database $POSTGRES_DB
+      env:
+        POSTGRES_HOST: ${{ secrets.POSTGRES_HOST }}
+        POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+        POSTGRES_DB: ${{ secrets.POSTGRES_DB }}
 
     - name: Oracle pytests
       run: |
@@ -78,20 +91,6 @@ jobs:
         ORACLE_HOST: ${{ secrets.ORACLE_HOST }}
         ORACLE_PASSWORD: ${{ secrets.ORACLE_PASSWORD }}
         ORACLE_DB: ${{ secrets.ORACLE_DB }}
-
-    - name: Postgres pytests
-      run: |
-          docker run --rm dbtools \
-            pytest tests/test_postgres.py \
-            -vvv -ra --showlocals --tb=long --disable-warnings \
-            --user citygeo \
-            --password $POSTGRES_PASSWORD \
-            --host $POSTGRES_HOST \
-            --database $POSTGRES_DB
-      env:
-        POSTGRES_HOST: ${{ secrets.POSTGRES_HOST }}
-        POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
-        POSTGRES_DB: ${{ secrets.POSTGRES_DB }}
 
     - name: AGO pytests
       run: |

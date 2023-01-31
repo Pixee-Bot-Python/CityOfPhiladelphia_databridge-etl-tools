@@ -132,7 +132,7 @@ class Postgres():
             AND table_name = '{self.table_name}'
             '''
             results = self.execute_sql(stmt, fetch='all')
-            print(f'DEBUG: {results}')
+            #print(f'DEBUG: {results}')
             self._export_json_schema = json.dumps(results)
         return self._export_json_schema
 
