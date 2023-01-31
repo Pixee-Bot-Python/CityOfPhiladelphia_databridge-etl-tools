@@ -18,26 +18,28 @@ jobs:
     steps:
     # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
     # This is a github function? Ref doc: https://github.com/actions/checkout#checkout-a-different-branch
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@master
 
   # https://github.com/marketplace/actions/microsoft-teams-deploy-card
   # Using replacement fork for toko-bifrost, context for why: https://github.com/toko-bifrost/ms-teams-deploy-card/issues/33#issuecomment-888466503 
     #- uses: toko-bifrost/ms-teams-deploy-card@master
-    - uses: patrickpaulin/ms-teams-deploy-card@master
-      if: always()
-      with:
-        GITHUB-TOKEN: ${{ github.token }}
-        WEBHOOK-URI: ${{ secrets.MS_TEAMS_WEBHOOK_URI }}
-        card-layout-start: compact
-        show-on-start: true
-        show-on-exit: true
-        custom-facts: |
-          - name: Job Progress
-            value: Building databridge-etl-tools
+    # Note: deprecated because of nodejs 12 and seemingly un-updated.
+    # commenting out for now.
+    #- uses: patrickpaulin/ms-teams-deploy-card@master
+    #  if: always()
+    #  with:
+    #    GITHUB-TOKEN: ${{ github.token }}
+    #    WEBHOOK-URI: ${{ secrets.MS_TEAMS_WEBHOOK_URI }}
+    #    card-layout-start: compact
+    #    show-on-start: true
+    #    show-on-exit: true
+    #    custom-facts: |
+    #      - name: Job Progress
+    #        value: Building databridge-etl-tools
     
     # https://github.com/aws-actions/amazon-ecr-login
     - name: Configure AWS credentials
-      uses: aws-actions/configure-aws-credentials@v1
+      uses: aws-actions/configure-aws-credentials@master
       with:
         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
