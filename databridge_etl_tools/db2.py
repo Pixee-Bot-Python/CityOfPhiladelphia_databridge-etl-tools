@@ -213,7 +213,7 @@ class Db2():
         # it with PostGIS, doesn't seem to be a whole lot of support or awareness for these extra properties.
         has_m_or_z_stmt = f'''
             SELECT definition FROM sde.gdb_items
-            WHERE name = 'betabridge.{self.enterprise_schema}.{self.enterprise_dataset_name}'
+            WHERE name = 'databridge.{self.enterprise_schema}.{self.enterprise_dataset_name}'
         '''
         self.logger.info('Running has_m_or_z_stmt: ' + has_m_or_z_stmt)
         self.pg_cursor.execute(has_m_or_z_stmt)
@@ -407,7 +407,14 @@ class Db2():
         # DELTE FROM is 'MVCC-safe'.
 
         prod_table = f'{self.enterprise_schema}.{self.enterprise_dataset_name}'
-        stage_table = f'{self.copy_from_source_schema}.{self.enterprise_dataset_name}'
+        # If etl_staging, that means we got data uploaded from S3 or an ArcPy copy
+        # so use the appropriate name which would be "etl_staging.dept_name__table_name"
+        if self.copy_from_source_schema == 'etl_staging':
+            stage_table = f'{self.copy_from_source_schema}.{self.enterprise_dataset_name}'
+        # If it's not etl_staging, that means we're copying directly from the dept table to entreprise
+        # so appropriate name would be "dept_name.table_name"
+        else:
+            stage_table = f'{self.copy_from_source_schema}.{self.table_name}'
 
         truncate_stmt = f'''DELETE FROM {prod_table}'''
 
