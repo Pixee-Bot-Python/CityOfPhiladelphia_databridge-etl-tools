@@ -24,7 +24,7 @@ setup(
         's3transfer==0.5.2',
         'six==1.16.0',
         'Shapely==1.8.1.post1',
-        'geopetl @ https://github.com/CityOfPhiladelphia/geopetl/tarball/master'
+        'geopetl @ git+https://github.com/CityOfPhiladelphia/geopetl.git'
     ],
     extras_require={
         'ago': [
