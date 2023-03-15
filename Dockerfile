@@ -1,7 +1,8 @@
 #FROM ubuntu:16.04
 #FROM python:3.6.15-slim-bullseye
 #FROM python:3.7.12-slim-buster
-FROM python:3.8.15-slim-buster
+#FROM python:3.8.15-slim-buster
+FROM python:3.9.16-slim-buster
 
 # Add our worker users custom binaries to the path, some python packages are installed here.
 ENV PATH="/home/worker/.local/bin:${PATH}"
@@ -45,8 +46,6 @@ RUN set -ex \
     && apt-get install -yqq --no-install-recommends \
         $buildDeps \
         libpq-dev \
-        python3 \
-        python3-pip \
         netbase \
         apt-utils \
         unzip \
@@ -95,10 +94,9 @@ USER worker
 WORKDIR /home/worker/
 
 # pip stuff
-RUN pip3 install --upgrade pip \
-    && pip3 install setuptools-rust \
-    && pip3 install -U setuptools \
-    && pip3 install Cython==0.29.28 \
+RUN pip3.9 install pip --upgrade \
+    && pip3.9 install setuptools --upgrade \
+    && pip3.9 install Cython==0.29.28 \
                    awscli==1.22.70 \
                    boto3==1.21.15 \
                    click==8.0.4 \
@@ -109,27 +107,28 @@ RUN pip3 install --upgrade pip \
                    pytz==2021.3 \
                    wheel
 
+# FAST BUILD LINES
+COPY docker-fast-requirements.txt /docker-fast-requirements.txt
+RUN pip3 install -r /docker-fast-requirements.txt
+########################
+
 # Per WORKDIR above, these should be placed in /home/worker/
 COPY --chown=worker:root scripts/entrypoint.sh ./entrypoint.sh
 COPY --chown=worker:root tests/ ./tests/
-COPY --chown=worker:root setup.py ./setup.py
+#COPY --chown=worker:root setup.py ./setup.py
+COPY --chown=worker:root pyproject.toml ./pyproject.toml
 COPY --chown=worker:root databridge_etl_tools ./databridge_etl_tools
 
 RUN chmod +x ./entrypoint.sh
 
 # Python syntax check
-RUN python -m compileall ./databridge_etl_tools
+RUN python3.9 -m compileall ./databridge_etl_tools
 
-# Install databridge-etl-tools using setup.py
-RUN pip3 install -e .[ago,carto,oracle,postgres,dev]
-
-# For some reason our latest commit wasn't being installed in setup.py, so install it here instead for now.
-#RUN pip3 install -e git+https://github.com/CityOfPhiladelphia/geopetl.git@f4d3cd5571908fe6c51096f67c002b26a7f732c3#egg=geopetl
-# roland-3-31-22 branch to fix geom_column issue
-#RUN pip3 install -e git+https://github.com/CityOfPhiladelphia/geopetl.git@389f7d78c734197df0f3130e87e6b9091c34d805#egg=geopetl
+# Install databridge-etl-tools using pyproject.toml
+RUN pip3.9 install .
 
 # Quick hack to fix CSV dump issue from Oracle
-RUN   sed -i "s|MAX_NUM_POINTS_IN_GEOM_FOR_CHAR_CONVERSION_IN_DB = 150|MAX_NUM_POINTS_IN_GEOM_FOR_CHAR_CONVERSION_IN_DB = 100|g" /home/worker/.local/lib/python3.8/site-packages/geopetl/oracle_sde.py
+RUN   sed -i "s|MAX_NUM_POINTS_IN_GEOM_FOR_CHAR_CONVERSION_IN_DB = 150|MAX_NUM_POINTS_IN_GEOM_FOR_CHAR_CONVERSION_IN_DB = 100|g" /home/worker/.local/lib/python3.9/site-packages/geopetl/oracle_sde.py
 
 # Set aws access keys as an env var for use with boto3
 # do this under the worker user.
