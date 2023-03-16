@@ -93,7 +93,7 @@ class AGO():
                     self._org = GIS(self.ago_org_url,
                                     self.ago_user,
                                     self.ago_password,
-                                    verify_cert=False)
+                                    verify_cert=True)
                 else:
                     self._org = GIS(self.ago_org_url,
                                     self.ago_user,
