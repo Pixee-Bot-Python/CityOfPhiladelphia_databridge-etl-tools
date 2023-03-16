@@ -47,6 +47,7 @@ class Postgres():
     _logger = None
     _schema = None
     _export_json_schema = None
+    _row_count = None
 
     def __init__(self, 
                  table_name, 
@@ -421,6 +422,14 @@ class Postgres():
         #
         raise NotImplementedError
 
+    @property
+    def row_count(self):
+        if self._row_count:
+            return self._row_count
+        data = self.execute_sql('SELECT count(*) FROM {};'.format(self.table_schema_name), fetch='many')
+        self._row_count = data[0][0]
+        return self._row_count
+
     def verify_count(self):
         print('Verifying row count...')
 
@@ -544,6 +553,17 @@ class Postgres():
         exists_query = f'''SELECT to_regclass('{self.table_schema}.{self.table_name}');'''
         result = self.execute_sql(exists_query, fetch='one')[0]
 
+        # Try to get an (arbitrary) sensible interval to print progress on by dividing by the row count
+        if self.row_count < 10000:
+            interval = int(self.row_count/3)
+        if self.row_count > 10000:
+            interval = int(self.row_count/15)
+        if self.row_count == 1:
+            interval = 1
+        # If it rounded down to 0 with int(), that means we have a very small amount of rows
+        if not interval:
+            interval = 1
+
         if result is None:
             raise AssertionError(f'Table does not exist in this DB: {self.table_schema}.{self.table_name}!')
 
@@ -555,10 +575,10 @@ class Postgres():
         # Dump to our CSV temp file
         print('Extracting csv...')
         try:
-            rows.tocsv(self.csv_path, 'utf-8')
+            rows.progress(interval).tocsv(self.csv_path, 'utf-8')
         except UnicodeError:
             print("Exception encountered trying to extract to CSV with utf-8 encoding, trying latin-1...")
-            rows.tocsv(self.csv_path, 'latin-1')
+            rows.progress(interval).tocsv(self.csv_path, 'latin-1')
 
         self.check_remove_nulls()
         self.load_csv_and_schema_to_s3()

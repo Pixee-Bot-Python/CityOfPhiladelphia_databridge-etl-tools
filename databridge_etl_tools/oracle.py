@@ -23,6 +23,8 @@ class Oracle():
         self.s3_bucket = s3_bucket
         self.s3_key = s3_key
         self.times_db_called = 0
+        # just initialize this self variable here so we connect first
+        self.conn
 
     @property
     def schema_table_name(self):
@@ -182,6 +184,18 @@ class Oracle():
             if ('TIMESTAMP' in field[1].upper() or 'DATE' in field[1].upper()) and ('TZ' not in field[1].upper() and 'TIMEZONE' not in field[1].upper() and 'TIME ZONE' not in field[1].upper()):
                 datetime_fields.append(field[0].lower())
 
+
+        # Try to get an (arbitrary) sensible interval to print progress on by dividing by the row count
+        if self.row_count < 10000:
+            interval = int(self.row_count/3)
+        if self.row_count > 10000:
+            interval = int(self.row_count/15)
+        if self.row_count == 1:
+            interval = 1
+        # If it rounded down to 0 with int(), that means we have a very small amount of rows
+        if not interval:
+            interval = 1
+
         if datetime_fields:
             print(f'Converting {datetime_fields} fields to Eastern timezone datetime')
             #data = etl.convert(data, datetime_fields, pytz.timezone('US/Eastern').localize)
@@ -190,17 +204,17 @@ class Oracle():
             data_conv = etl.convert(data, datetime_fields, pytz.timezone('US/Eastern').localize)
             # Write to a CSV
             try:
-                etl.tocsv(data_conv, self.csv_path, encoding='utf-8')
+                etl.tocsv(data_conv.progress(interval), self.csv_path, encoding='utf-8')
             except UnicodeError:
                 self.logger.info("Exception encountered trying to extract to CSV with utf-8 encoding, trying latin-1...")
-                etl.tocsv(data_conv, self.csv_path, encoding='latin-1')
+                etl.tocsv(data_conv.progress(interval), self.csv_path, encoding='latin-1')
         else:
             # Write to a CSV
             try:
-                etl.tocsv(data, self.csv_path, encoding='utf-8')
+                etl.tocsv(data.progress(interval), self.csv_path, encoding='utf-8')
             except UnicodeError:
                 self.logger.info("Exception encountered trying to extract to CSV with utf-8 encoding, trying latin-1...")
-                etl.tocsv(data, self.csv_path, encoding='latin-1')
+                etl.tocsv(data.progress(interval), self.csv_path, encoding='latin-1')
 
         # Used solely in pytest to ensure database is called only once.
         self.times_db_called = data.times_db_called
