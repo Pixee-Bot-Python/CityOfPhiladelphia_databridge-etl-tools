@@ -577,7 +577,8 @@ class AGO():
                     wkt = wkt.split(';')[1]
 
                 # If the geometry cell is blank, properly pass a NaN or empty value to indicate so.
-                if not (bool(wkt.strip())): 
+                # Also account for values like "POINT EMPTY"
+                if not (bool(wkt.strip())) or 'EMPTY' in wkt: 
                     if self.geometric == 'esriGeometryPoint':
                         geom_dict = {"x": 'NaN',
                                      "y": 'NaN',
@@ -596,7 +597,7 @@ class AGO():
                 # For different types we can consult this for the proper json format:
                 # https://developers.arcgis.com/documentation/common-data-types/geometry-objects.htm
                 # If it's not blank,
-                if bool(wkt.strip()): 
+                elif bool(wkt.strip()): 
                     if 'POINT' in wkt:
                         projected_x, projected_y = self.project_and_format_shape(wkt)
                         # Format our row, following the docs on this one, see section "In [18]":
