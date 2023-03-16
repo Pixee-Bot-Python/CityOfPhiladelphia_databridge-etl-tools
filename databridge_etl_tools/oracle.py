@@ -14,6 +14,7 @@ class Oracle():
     _logger = None
     _json_schema_path = None
     _fields = None
+    _row_count = None
 
     def __init__(self, connection_string, table_name, table_schema, s3_bucket, s3_key):
         self.connection_string = connection_string
@@ -44,6 +45,18 @@ class Oracle():
         cursor.execute(stmt)
         self._fields = cursor.fetchall()
         return self._fields
+
+    @property
+    def row_count(self):
+        if self._row_count:
+            return self._row_count
+        stmt=f'''
+        SELECT COUNT(OBJECTID) FROM {self.table_schema.upper()}.{self.table_name.upper()}
+        '''
+        cursor = self.conn.cursor()
+        cursor.execute(stmt)
+        self._row_count = cursor.fetchone()[0]
+        return self._row_count
 
     @property
     def conn(self):
@@ -205,6 +218,10 @@ class Oracle():
         num_rows_in_csv = rows.nrows()
         if num_rows_in_csv == 0:
             raise AssertionError('Error! Dataset is empty? Line count of CSV is 0.')
+
+        print(f'Asserting counts match between db and extracted csv')
+        print(f'{self.row_count} == {num_rows_in_csv}')
+        assert self.row_count == num_rows_in_csv
 
         self.load_csv_to_s3()
         os.remove(self.csv_path)
