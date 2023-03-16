@@ -171,7 +171,9 @@ class Oracle():
         import geopetl
 
         # Note: data isn't read just yet at this point
+        print('Initializing data var with etl.fromoraclesde()..')
         data = etl.fromoraclesde(self.conn, self.schema_table_name, geom_with_srid=True)
+        print('Initialized.')
 
         # Now load the schema
         etl.extract_table_schema(dbo=self.conn, table_name=self.schema_table_name, table_schema_output_path=self.json_schema_path)
@@ -204,16 +206,20 @@ class Oracle():
             data_conv = etl.convert(data, datetime_fields, pytz.timezone('US/Eastern').localize)
             # Write to a CSV
             try:
+                print(f'Writing to temporary local csv {self.csv_path}..')
                 etl.tocsv(data_conv.progress(interval), self.csv_path, encoding='utf-8')
             except UnicodeError:
                 self.logger.info("Exception encountered trying to extract to CSV with utf-8 encoding, trying latin-1...")
+                print(f'Writing to temporary local csv {self.csv_path}..')
                 etl.tocsv(data_conv.progress(interval), self.csv_path, encoding='latin-1')
         else:
             # Write to a CSV
             try:
+                print(f'Writing to temporary local csv {self.csv_path}..')
                 etl.tocsv(data.progress(interval), self.csv_path, encoding='utf-8')
             except UnicodeError:
                 self.logger.info("Exception encountered trying to extract to CSV with utf-8 encoding, trying latin-1...")
+                print(f'Writing to temporary local csv {self.csv_path}..')
                 etl.tocsv(data.progress(interval), self.csv_path, encoding='latin-1')
 
         # Used solely in pytest to ensure database is called only once.
