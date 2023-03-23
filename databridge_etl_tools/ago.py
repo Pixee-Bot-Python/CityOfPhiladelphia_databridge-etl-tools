@@ -53,7 +53,8 @@ class AGO():
         self.item_name = ago_item_name
         self.s3_bucket = s3_bucket
         self.s3_key = s3_key
-        self.ago_org_id = kwargs.get('ago_org_id', None)
+        # Our org id, publicly viewable so fine to hardcode.
+        self.ago_org_id = 'fLeGjb7u4uXqeF9q'
         self.index_fields = kwargs.get('index_fields', None)
         self.in_srid = kwargs.get('in_srid', None)
         self.clean_columns = kwargs.get('clean_columns', None)
@@ -1309,10 +1310,12 @@ class AGO():
 
     def post_index_fields(self):
         """
-        Posts indexes to AGO via requests.
+        Posts indexes to AGO via the requests module.
         First generate an access token, which we get with user credentials that
         we can then use to interact with the AGO Portal API:
         http://resources.arcgis.com/en/help/arcgis-rest-api/index.html#//02r3000000m5000000
+        Then loop through the index fields we were passed and attempt to update the AGO item definition
+        with the new index
         """
         url = 'https://arcgis.com/sharing/rest/generateToken'
         data = {'username': self.ago_user,
@@ -1326,7 +1329,6 @@ class AGO():
         # We will loop through it and see if any of these fields are unique.
         s3 = boto3.resource('s3')
         json_local_path = '/tmp/' + self.item_name + '_schema.json'
-        print(self.json_schema_s3_key)
         try:
             s3.Object(self.s3_bucket, self.json_schema_s3_key).download_file(json_local_path)
         except botocore.exceptions.ClientError as e:
@@ -1338,23 +1340,17 @@ class AGO():
             schema = json.load(json_file).get('fields', '')
         schema_fields_info = schema
 
-        now = datetime.now().strftime("%m/%d/%Y")
 
-        # Loop through indexes
-        for field in self.index_fields.split(','):
-            # Loop through the json schema file and look for uniques
-            is_unique = 'false'
-            for field_dict in schema_fields_info:
-                if field_dict['name'] == field:
-                    if 'unique' in field_dict.keys():
-                        is_unique = field_dict['unique']
-            
+        def post_index(field, is_unique):
+            '''script that actually does the posting'''
+            now = datetime.now().strftime("%m/%d/%Y")
+
             # Check for composite indexes, which have pluses denoting them
             # ex: "...,field1+field2,...
             # Then make it a comma for the json index definition
             if '+' in field:
                 field = field.replace('+',',')
-            
+
             index_json = {
               "indexes": [
               {
@@ -1375,14 +1371,90 @@ class AGO():
             print(f'\nPosting index for {field}...')
             print(jsonData)
             r = requests.post(f'{url}?token={ago_token}', data = {'f': 'json', 'addToDefinition': jsonData }, headers=headers, timeout=360)
-            #print(r)
-            #print(r.status_code)
+
+
             if 'Invalid definition' in r.text:
-                print('Index appears to already be set, got "Invalid Definition" error (this is usually a good thing, but still possible your index was actually rejected. ESRI just doesnt code in proper errors).')
+                print('''
+                Index appears to already be set, got "Invalid Definition" error (this is usually a good thing, but still
+                possible your index was actually rejected. ESRI just doesnt code in proper errors).
+                ''')
+            # Seen this error before that prevents an index from being added. Sleep and try to add again.
+            elif 'Operation failed. The index entry of length' in r.text:
+                print('Got a retriable error, retrying in 10 minutes...')
+                sleep(600)
+                print(f'Error was: {r.text}')
+                print(f"Posting the index for '{key}'..")
+                headers = {'Content-Type': 'application/x-www-form-urlencoded'}
+                r = requests.post(f'{url}?token={token}', data={'f': 'json', 'addToDefinition': jsonData}, headers=headers,
+                                  timeout=3600)
+                if 'success' not in r.text:
+                    print('Retry on this index failed. Returned AGO error:')
+                    print(r.text)
+            # Retry once on timeout.
+            elif 'Your request has timed out' in r.text:
+                print('Got a timeout error, retrying in 10 minutes...')
+                sleep(600)
+                print(f'Error was: {r.text}')
+                print(f"Posting the index for '{key}'..")
+                headers = {'Content-Type': 'application/x-www-form-urlencoded'}
+                r = requests.post(f'{url}?token={token}', data={'f': 'json', 'addToDefinition': jsonData}, headers=headers,
+                                  timeout=3600)
+                if 'success' not in r.text:
+                    print('Retry on this index failed. Returned AGO error:')
+                    print(r.text)
             else:
                 print(r.text)
+
+
+        ################################
+        # Loop through and post indexes.
+
+        for field in self.index_fields.split(','):
+            # Loop through the json schema file and look for uniques
+            is_unique = 'false'
+            for field_dict in schema_fields_info:
+                if field_dict['name'] == field:
+                    if 'unique' in field_dict.keys():
+                        is_unique = field_dict['unique']
+
+            post_index(field, is_unique)
             sleep(2)
 
+            
+        ##############################################
+        # now double check to make sure all indexes were made.
+
+        print('Checking for missing indexes..')
+        print('Sleep for 5 minutes first in hopes that index creation finishes by then..')
+        sleep(300)
+        check_url = f'https://services.arcgis.com/{self.ago_org_id}/ArcGIS/rest/services/{self.item_name}/FeatureServer/0?f=pjson'
+        print(f'Item defintion json URL: {check_url}')
+        headers = {'Content-Type': 'application/x-www-form-urlencoded'}
+        r = requests.get(f'{check_url}&token={ago_token}', headers=headers, timeout=3600)
+        data = r.json()
+        # Pull indexes out of the fuater server json definition
+        ago_indexes = data['indexes']
+        # Get just the names of the indexes
+        ago_indexes_list = [ x['name'] for x in ago_indexes ]
+
+        # compile a list of index names for comparison later when we double-check what
+        # was successfully posted.
+        index_names = []
+        for field in self.index_fields.split(','):
+            if '+' in field:
+                index_names.append(field.replace('+','_') + '_idx')
+            else:
+                index_names.append(field + '_idx')
+
+        # Subtract to see what is supposedly missing from AGO
+        missing_indexes = set(index_names) - set(ago_indexes_list)
+
+        if missing_indexes:
+            print('It appears that not all indexes were added, although often AGO just doesnt accurately list installed indexes in the feature server definition. We will retry adding them anyway.')
+            for index_name in missing_indexes:
+                post_index(missing_index, 'false')
+        else:
+            print('No missing indexes found.')
 
 
 @click.group()
