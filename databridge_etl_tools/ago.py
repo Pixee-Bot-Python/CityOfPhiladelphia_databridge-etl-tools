@@ -140,7 +140,7 @@ class AGO():
     @property
     def json_schema_s3_key(self):
         if self._json_schema_s3_key is None:
-            self._json_schema_s3_key = self.s3_key.replace('staging', 'schemas').replace('.csv', '_schema.json')
+            self._json_schema_s3_key = self.s3_key.replace('staging', 'schemas').replace('.csv', '.json')
         return self._json_schema_s3_key
 
 
@@ -1327,7 +1327,13 @@ class AGO():
         s3 = boto3.resource('s3')
         json_local_path = '/tmp/' + self.item_name + '_schema.json'
         print(self.json_schema_s3_key)
-        s3.Object(self.s3_bucket, self.json_schema_s3_key).download_file(json_local_path)
+        try:
+            s3.Object(self.s3_bucket, self.json_schema_s3_key).download_file(json_local_path)
+        except botocore.exceptions.ClientError as e:
+            if e.response['Error']['Code'] == "404":
+                raise AssertionError(f'CSV file doesnt appear to exist in S3! key: {self.json_schema_s3_key}')
+            else:
+                raise e
         with open(json_local_path) as json_file:
             schema = json.load(json_file).get('fields', '')
         schema_fields_info = schema
