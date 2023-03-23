@@ -28,6 +28,21 @@ def oracle_extract(table_name, table_schema, connection_string, s3_bucket, s3_ke
         s3_key=s3_key)
     oracle.extract()
 
+@main.command()
+@click.option('--table_name')
+@click.option('--table_schema')
+@click.option('--connection_string')
+@click.option('--s3_bucket')
+@click.option('--s3_key')
+def oracle_extract_json_schema(table_name, table_schema, connection_string, s3_bucket, s3_key):
+    """Extracts a dataset's schema in Oracle into a JSON file in S3"""
+    oracle = Oracle(
+        table_name=table_name,
+        table_schema=table_schema,
+        connection_string=connection_string,
+        s3_bucket=s3_bucket,
+        s3_key=s3_key)
+    oracle.load_json_schema_to_s3()
 
 @main.command()
 @click.option('--table_name')

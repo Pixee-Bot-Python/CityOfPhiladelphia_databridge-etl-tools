@@ -89,7 +89,7 @@ class Oracle():
     def json_schema_path(self):
         if self._json_schema_path:
             return self._json_schema_path
-        self._json_schema_path = self.csv_path.replace('.csv','') + '_schema.json'
+        self._json_schema_path = self.csv_path.replace('.csv','') + '.json'
         return self._json_schema_path
 
     @property
@@ -114,13 +114,13 @@ class Oracle():
 
 
     def load_json_schema_to_s3(self):
-        raise NotImplementedError()
-        # Don't do this on the fly for now for stability's sake
-        # Now load the schema
-        #json_s3_key = self.s3_key.replace('.csv','') + '_schema.json'
-        #json_s3_key = json_s3_key.replace('staging', 'schemas')
-        #s3.Object(self.s3_bucket, json_s3_key).put(Body=open(self.json_schema_path, 'rb'))
-        #self.logger.info('Successfully loaded to s3: {}'.format(json_s3_key))
+        s3 = boto3.resource('s3')
+
+        # load the schema into a tmp file in /tmp/
+        etl.extract_table_schema(dbo=self.conn, table_name=self.schema_table_name, table_schema_output_path=self.json_schema_path)
+        json_s3_key = self.s3_key.replace('staging', 'schemas').replace('.csv', '.json')
+        s3.Object(self.s3_bucket, json_s3_key).put(Body=open(self.json_schema_path, 'rb'))
+        self.logger.info('Successfully loaded to s3: {}'.format(json_s3_key))
 
 
     def check_remove_nulls(self):
@@ -175,8 +175,6 @@ class Oracle():
         data = etl.fromoraclesde(self.conn, self.schema_table_name, geom_with_srid=True)
         print('Initialized.')
 
-        # Now load the schema
-        etl.extract_table_schema(dbo=self.conn, table_name=self.schema_table_name, table_schema_output_path=self.json_schema_path)
 
         datetime_fields = []
         # Do not use etl.typeset to determine data types because otherwise it causes geopetl to
