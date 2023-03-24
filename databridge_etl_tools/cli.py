@@ -6,6 +6,7 @@ from .postgres import Postgres
 from .ago import AGO
 # One-off scripts for use in betabridge
 from .db2 import Db2
+from .opendata import OpenData
 
 
 @click.group()
@@ -301,6 +302,25 @@ def update_oracle_scn(table_name, account_name, oracle_conn_string):
         account_name=account_name,
         oracle_conn_string=oracle_conn_string)
     db2.update_oracle_scn()
+
+
+@main.command()
+@click.option('--table_name', required=True)
+@click.option('--table_schema', required=True)
+@click.option('--s3_bucket', required=True)
+@click.option('--s3_key', required=True)
+@click.option('--libpq_conn_string', required=True)
+@click.option('--opendata_bucket', required=True)
+def opendata_upload(table_name, table_schema, s3_bucket, s3_key, libpq_conn_string, opendata_bucket):
+    """Extracts a dataset in Oracle into a CSV file in S3"""
+    opendata = OpenData(
+        table_name=table_name,
+        table_schema=table_schema,
+        s3_bucket=s3_bucket,
+        s3_key=s3_key,
+        libpq_conn_string=libpq_conn_string,
+        opendata_bucket=opendata_bucket)
+    opendata.run()
 
 
 if __name__ == '__main__':
