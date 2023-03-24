@@ -754,34 +754,36 @@ class AGO():
                     if self.upserting:
                         print(f'Got a request timed out back, assuming it worked... Error: {str(e)}')
                     if not self.upserting:
-                        print(f'Got a request timed out back, assuming it worked... Error: {str(e)}')
+                        print(f'Got a request timed out, checking counts. Error: {str(e)}')
                         # slow down requests if we're getting timeouts
-                        sleep(60)
-                        continue
-
-                        #print(f'Got a request timed out, checking counts. Error: {str(e)}')
-                        #sleep(120)
-                        #ago_count = None
+                        sleep(300)
+                        ago_count = None
                         # Account for timeouts everywhere
-                        #while not ago_count:
-                        #    try:
-                        #        ago_count = self.layer_object.query(return_count_only=True)
-                        #        # Yet another edge case, if our count is not divisible by our 
-                        #        # batch size, re-run it.
-                        #        if (ago_count % self.batch_size) != 0:
-                        #            sleep(60)
-                        #            ago_count = None
-                        #    except:
-                        #        sleep(10)
-                        #print(f'ago_count: {ago_count} == row_count: {row_count}')
-                        #if ago_count == row_count:
-                        #    print(f'Request was actually successful, ago_count matches our current row count.')
-                        #    success = True
-                        #elif ago_count > row_count:
-                        #    raise AssertionError('Error, ago_count is greater than our row_count! Some appends doubled up?')
-                        #elif ago_count < row_count:
-                        #    print(f'Request not successful, retrying.')
-                        #continue
+                        count_retries = 0 
+                        while not ago_count or count_retries > 10:
+                            try:
+                                ago_count = self.layer_object.query(return_count_only=True)
+                                # Yet another edge case, if our count is not divisible by our
+                                # batch size, re-try the count after waiting. Usually means ago is still working.
+                                if (ago_count % self.batch_size) != 0:
+                                    sleep(60)
+                                    ago_count = None
+                            except:
+                                sleep(10)
+                            count_retries += 1
+                        # If ago_count is still None...
+                        if ago_count == None:
+                            raise AssertionError('AGO count out of sync with our progress! Retry when AGO is less busy.')
+
+                        print(f'ago_count: {ago_count} == row_count: {row_count}')
+                        if ago_count == row_count:
+                            print(f'Request was actually successful, ago_count matches our current row count.')
+                            success = True
+                        elif ago_count > row_count:
+                            raise AssertionError('Error, ago_count is greater than our row_count! Some appends doubled up?')
+                        elif ago_count < row_count:
+                            print(f'Request not successful, retrying.')
+                        continue
                 elif 'Unable to perform query' in str(e):
                     print(f'"Unable to perform query" error received, retrying.')
                     tries += 1
@@ -829,36 +831,36 @@ class AGO():
                         if self.upserting:
                             print(f'Got a request timed out back, assuming it worked... Error: {str(e)}')
                         if not self.upserting:
-                            print(f'Got a request timed out back, assuming it worked... Error: {str(e)}')
+                            print(f'Got a request timed out, checking counts. Error: {str(e)}')
                             # slow down requests if we're getting timeouts
-                            sleep(60)
-                            continue
+                            sleep(300)
+                            ago_count = None
+                            # Account for timeouts everywhere
+                            count_retries = 0 
+                            while not ago_count or count_retries > 10:
+                                try:
+                                    ago_count = self.layer_object.query(return_count_only=True)
+                                    # Yet another edge case, if our count is not divisible by our
+                                    # batch size, re-try the count after waiting. Usually means ago is still working.
+                                    if (ago_count % self.batch_size) != 0:
+                                        sleep(60)
+                                        ago_count = None
+                                except:
+                                    sleep(10)
+                                count_retries += 1
+                            # If ago_count is still None...
+                            if ago_count == None:
+                                raise AssertionError('AGO count out of sync with our progress! Retry when AGO is less busy.')
 
-                            #print(f'Got a request timed out, checking counts. Error: {str(e)}')
-                            #sleep(120)
-                            #ago_count = None
-                            ## Account for timeouts everywhere
-                            #while not ago_count:
-                            #    try:
-                            #        ago_count = self.layer_object.query(return_count_only=True)
-                            #        # Yet another edge case, if our count is not divisible by our 
-                            #        # batch size, re-run it.
-                            #        if (ago_count % self.batch_size) != 0:
-                            #            sleep(60)
-                            #            ago_count = None
-                            #    except:
-                            #        print('timeout on ago_count')
-                            #        sleep(10)
-                            #ago_count = self.layer_object.query(return_count_only=True)
-                            #print(f'ago_count: {ago_count} == row_count: {row_count}')
-                            #if ago_count == row_count:
-                            #    print(f'Request was actually successful, ago_count matches our current row count.')
-                            #    success = True
-                            #elif ago_count > row_count:
-                            #    raise AssertionError('Error, ago_count is greater than our row_count! Some appends doubled up?')
-                            #elif ago_count < row_count:
-                            #    print(f'Request not successful, retrying.')
-                            #continue
+                            print(f'ago_count: {ago_count} == row_count: {row_count}')
+                            if ago_count == row_count:
+                                print(f'Request was actually successful, ago_count matches our current row count.')
+                                success = True
+                            elif ago_count > row_count:
+                                raise AssertionError('Error, ago_count is greater than our row_count! Some appends doubled up?')
+                            elif ago_count < row_count:
+                                print(f'Request not successful, retrying.')
+                            continue
                     elif 'Unable to perform query' in str(e):
                         print('"Unable to perform query" error received, retrying.')
                         tries += 1
