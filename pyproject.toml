@@ -7,7 +7,7 @@ authors = [
 ]
 
 dependencies = [
-    "geopetl @ git+https://github.com/CityOfPhiladelphia/geopetl.git@test_diff_arraysize_prefetch",
+    "geopetl @ git+https://github.com/CityOfPhiladelphia/geopetl.git@master",
     "setuptools>=67.6.0",
     "arcgis>=2.0.0",
     "boto3>=1.21.15",

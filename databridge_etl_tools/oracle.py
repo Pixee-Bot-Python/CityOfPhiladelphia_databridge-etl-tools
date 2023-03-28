@@ -168,6 +168,7 @@ class Oracle():
         Append CSV file to S3 bucket.
         '''
         self.logger.info('Starting extract from {}'.format(self.schema_table_name))
+        self.logger.info('Note: petl can cause log messages to seemingly come out of order.')
         import geopetl
 
         # Note: data isn't read just yet at this point
