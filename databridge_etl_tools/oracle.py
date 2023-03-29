@@ -52,9 +52,14 @@ class Oracle():
     def row_count(self):
         if self._row_count:
             return self._row_count
-        stmt=f'''
-        SELECT COUNT(OBJECTID) FROM {self.table_schema.upper()}.{self.table_name.upper()}
-        '''
+        if 'OBJECTID' in self.fields:
+            stmt=f'''
+            SELECT COUNT(OBJECTID) FROM {self.table_schema.upper()}.{self.table_name.upper()}
+            '''
+        else:
+            stmt=f'''
+            SELECT COUNT(*) FROM {self.table_schema.upper()}.{self.table_name.upper()}
+            '''
         cursor = self.conn.cursor()
         cursor.execute(stmt)
         self._row_count = cursor.fetchone()[0]
