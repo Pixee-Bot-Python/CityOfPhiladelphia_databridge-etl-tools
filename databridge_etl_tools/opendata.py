@@ -82,84 +82,102 @@ class OpenData():
         # Get header row
         header_fmt = [h.lower() for h in header]
 
-
-        # First, let's try to find the SRID
+        # Determine if geometric first
+        geometric = False
+        geom_field = None
+        geom_type = None
         srid = None
-        # Let's see if we can get it our SRID from the crazy SDE xml definition that lives in this sde system table
-        stmt = f"SELECT definition FROM sde.gdb_items WHERE name = 'databridge.{self.table_schema}.{self.table_name}'"
-        print(f'Running stmt: {stmt}')
+        stmt = f'''
+        SELECT column_name,data_type
+        FROM information_schema.columns
+        WHERE
+            table_schema = 'viewer' AND
+            table_name = 'opa__assessments' AND
+            column_name = 'shape';
+        '''
         self.pg_cursor.execute(stmt)
-        xml_def = self.pg_cursor.fetchone()
-        if xml_def:
-            xml_def = xml_def[0]
-            if '<LatestWKID>' in xml_def:
-                match = re.search(r'<LatestWKID>.*</LatestWKID>', xml_def)
-                if match:
-                    srid = match.group().replace('<LatestWKID>','').replace('</LatestWKID>','')
-        # If we can't find it, see if we put it in the CSV in the shape values, like so: SRID=2272; POINT ( 1234, 5678 )
-        if not srid:
-            # Find non-null shape column to determine the SRID
-            # Pull the first 1000 rows in case we have like, 5 million rows so this won't take forever.
-            # and what kind of dataset would have empty shapes for the first 1000 rows?
-            thousand_rows = etl.head(rows, 1000)
-            shapes = etl.cut(thousand_rows, 'shape')
-            srid = None
-            for row in shapes:
-                if row[0]:
-                    # Try to regex for the SRID
-                    match = re.search(r'[=].*[;]', row[0])
-                    if not match:
-                        match = re.search(r"=.*;", row[0])
-                    if not match:
-                        continue
-                    else:
-                        break
-            if srid:
-                # Strip characters used to regex from the matched string
-                srid = match.group().replace('=','').replace(';','')
+        geometric_field = self.pg_cursor.fetchall()
+        if geometric_field:
+            print(f'DEBUG: {geometric_field}')
+            if geometric_field[0][0] == 'shape' and geometric_field[0][1] == 'USER-DEFINED':
+                geometric = True
 
-        assert srid
-        print(f'SRID detected as: {srid}')
-
-
-        # Get geom type from DB2. First try with a PostGIS table.
-        stmt = f"""
-        SELECT type FROM geometry_columns
-        WHERE f_table_schema = '{self.table_schema}'
-        AND f_table_name = '{self.table_name}'
-        AND f_geometry_column = 'shape';
-        """
-        print(f'Running stmt: {stmt}')
-        self.pg_cursor.execute(stmt)
-        geom_type = self.pg_cursor.fetchone()
-        if geom_type:
-            geom_type = geom_type[0]
-        # If the geom_type is None or if it gave us back a generic "GEOMETRY"
-        # Then try extracting from the SDE XML definition.
-        if (not geom_type) or (geom_type == 'GEOMETRY'):
+        if geometric:
+            # First, let's try to find the SRID
+            # Let's see if we can get it our SRID from the crazy SDE xml definition that lives in this sde system table
             stmt = f"SELECT definition FROM sde.gdb_items WHERE name = 'databridge.{self.table_schema}.{self.table_name}'"
             print(f'Running stmt: {stmt}')
             self.pg_cursor.execute(stmt)
-            geom_type = self.pg_cursor.fetchone()[0]
-        if '<ShapeType>esriGeometryPoint</ShapeType>' in geom_type:
-            geom_type = 'point'
-        elif '<ShapeType>esriGeometryPolygon</ShapeType>' in geom_type:
-            geom_type = 'polygon'
-        elif '<ShapeType>esriGeometryPolyline</ShapeType>' in geom_type:
-            geom_type = 'line'
-        else:
-            raise AssertionError('Could not determine geometry type from database')
-        
-        # Get geom field
-        stmt = f"""
-                SELECT f_geometry_column FROM public.geometry_columns
-                WHERE f_table_schema = '{self.table_schema}'
-                AND f_table_name = '{self.table_name}'
-                """
-        print(f'Running stmt: {stmt}')
-        self.pg_cursor.execute(stmt)
-        geom_field = self.pg_cursor.fetchone()[0]
-        assert geom_field
+            xml_def = self.pg_cursor.fetchone()
+            if xml_def:
+                xml_def = xml_def[0]
+                if '<LatestWKID>' in xml_def:
+                    match = re.search(r'<LatestWKID>.*</LatestWKID>', xml_def)
+                    if match:
+                        srid = match.group().replace('<LatestWKID>','').replace('</LatestWKID>','')
+            # If we can't find it, see if we put it in the CSV in the shape values, like so: SRID=2272; POINT ( 1234, 5678 )
+            if not srid:
+                # Find non-null shape column to determine the SRID
+                # Pull the first 1000 rows in case we have like, 5 million rows so this won't take forever.
+                # and what kind of dataset would have empty shapes for the first 1000 rows?
+                thousand_rows = etl.head(rows, 1000)
+                shapes = etl.cut(thousand_rows, 'shape')
+                for row in shapes:
+                    if row[0]:
+                        # Try to regex for the SRID
+                        match = re.search(r'[=].*[;]', row[0])
+                        if not match:
+                            match = re.search(r"=.*;", row[0])
+                        if not match:
+                            continue
+                        else:
+                            break
+                if srid:
+                    # Strip characters used to regex from the matched string
+                    srid = match.group().replace('=','').replace(';','')
+
+            assert srid
+            print(f'SRID detected as: {srid}')
+
+
+            # Get geom type from DB2. First try with a PostGIS table.
+            stmt = f"""
+            SELECT type FROM geometry_columns
+            WHERE f_table_schema = '{self.table_schema}'
+            AND f_table_name = '{self.table_name}'
+            AND f_geometry_column = 'shape';
+            """
+            print(f'Running stmt: {stmt}')
+            self.pg_cursor.execute(stmt)
+            geom_type = self.pg_cursor.fetchone()
+            if geom_type:
+                geom_type = geom_type[0]
+            # If the geom_type is None or if it gave us back a generic "GEOMETRY"
+            # Then try extracting from the SDE XML definition.
+            if (not geom_type) or (geom_type == 'GEOMETRY'):
+                stmt = f"SELECT definition FROM sde.gdb_items WHERE name = 'databridge.{self.table_schema}.{self.table_name}'"
+                print(f'Running stmt: {stmt}')
+                self.pg_cursor.execute(stmt)
+                geom_type = self.pg_cursor.fetchone()[0]
+            if '<ShapeType>esriGeometryPoint</ShapeType>' in geom_type:
+                geom_type = 'point'
+            elif '<ShapeType>esriGeometryPolygon</ShapeType>' in geom_type:
+                geom_type = 'polygon'
+            elif '<ShapeType>esriGeometryPolyline</ShapeType>' in geom_type:
+                geom_type = 'line'
+            else:
+                raise AssertionError('Could not determine geometry type from database')
+            
+            # Get geom field
+            stmt = f"""
+                    SELECT f_geometry_column FROM public.geometry_columns
+                    WHERE f_table_schema = '{self.table_schema}'
+                    AND f_table_name = '{self.table_name}'
+                    """
+            print(f'Running stmt: {stmt}')
+            self.pg_cursor.execute(stmt)
+            geom_field = self.pg_cursor.fetchone()[0]
+            assert geom_field
 
         # IF geom_type is a point, extract lat/lon and then remove shape field.
         # All other geom types aren't handled in csv's for open data.
