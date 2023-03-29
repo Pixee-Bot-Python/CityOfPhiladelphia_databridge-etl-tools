@@ -82,26 +82,45 @@ class OpenData():
         # Get header row
         header_fmt = [h.lower() for h in header]
 
-        # Find non-null shape column to determine the SRID
-        # Pull the first 1000 rows in case we have like, 5 million rows so this won't take forever.
-        # and what kind of dataset would have empty shapes for the first 1000 rows?
-        thousand_rows = etl.head(rows, 1000)
-        shapes = etl.cut(thousand_rows, 'shape')
-        for row in shapes:
-            if row[0]:
-                # Try to regex for the SRID
-                match = re.search(r'[=].*[;]', row[0])
-                if not match:
-                    match = re.search(r"=.*;", row[0])
-                if not match:
-                    continue
-                else:
-                    break
-        
-        # Strip characters used to regex from the matched string
-        srid = match.group().replace('=','').replace(';','')
+
+        # First, let's try to find the SRID
+        srid = None
+        # Let's see if we can get it our SRID from the crazy SDE xml definition that lives in this sde system table
+        stmt = f"SELECT definition FROM sde.gdb_items WHERE name = 'databridge.{self.table_schema}.{self.table_name}'"
+        print(f'Running stmt: {stmt}')
+        self.pg_cursor.execute(stmt)
+        xml_def = self.pg_cursor.fetchone()
+        if xml_def:
+            xml_def = xml_def[0]
+            if '<LatestWKID>' in xml_def:
+                match = re.search(r'<LatestWKID>.*</LatestWKID>', xml_def)
+                if match:
+                    srid = match.group().replace('<LatestWKID>','').replace('</LatestWKID>','')
+        # If we can't find it, see if we put it in the CSV in the shape values, like so: SRID=2272; POINT ( 1234, 5678 )
+        if not srid:
+            # Find non-null shape column to determine the SRID
+            # Pull the first 1000 rows in case we have like, 5 million rows so this won't take forever.
+            # and what kind of dataset would have empty shapes for the first 1000 rows?
+            thousand_rows = etl.head(rows, 1000)
+            shapes = etl.cut(thousand_rows, 'shape')
+            srid = None
+            for row in shapes:
+                if row[0]:
+                    # Try to regex for the SRID
+                    match = re.search(r'[=].*[;]', row[0])
+                    if not match:
+                        match = re.search(r"=.*;", row[0])
+                    if not match:
+                        continue
+                    else:
+                        break
+            if srid:
+                # Strip characters used to regex from the matched string
+                srid = match.group().replace('=','').replace(';','')
+
         assert srid
         print(f'SRID detected as: {srid}')
+
 
         # Get geom type from DB2. First try with a PostGIS table.
         stmt = f"""
@@ -225,3 +244,4 @@ class OpenData():
     def run(self):
         self.download_csv_from_s3()
         self.transform_and_upload_data()
+
