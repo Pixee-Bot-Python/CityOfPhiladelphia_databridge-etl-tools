@@ -67,9 +67,10 @@ class OpenData():
 
     def compress_csv(self, filename):
         compress_filename = filename + '.gz'
-        self.logger.info("Gzipping csv file into {} with gzip".format(compress_filename))
+        level = 7
+        self.logger.info(f"Gzipping csv file into {compress_filename} with gzip, compression level: {level}")
         with open(filename, 'rb') as f_in:
-            with gzip.open(compress_filename, 'wb') as f_out:
+            with gzip.open(filename=compress_filename, mode='wb', compresslevel=level) as f_out:
                 shutil.copyfileobj(f_in, f_out)
         self.logger.info('Gzipped.')
 
