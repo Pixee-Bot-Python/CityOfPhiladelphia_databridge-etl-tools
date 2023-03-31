@@ -65,6 +65,8 @@ class Postgres():
         self.geom_field = kwargs.get('geom_field', None)
         self.geom_type = kwargs.get('geom_type', None)
         self.with_srid = kwargs.get('with_srid', None)
+        # just initialize this self variable here so we connect first
+        self.conn
 
     @property
     def table_schema_name(self):
@@ -116,10 +118,10 @@ class Postgres():
     @property
     def conn(self):
         if self._conn is None:
-            print('Trying to connect to postgres...')
+            self.logger.info('Trying to connect to postgres...')
             conn = psycopg2.connect(self.connection_string, connect_timeout=5)
             self._conn = conn
-            print('Connected to postgres.\n')
+            self.logger.info('Connected to postgres.\n')
         return self._conn
 
     @property
@@ -133,7 +135,7 @@ class Postgres():
             AND table_name = '{self.table_name}'
             '''
             results = self.execute_sql(stmt, fetch='all')
-            #print(f'DEBUG: {results}')
+            #self.logger.info(f'DEBUG: {results}')
             self._export_json_schema = json.dumps(results)
         return self._export_json_schema
 
@@ -221,7 +223,7 @@ class Postgres():
                 geom_stmt = f'''
                 SELECT geometry_type('{self.table_schema}', '{self.table_name}', '{self.geom_field}')
                 '''
-                print(f'Determining our geom_type, running statement: {geom_stmt}')
+                self.logger.info(f'Determining our geom_type, running statement: {geom_stmt}')
                 result = self.execute_sql(geom_stmt, fetch='one')
                 if result == None:
                     self._geom_type = None
@@ -285,7 +287,7 @@ class Postgres():
        return self._logger
 
     def execute_sql(self, stmt, fetch=None):
-        print('Executing: {}'.format(stmt))
+        #self.logger.info('Executing: {}'.format(stmt))
 
         with self.conn.cursor() as cursor:
             cursor.execute(stmt)
@@ -303,20 +305,20 @@ class Postgres():
                 return result
 
     def get_json_schema_from_s3(self):
-        print('Fetching json schema: s3://{}/{}'.format(self.s3_bucket, self.json_schema_s3_key))
+        self.logger.info('Fetching json schema: s3://{}/{}'.format(self.s3_bucket, self.json_schema_s3_key))
 
         s3 = boto3.resource('s3')
         s3.Object(self.s3_bucket, self.json_schema_s3_key).download_file(self.json_schema_path)
 
-        print('Json schema successfully downloaded.\n'.format(self.s3_bucket, self.json_schema_s3_key))
+        self.logger.info('Json schema successfully downloaded.\n'.format(self.s3_bucket, self.json_schema_s3_key))
 
     def get_csv_from_s3(self):
-        print('Fetching csv s3://{}/{}'.format(self.s3_bucket, self.s3_key))
+        self.logger.info('Fetching csv s3://{}/{}'.format(self.s3_bucket, self.s3_key))
 
         s3 = boto3.resource('s3')
         s3.Object(self.s3_bucket, self.s3_key).download_file(self.csv_path)
 
-        print('CSV successfully downloaded.\n'.format(self.s3_bucket, self.s3_key))
+        self.logger.info('CSV successfully downloaded.\n'.format(self.s3_bucket, self.s3_key))
 
 
     def create_indexes(self, table_name):
@@ -329,7 +331,7 @@ class Postgres():
         try:
             rows = etl.fromcsv(self.csv_path, encoding='utf-8')
         except UnicodeError:    
-            print("Exception encountered trying to load rows with utf-8 encoding, trying latin-1...")
+            self.logger.info("Exception encountered trying to load rows with utf-8 encoding, trying latin-1...")
             rows = etl.fromcsv(self.csv_path, encoding='latin-1')
 
         # Shape types we will transform on, hacky way so we can insert it into our lambda function below
@@ -340,10 +342,10 @@ class Postgres():
 
         # Note: also run this if the data type is 'MULTILINESTRING' some source datasets will export as LINESTRING but the dataset type is actually MULTILINESTRING (one example: GIS_PLANNING.pedbikeplan_bikerec)
         # Note2: Also happening with poygons, example dataset: GIS_PPR.ppr_properties
-        print(f'self.geom_field is: {self.geom_field}')
-        print(f'self.geom_type is: {self.geom_type}')
+        self.logger.info(f'self.geom_field is: {self.geom_field}')
+        self.logger.info(f'self.geom_type is: {self.geom_type}')
         if self.geom_field is not None and (self.geom_type in shape_types):
-            print('Detected that shape type needs conversion to MULTI....')
+            self.logger.info('Detected that shape type needs conversion to MULTI....')
             # Multi-geom fix
             # ESRI seems to only store polygon feature clasess as only multipolygons,
             # so we need to convert all polygon datasets to multipolygon for a successful copy_export.
@@ -380,31 +382,37 @@ class Postgres():
         # will still have "objectid_1" in it.
         # We'll attempt to handle this by replacing the "objectid_1" with "objectid" in the
         # CSV header if there's not a second objectid field in there.
+        # Note: could be made smarter with regex
         if ('objectid_1,' in str_header) and ('objectid,' not in str_header):
-            print('\nDetected objectid_1 primary key, implementing workaround and modifying header...')
+            self.logger.info('\nDetected objectid_1 primary key, implementing workaround and modifying header...')
             rows = rows.rename('objectid_1', 'objectid')
             str_header = str_header.replace('objectid_1', 'objectid')
 
-        print(str_header)
-        print('\nWriting to table: {}...'.format(self.table_schema_name))
+        if ('objectid_2,' in str_header) and ('objectid,' not in str_header):
+            self.logger.info('\nDetected objectid_2 primary key, implementing workaround and modifying header...')
+            rows = rows.rename('objectid_2', 'objectid')
+            str_header = str_header.replace('objectid_2', 'objectid')
+
+        self.logger.info(str_header)
+        self.logger.info('\nWriting to table: {}...'.format(self.table_schema_name))
 
         # Write our possibly modified lines into the temp_csv file
         write_file = self.temp_csv_path
         rows.tocsv(write_file)
-        #print("DEBUG Rows: " + str(etl.look(rows)))
+        #self.logger.info("DEBUG Rows: " + str(etl.look(rows)))
 
         with open(write_file, 'r') as f:
             with self.conn.cursor() as cursor:
                 copy_stmt = f'''
                     COPY {self.table_schema_name} ({str_header}) FROM STDIN WITH (FORMAT csv, HEADER true)
                 '''
-                print('copy_stmt: ' + copy_stmt)
+                self.logger.info('copy_stmt: ' + copy_stmt)
                 cursor.copy_expert(copy_stmt, f)
 
         check_load_stmt = "SELECT COUNT(*) FROM {table_name}".format(table_name=self.table_schema_name)
         response = self.execute_sql(check_load_stmt, fetch='one')
 
-        print('Postgres Write Successful: {} rows imported.\n'.format(response[0]))
+        self.logger.info('Postgres Write Successful: {} rows imported.\n'.format(response[0]))
 
 
     def get_geom_field(self):
@@ -431,7 +439,7 @@ class Postgres():
         return self._row_count
 
     def verify_count(self):
-        print('Verifying row count...')
+        self.logger.info('Verifying row count...')
 
         data = self.execute_sql('SELECT count(*) FROM {};'.format(self.table_schema_name), fetch='many')
         num_rows_in_table = data[0][0]
@@ -443,7 +451,7 @@ class Postgres():
             num_rows_expected,
             num_rows_inserted
         )
-        print(message)
+        self.logger.info(message)
         if num_rows_in_table != num_rows_expected:
             self.logger.error('Did not insert all rows, reverting...')
             stmt = 'BEGIN;' + \
@@ -453,7 +461,7 @@ class Postgres():
             exit(1)
 
     def vacuum_analyze(self):
-        print('Vacuum analyzing table: {}'.format(self.table_schema_name))
+        self.logger.info('Vacuum analyzing table: {}'.format(self.table_schema_name))
 
         # An autocommit connection is needed for vacuuming for psycopg2
         # https://stackoverflow.com/questions/1017463/postgresql-how-to-run-vacuum-from-code-outside-transaction-block
@@ -462,17 +470,17 @@ class Postgres():
         self.execute_sql('VACUUM ANALYZE {};'.format(self.table_schema_name))
         self.conn.set_isolation_level(old_isolation_level)
         
-        print('Vacuum analyze complete.\n')
+        self.logger.info('Vacuum analyze complete.\n')
 
     def cleanup(self):
-        print('Attempting to drop temp files...')
+        self.logger.info('Attempting to drop temp files...')
         for f in [self.csv_path, self.temp_csv_path, self.json_schema_path]:
             if f is not None:
                 if os.path.isfile(f):
                     try:
                         os.remove(f)
                     except Exception as e:
-                        print(f'Failed removing file {f}.')
+                        self.logger.info(f'Failed removing file {f}.')
                         pass
 
 
@@ -482,7 +490,7 @@ class Postgres():
             self.conn.commit()
             self.verify_count()
             self.vacuum_analyze()
-            print('Done!')
+            self.logger.info('Done!')
         except Exception as e:
             self.logger.error('Workflow failed...')
             self.logger.error(f'Error: {str(e)}')
@@ -493,12 +501,12 @@ class Postgres():
 
 
     def load_csv_and_schema_to_s3(self):
-        print('Starting load to s3: {}'.format(self.s3_key))
+        self.logger.info('Starting load to s3: {}'.format(self.s3_key))
 
         s3 = boto3.resource('s3')
         s3.Object(self.s3_bucket, self.s3_key).put(Body=open(self.csv_path, 'rb'))
         
-        print('Successfully loaded to s3: {}'.format(self.s3_key))
+        self.logger.info('Successfully loaded to s3: {}'.format(self.s3_key))
 
         json_schema_path = self.csv_path.replace('.csv','') + '_postgres_schema.json'
         json_s3_key = self.s3_key.replace('.csv','') + '_postgres_schema.json'
@@ -517,7 +525,7 @@ class Postgres():
         postgres_table_count = data[0][0]
         # ignore differences less than 2 until I can figure out why views have a difference in row counts.
         if abs(csv_count - postgres_table_count) >= 2:
-            print(f'Asserting counts match up: {csv_count} == {postgres_table_count}')
+            self.logger.info(f'Asserting counts match up: {csv_count} == {postgres_table_count}')
             assert csv_count == postgres_table_count
 
     def check_remove_nulls(self):
@@ -537,7 +545,7 @@ class Postgres():
                         break
 
         if has_null_bytes:
-            print("Dataset has null bytes, removing...")
+            self.logger.info("Dataset has null bytes, removing...")
             temp_file = self.csv_path.replace('.csv', '_fmt.csv')
             with open(self.csv_path, 'r') as infile:
                 with open(temp_file, 'w') as outfile:
@@ -549,6 +557,9 @@ class Postgres():
 
 
     def extract(self):
+        self.logger.info('Starting extract from {}'.format(self.table_schema_name))
+        self.logger.info("Note: petl can cause log messages to seemingly come out of order.")
+
         # First make sure the table exists:
         exists_query = f'''SELECT to_regclass('{self.table_schema}.{self.table_name}');'''
         result = self.execute_sql(exists_query, fetch='one')[0]
@@ -567,18 +578,28 @@ class Postgres():
         if result is None:
             raise AssertionError(f'Table does not exist in this DB: {self.table_schema}.{self.table_name}!')
 
+        self.logger.info('Initializing data var with etl.frompostgis()..')
         if self.with_srid is True:
             rows = etl.frompostgis(self.conn, self.table_schema_name, geom_with_srid=True)
         else:
             rows = etl.frompostgis(self.conn, self.table_schema_name, geom_with_srid=False)
 
         # Dump to our CSV temp file
-        print('Extracting csv...')
+        self.logger.info('Extracting csv...')
         try:
             rows.progress(interval).tocsv(self.csv_path, 'utf-8')
         except UnicodeError:
-            print("Exception encountered trying to extract to CSV with utf-8 encoding, trying latin-1...")
+            self.logger.warning("Exception encountered trying to extract to CSV with utf-8 encoding, trying latin-1...")
             rows.progress(interval).tocsv(self.csv_path, 'latin-1')
+
+        num_rows_in_csv = rows.nrows()
+
+        if num_rows_in_csv == 0:
+            raise AssertionError('Error! Dataset is empty? Line count of CSV is 0.')
+
+        self.logger.info(f'Asserting counts match between db and extracted csv')
+        self.logger.info(f'{self.row_count} == {num_rows_in_csv}')
+        assert self.row_count == num_rows_in_csv
 
         self.check_remove_nulls()
         self.load_csv_and_schema_to_s3()
