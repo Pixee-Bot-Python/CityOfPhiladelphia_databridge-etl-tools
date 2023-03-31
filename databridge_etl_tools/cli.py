@@ -64,23 +64,22 @@ def carto_update(table_name, connection_string, s3_bucket, s3_key, select_users,
     carto.run_workflow()
 
 
-@main.command()
-@click.option('--table_name')
-@click.option('--table_schema')
-@click.option('--connection_string')
-@click.option('--s3_bucket')
-@click.option('--s3_key')
-@click.option('--json_schema_s3_key', default=None, required=False)
-def postgres_load(table_name, table_schema, connection_string, s3_bucket, s3_key, json_schema_s3_key=None):
-    """Loads a dataset from postgresql into a CSV file in S3"""
-    postgres = Postgres(
-        table_name=table_name,
-        table_schema=table_schema,
-        connection_string=connection_string,
-        s3_bucket=s3_bucket,
-        s3_key=s3_key,
-        json_schema_s3_key=json_schema_s3_key)
-    postgres.load()
+#@main.command()
+#@click.option('--table_name')
+#@click.option('--table_schema')
+#@click.option('--connection_string')
+#@click.option('--s3_bucket')
+#@click.option('--s3_key')
+#@click.option('--json_schema_s3_key', default=None, required=False)
+#def postgres_load(table_name, table_schema, connection_string, s3_bucket, s3_key, json_schema_s3_key=None):
+#    postgres = Postgres(
+#        table_name=table_name,
+#        table_schema=table_schema,
+#        connection_string=connection_string,
+#        s3_bucket=s3_bucket,
+#        s3_key=s3_key,
+#        json_schema_s3_key=json_schema_s3_key)
+#    postgres.load()
 
 
 @main.command()
@@ -264,7 +263,7 @@ def create_staging_from_enterprise(table_name, account_name, enterprise_schema, 
 @click.option('--enterprise_schema', required=True)
 @click.option('--libpq_conn_string', required=True)
 def copy_dept_to_enterprise(table_name, account_name, copy_from_source_schema, enterprise_schema, libpq_conn_string):
-    """Copy from the dept table to the staging table"""
+    """Copy from the dept table directly to an enterpise able in a single transaction that can roll back if it fails."""
     db2 = Db2(
         table_name=table_name,
         account_name=account_name,
@@ -312,7 +311,7 @@ def update_oracle_scn(table_name, account_name, oracle_conn_string):
 @click.option('--libpq_conn_string', required=True)
 @click.option('--opendata_bucket', required=True)
 def opendata_upload(table_name, table_schema, s3_bucket, s3_key, libpq_conn_string, opendata_bucket):
-    """Extracts a dataset in Oracle into a CSV file in S3"""
+    """Takes a CSV from S3, runs some transformations, and then uploads to the specified opendata bucket"""
     opendata = OpenData(
         table_name=table_name,
         table_schema=table_schema,
