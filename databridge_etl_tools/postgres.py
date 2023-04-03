@@ -564,6 +564,9 @@ class Postgres():
         exists_query = f'''SELECT to_regclass('{self.table_schema}.{self.table_name}');'''
         result = self.execute_sql(exists_query, fetch='one')[0]
 
+        if self.row_count == 0:
+            raise AssertionError('Error! Row count of dataset in database is 0??')
+
         # Try to get an (arbitrary) sensible interval to print progress on by dividing by the row count
         if self.row_count < 10000:
             interval = int(self.row_count/3)
