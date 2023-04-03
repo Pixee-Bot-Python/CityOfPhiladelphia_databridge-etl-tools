@@ -64,22 +64,23 @@ def carto_update(table_name, connection_string, s3_bucket, s3_key, select_users,
     carto.run_workflow()
 
 
-#@main.command()
-#@click.option('--table_name')
-#@click.option('--table_schema')
-#@click.option('--connection_string')
-#@click.option('--s3_bucket')
-#@click.option('--s3_key')
-#@click.option('--json_schema_s3_key', default=None, required=False)
-#def postgres_load(table_name, table_schema, connection_string, s3_bucket, s3_key, json_schema_s3_key=None):
-#    postgres = Postgres(
-#        table_name=table_name,
-#        table_schema=table_schema,
-#        connection_string=connection_string,
-#        s3_bucket=s3_bucket,
-#        s3_key=s3_key,
-#        json_schema_s3_key=json_schema_s3_key)
-#    postgres.load()
+@main.command()
+@click.option('--table_name')
+@click.option('--table_schema')
+@click.option('--connection_string')
+@click.option('--s3_bucket')
+@click.option('--s3_key')
+@click.option('--json_schema_s3_key', default=None, required=False)
+def postgres_load(table_name, table_schema, connection_string, s3_bucket, s3_key, json_schema_s3_key=None):
+    """Loads from S3 to a postgres table, usually etl_staging."""
+    postgres = Postgres(
+        table_name=table_name,
+        table_schema=table_schema,
+        connection_string=connection_string,
+        s3_bucket=s3_bucket,
+        s3_key=s3_key,
+        json_schema_s3_key=json_schema_s3_key)
+    postgres.load()
 
 
 @main.command()
