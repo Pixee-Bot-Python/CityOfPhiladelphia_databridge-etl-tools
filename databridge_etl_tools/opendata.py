@@ -257,6 +257,8 @@ class OpenData():
 
         self.compress_csv(final_csv_path)
         s3.Object(self.opendata_bucket, file_name + '.gz').upload_file(final_csv_path + '.gz')
+        # Also set as gzip for now, until I can have kistine change the filenames to the more proper ".gz"
+        s3.Object(self.opendata_bucket, file_name + '.gzip').upload_file(final_csv_path + '.gz')
         print(f"Uploaded {final_csv_path + '.gz'} to bucket {self.opendata_bucket} as {file_name + '.gz'}")
 
 
