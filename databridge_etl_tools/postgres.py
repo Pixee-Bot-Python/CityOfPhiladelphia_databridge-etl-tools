@@ -557,7 +557,8 @@ class Postgres():
 
 
     def extract(self):
-        self.logger.info('Starting extract from {}'.format(self.table_schema_name))
+        self.logger.info(f'Starting extract from {self.table_schema_name}')
+        self.logger.info(f'Rows to extract: {self.row_count}')
         self.logger.info("Note: petl can cause log messages to seemingly come out of order.")
 
         # First make sure the table exists:

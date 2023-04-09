@@ -172,7 +172,8 @@ class Oracle():
         without time information will also have timezone niformation added.
         Append CSV file to S3 bucket.
         '''
-        self.logger.info('Starting extract from {}'.format(self.schema_table_name))
+        self.logger.info(f'Starting extract from {self.schema_table_name}')
+        self.logger.info(f'Rows to extract: {self.row_count}')
         self.logger.info('Note: petl can cause log messages to seemingly come out of order.')
         import geopetl
 
