@@ -408,7 +408,7 @@ class AGO():
         # Clean our designated row of non-utf-8 characters or other undesirables that makes AGO mad.
         # If you pass multiple values separated by a comma, it will perform on multiple colmns
         if self.clean_columns and self.clean_columns != 'False':
-            print(f'Cleaning columns of invalid characters: {self.clean_columns}')
+            #print(f'Cleaning columns of invalid characters: {self.clean_columns}')
             for clean_column in self.clean_columns.split(','):
                 row[clean_column] = row[clean_column].encode("ascii", "ignore").decode()
                 row[clean_column] = row[clean_column].replace('\'','')
