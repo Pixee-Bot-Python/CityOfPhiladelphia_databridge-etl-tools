@@ -456,7 +456,6 @@ class AGO():
         # If the names don't match and we were to upload to AGO anyway, AGO will not actually do 
         # anything with our rows but won't tell us anything is wrong!
         self.logger.info(f'Comparing AGO fields: {set(self.item_fields.keys())} ')
-        self.logger.info()
         self.logger.info(f'To CSV fields: {set(rows.fieldnames())} ')
 
         # Apparently we need to compare both ways even though we're sorting them into sets
