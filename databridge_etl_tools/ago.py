@@ -1384,7 +1384,7 @@ class AGO():
                 self.logger.info('Got a retriable error, retrying in 10 minutes...')
                 sleep(600)
                 self.logger.info(f'Error was: {r.text}')
-                self.logger.info(f"Posting the index for '{key}'..")
+                self.logger.info(f"Posting the index for '{field}'..")
                 headers = {'Content-Type': 'application/x-www-form-urlencoded'}
                 r = requests.post(f'{url}?token={token}', data={'f': 'json', 'addToDefinition': jsonData}, headers=headers,
                                   timeout=3600)
@@ -1396,7 +1396,7 @@ class AGO():
                 self.logger.info('Got a timeout error, retrying in 10 minutes...')
                 sleep(600)
                 self.logger.info(f'Error was: {r.text}')
-                self.logger.info(f"Posting the index for '{key}'..")
+                self.logger.info(f"Posting the index for '{field}'..")
                 headers = {'Content-Type': 'application/x-www-form-urlencoded'}
                 r = requests.post(f'{url}?token={token}', data={'f': 'json', 'addToDefinition': jsonData}, headers=headers,
                                   timeout=3600)
