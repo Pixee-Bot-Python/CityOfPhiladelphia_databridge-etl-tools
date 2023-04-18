@@ -1382,7 +1382,7 @@ class AGO():
             # Seen this error before that prevents an index from being added. Sleep and try to add again.
             elif 'Operation failed. The index entry of length' in r.text:
                 self.logger.info('Got a retriable error, retrying in 10 minutes...')
-                sleep(600)
+                sleep(200)
                 self.logger.info(f'Error was: {r.text}')
                 self.logger.info(f"Posting the index for '{field}'..")
                 headers = {'Content-Type': 'application/x-www-form-urlencoded'}
@@ -1394,7 +1394,7 @@ class AGO():
             # Retry once on timeout.
             elif 'Your request has timed out' in r.text:
                 self.logger.info('Got a timeout error, retrying in 10 minutes...')
-                sleep(600)
+                sleep(200)
                 self.logger.info(f'Error was: {r.text}')
                 self.logger.info(f"Posting the index for '{field}'..")
                 headers = {'Content-Type': 'application/x-www-form-urlencoded'}
