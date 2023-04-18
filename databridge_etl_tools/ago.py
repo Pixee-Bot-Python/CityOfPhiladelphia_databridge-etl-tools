@@ -117,7 +117,7 @@ class AGO():
                 # "Feature Service" seems to pull up both spatial and table items in AGO
                 assert self.item_name.strip()
                 search_query = f'''owner:"{self.ago_user}" AND title:"{self.item_name}" AND type:"Feature Service"'''
-                print(f'Searching for item with query: {search_query}')
+                self.logger.info(f'Searching for item with query: {search_query}')
                 items = self.org.content.search(search_query, outside_org=False)
                 for item in items:
                     # For items with spaces in their titles, AGO will smartly change out spaces to underscores
@@ -252,7 +252,7 @@ class AGO():
         '''
         if self.geometric:
             raise NotImplementedError('Overwrite with CSVs only works for non-spatial datasets (maybe?)')
-        #print(vars(self.item))
+        #self.logger.info(vars(self.item))
         flayer_collection = FeatureLayerCollection.fromitem(self.item)
         # call the overwrite() method which can be accessed using the manager property
         flayer_collection.manager.overwrite(self.csv_path)
@@ -270,7 +270,7 @@ class AGO():
             self.layer_object.manager.truncate()
         except Exception as e:
             if 'Your request has timed out' in str(e) or '504' in str(e):
-                print('Request timed out. Checking count after sleep...')
+                self.logger.info('Request timed out. Checking count after sleep...')
                 sleep(60)
                 count = self.layer_object.query(return_count_only=True)
                 if count == 0:
@@ -309,7 +309,7 @@ class AGO():
             ts = int(time())
             file_timestamp = f'-{ts}-errors.txt'
             error_s3_key = self.s3_key.replace('.csv', file_timestamp)
-            print(f'Writing bad rows to file in s3 {error_s3_key}...')
+            self.logger.info(f'Writing bad rows to file in s3 {error_s3_key}...')
             error_filepath = '/home/worker/errors-temp.csv'
             with open(error_filepath, 'a') as csv_file:
                 for i in rows:
@@ -321,8 +321,8 @@ class AGO():
             s3 = boto3.resource('s3')
             s3.Object(self.s3_bucket, error_s3_key).put(Body=open(error_filepath, 'rb'))
         except Exception as e:
-            print('Failed to put errors in csv and upload to S3.')
-            print(f'Error: {str(e)}')
+            self.logger.info('Failed to put errors in csv and upload to S3.')
+            self.logger.info(f'Error: {str(e)}')
 
 
     @property
@@ -372,13 +372,13 @@ class AGO():
         elif 'MULTIPOLYGON' in wkt_shape:
             multipoly = shapely.wkt.loads(wkt_shape)
             if not multipoly.is_valid:
-                print('Warning, shapely found this WKT to be invalid! Might want to fix this!')
-                print(wkt_shape)
+                self.logger.info('Warning, shapely found this WKT to be invalid! Might want to fix this!')
+                self.logger.info(wkt_shape)
             list_of_rings = []
             for poly in multipoly.geoms:
                 if not poly.is_valid:
-                    print('Warning, shapely found this WKT to be invalid! Might want to fix this!')
-                    print(wkt_shape)
+                    self.logger.info('Warning, shapely found this WKT to be invalid! Might want to fix this!')
+                    self.logger.info(wkt_shape)
                 # reference for polygon projection: https://gis.stackexchange.com/a/328642
                 ring = format_ring(poly)
                 list_of_rings.append(ring)
@@ -386,8 +386,8 @@ class AGO():
         elif 'POLYGON' in wkt_shape:
             poly = shapely.wkt.loads(wkt_shape)
             if not poly.is_valid:
-                print('Warning, shapely found this WKT to be invalid! Might want to fix this!')
-                print(wkt_shape)
+                self.logger.info('Warning, shapely found this WKT to be invalid! Might want to fix this!')
+                self.logger.info(wkt_shape)
             ring = format_ring(poly)
             return ring
         elif 'LINESTRING' in wkt_shape:
@@ -408,7 +408,7 @@ class AGO():
         # Clean our designated row of non-utf-8 characters or other undesirables that makes AGO mad.
         # If you pass multiple values separated by a comma, it will perform on multiple colmns
         if self.clean_columns and self.clean_columns != 'False':
-            #print(f'Cleaning columns of invalid characters: {self.clean_columns}')
+            #self.logger.info(f'Cleaning columns of invalid characters: {self.clean_columns}')
             for clean_column in self.clean_columns.split(','):
                 row[clean_column] = row[clean_column].encode("ascii", "ignore").decode()
                 row[clean_column] = row[clean_column].replace('\'','')
@@ -455,9 +455,9 @@ class AGO():
         # Compare headers in the csv file vs the fields in the ago item.
         # If the names don't match and we were to upload to AGO anyway, AGO will not actually do 
         # anything with our rows but won't tell us anything is wrong!
-        print(f'Comparing AGO fields: {set(self.item_fields.keys())} ')
-        print()
-        print(f'To CSV fields: {set(rows.fieldnames())} ')
+        self.logger.info(f'Comparing AGO fields: {set(self.item_fields.keys())} ')
+        self.logger.info()
+        self.logger.info(f'To CSV fields: {set(rows.fieldnames())} ')
 
         # Apparently we need to compare both ways even though we're sorting them into sets
         # Otherwise we'll miss out on differences.
@@ -474,7 +474,7 @@ class AGO():
             elif 'esri_oid' in row_differences and len(row_differences) == 1:
                 pass
             else:
-                print(f'Row differences found!: {row_differences}')
+                self.logger.info(f'Row differences found!: {row_differences}')
                 assert tuple(self.item_fields.keys()) == rows.fieldnames()    
         self.logger.info('Fields are the same! Continuing.')
 
@@ -516,8 +516,8 @@ class AGO():
                     assert self.geometric == 'esriGeometryPolyline'
                     break
                 else:
-                    print('Did not recognize geometry in our WKT. Did we extract the dataset properly?')
-                    print(f'Geometry value is: {wkt}')
+                    self.logger.info('Did not recognize geometry in our WKT. Did we extract the dataset properly?')
+                    self.logger.info(f'Geometry value is: {wkt}')
                     raise AssertionError('Unexpected/unreadable geometry value')
 
 
@@ -539,13 +539,13 @@ class AGO():
                     self.logger.info(f'Adding batch of {len(adds)}, at row #: {row_count}...')
                     self.edit_features(rows=adds, row_count=row_count, method='adds')
                     adds = []
-                    print(f'Duration: {time() - start}\n')
+                    self.logger.info(f'Duration: {time() - start}\n')
             if adds:
                 start = time()
                 row_count = i+1
                 self.logger.info(f'Adding last batch of {len(adds)}, at row #: {row_count}...')
                 self.edit_features(rows=adds, row_count=row_count, method='adds')
-                print(f'Duration: {time() - start}\n')
+                self.logger.info(f'Duration: {time() - start}\n')
         elif self.geometric:
             for i, row in enumerate(row_dicts):
                 row_count = i + 1
@@ -569,7 +569,7 @@ class AGO():
                     raise AssertionError("SRID not found in shape row! Please export your dataset with 'geom_with_srid=True'.")
 
                 if (not self.in_srid) and 'SRID=' in wkt:
-                    print('Getting SRID from csv...')
+                    self.logger.info('Getting SRID from csv...')
                     self.in_srid = wkt.split(';')[0].strip("SRID=")
     
                 # Get just the WKT from the shape, remove SRID after we extract it
@@ -626,8 +626,8 @@ class AGO():
                                      "spatial_reference": {"wkid": self.ago_srid[1]}
                                      }
                     else:
-                        print('Did not recognize geometry in our WKT. Did we extract the dataset properly?')
-                        print(f'Geometry value is: {wkt}')
+                        self.logger.info('Did not recognize geometry in our WKT. Did we extract the dataset properly?')
+                        self.logger.info(f'Geometry value is: {wkt}')
                         raise AssertionError('Unexpected/unreadable geometry value')
 
                 # Create our formatted row after geometric stuff
@@ -636,8 +636,8 @@ class AGO():
                                      "geometry": geom_dict
                                      }
                 except UnboundLocalError as e:
-                    # If somehow geom_dict is unbound, print the wkt to help figure out why
-                    print(f'DEBUG! {wkt}')
+                    # If somehow geom_dict is unbound, self.logger.info the wkt to help figure out why
+                    self.logger.info(f'DEBUG! {wkt}')
                     raise e
 
                 adds.append(formatted_row)
@@ -661,7 +661,7 @@ class AGO():
                     #t2.join()
 
                     adds = []
-                    print(f'Duration: {time() - start}\n')
+                    self.logger.info(f'Duration: {time() - start}\n')
             # add leftover rows outside the loop if they don't add up to 4000
             if adds:
                 start = time()
@@ -669,7 +669,7 @@ class AGO():
                 #self.logger.info(f'Example row: {adds[0]}')
                 #self.logger.info(f'batch: {adds}')
                 self.edit_features(rows=adds, row_count=row_count, method='adds')
-                print(f'Duration: {time() - start}')
+                self.logger.info(f'Duration: {time() - start}')
 
         ago_count = self.layer_object.query(return_count_only=True)
         self.logger.info(f'count after batch adds: {str(ago_count)}')
@@ -693,25 +693,25 @@ class AGO():
             ESRi lacks documentation here for us to really know what to expect..
             '''
             if result is None:
-                print('Returned result object is None? In cases like this the append seems to fail completely, possibly from bad encoding. Retrying.')
+                self.logger.info('Returned result object is None? In cases like this the append seems to fail completely, possibly from bad encoding. Retrying.')
                 try:
-                    print(f'Example row from this batch: {rows[0]}')
+                    self.logger.info(f'Example row from this batch: {rows[0]}')
                 except IndexError as e:
-                    print(f'Rows not of expected format??? type: {type(rows)}, printed: {rows}')
+                    self.logger.info(f'Rows not of expected format??? type: {type(rows)}, self.logger.infoed: {rows}')
                     raise e
-                print(f'Returned object: {pprint(result)}')
+                self.logger.info(f'Returned object: {pprint(result)}')
                 return True
             elif result["addResults"] is None:
-                print('Returned result not what we expected, assuming success.')
-                print(f'Returned object: {pprint(result)}')
+                self.logger.info('Returned result not what we expected, assuming success.')
+                self.logger.info(f'Returned object: {pprint(result)}')
                 return False
             elif result["addResults"] is not None:
                 for element in result["addResults"]:
                     if "error" in element and element["error"]["code"] == 1003:
-                        print('Error code 1003 received, we are rolled back...')
+                        self.logger.info('Error code 1003 received, we are rolled back...')
                         return True
                     elif "error" in element and element["error"]["code"] != 1000:
-                        print('Got a a character overflow error. Saving errors.') 
+                        self.logger.info('Got a a character overflow error. Saving errors.') 
                         self.write_errors_to_s3(rows)
                     elif "error" in element and element["error"]["code"] != 1003:
                         raise Exception(f'Got this error returned from AGO (unhandled error): {element["error"]}')
@@ -732,7 +732,7 @@ class AGO():
             if result is not None:
                 if is_rolled_back(result):
                     #raise Exception("Retry on rollback didn't work.")
-                    print("Retry on rollback didn't work. Writing errors to file and continuing...")
+                    self.logger.info("Retry on rollback didn't work. Writing errors to file and continuing...")
                     self.write_errors_to_s3(rows)
                     success = True
                     continue
@@ -751,9 +751,9 @@ class AGO():
                     # If we're upserting, we obviously can't check counts
                     # Instead we'll just have to assume success (which it usually appears to be?)
                     if self.upserting:
-                        print(f'Got a request timed out back, assuming it worked... Error: {str(e)}')
+                        self.logger.info(f'Got a request timed out back, assuming it worked... Error: {str(e)}')
                     if not self.upserting:
-                        print(f'Got a request timed out, checking counts. Error: {str(e)}')
+                        self.logger.info(f'Got a request timed out, checking counts. Error: {str(e)}')
                         # slow down requests if we're getting timeouts
                         sleep(300)
                         ago_count = None
@@ -774,46 +774,46 @@ class AGO():
                         if ago_count == None:
                             raise AssertionError('AGO count out of sync with our progress! Retry when AGO is less busy.')
 
-                        print(f'ago_count: {ago_count} == row_count: {row_count}')
+                        self.logger.info(f'ago_count: {ago_count} == row_count: {row_count}')
                         if ago_count == row_count:
-                            print(f'Request was actually successful, ago_count matches our current row count.')
+                            self.logger.info(f'Request was actually successful, ago_count matches our current row count.')
                             success = True
                         elif ago_count > row_count:
                             raise AssertionError('Error, ago_count is greater than our row_count! Some appends doubled up?')
                         elif ago_count < row_count:
-                            print(f'Request not successful, retrying.')
+                            self.logger.info(f'Request not successful, retrying.')
                         continue
                 elif 'Unable to perform query' in str(e):
-                    print(f'"Unable to perform query" error received, retrying.')
+                    self.logger.info(f'"Unable to perform query" error received, retrying.')
                     tries += 1
                     sleep(20)
                     continue
                 # Gateway error recieved, sleep for a bit longer.
                 elif '502' in str(e):
-                    print(f'502 Gateway error received, retrying. Error: {str(e)}')
+                    self.logger.info(f'502 Gateway error received, retrying. Error: {str(e)}')
                     tries += 1
                     sleep(20)
                     continue
                 elif '503' in str(e):
-                    print(f'503 Service Unavailable received, retrying. Error: {str(e)}')
+                    self.logger.info(f'503 Service Unavailable received, retrying. Error: {str(e)}')
                     tries += 1
                     sleep(20)
                     continue
                 elif '504' in str(e):
-                    print(f'504 Gateway Timeout received, retrying. Error: {str(e)}')
+                    self.logger.info(f'504 Gateway Timeout received, retrying. Error: {str(e)}')
                     tries += 1
                     sleep(60)
                     continue
                 else:
-                    print(f'Unexpected Exception from AGO on this batch! Writing these rows to error file and continuing to next batch...')
-                    print('If this is a fail on a specific row, consider passing it into the --clean_columns arg.')
-                    print(f'Exception error: {str(e)}')
+                    self.logger.info(f'Unexpected Exception from AGO on this batch! Writing these rows to error file and continuing to next batch...')
+                    self.logger.info('If this is a fail on a specific row, consider passing it into the --clean_columns arg.')
+                    self.logger.info(f'Exception error: {str(e)}')
                     self.write_errors_to_s3(rows)
                     success = True
                     continue
 
             if is_rolled_back(result):
-                print("Results rolled back, retrying our batch adds in 60 seconds....")
+                self.logger.info("Results rolled back, retrying our batch adds in 60 seconds....")
                 sleep(60)
                 try:
                     if method == "adds":
@@ -828,9 +828,9 @@ class AGO():
                         # If we're upserting, we obviously can't check counts
                         # Instead we'll just have to assume success (which it usually appears to be?)
                         if self.upserting:
-                            print(f'Got a request timed out back, assuming it worked... Error: {str(e)}')
+                            self.logger.info(f'Got a request timed out back, assuming it worked... Error: {str(e)}')
                         if not self.upserting:
-                            print(f'Got a request timed out, checking counts. Error: {str(e)}')
+                            self.logger.info(f'Got a request timed out, checking counts. Error: {str(e)}')
                             # slow down requests if we're getting timeouts
                             sleep(300)
                             ago_count = None
@@ -851,40 +851,40 @@ class AGO():
                             if ago_count == None:
                                 raise AssertionError('AGO count out of sync with our progress! Retry when AGO is less busy.')
 
-                            print(f'ago_count: {ago_count} == row_count: {row_count}')
+                            self.logger.info(f'ago_count: {ago_count} == row_count: {row_count}')
                             if ago_count == row_count:
-                                print(f'Request was actually successful, ago_count matches our current row count.')
+                                self.logger.info(f'Request was actually successful, ago_count matches our current row count.')
                                 success = True
                             elif ago_count > row_count:
                                 raise AssertionError('Error, ago_count is greater than our row_count! Some appends doubled up?')
                             elif ago_count < row_count:
-                                print(f'Request not successful, retrying.')
+                                self.logger.info(f'Request not successful, retrying.')
                             continue
                     elif 'Unable to perform query' in str(e):
-                        print('"Unable to perform query" error received, retrying.')
+                        self.logger.info('"Unable to perform query" error received, retrying.')
                         tries += 1
                         sleep(20)
                         continue
                     # Gateway error recieved, sleep for a bit longer.
                     elif '502' in str(e):
-                        print(f'502 Gateway error received, retrying. Error: {str(e)}')
+                        self.logger.info(f'502 Gateway error received, retrying. Error: {str(e)}')
                         tries += 1
                         sleep(20)
                         continue
                     elif '503' in str(e):
-                        print(f'503 Service Unavailable received, retrying. Error: {str(e)}')
+                        self.logger.info(f'503 Service Unavailable received, retrying. Error: {str(e)}')
                         tries += 1
                         sleep(20)
                         continue
                     elif '504' in str(e):
-                        print(f'504 Gateway Timeout received, retrying. Error: {str(e)}')
+                        self.logger.info(f'504 Gateway Timeout received, retrying. Error: {str(e)}')
                         tries += 1
                         sleep(60)
                         continue
                     else:
-                        print(f'Unexpected Exception from AGO on this batch! Writing these rows to error file and continuing to next batch...')
-                        print('If this is a fail on a specific row, consider passing it into the --clean_columns arg.')
-                        print(f'Exception error: {str(e)}')
+                        self.logger.info(f'Unexpected Exception from AGO on this batch! Writing these rows to error file and continuing to next batch...')
+                        self.logger.info('If this is a fail on a specific row, consider passing it into the --clean_columns arg.')
+                        self.logger.info(f'Exception error: {str(e)}')
                         self.write_errors_to_s3(rows)
                         success = True
                         continue
@@ -896,7 +896,7 @@ class AGO():
 
     def verify_count(self):
         ago_count = self.layer_object.query(return_count_only=True)
-        print(f'Asserting csv equals ago count: {self._num_rows_in_upload_file} == {ago_count}')
+        self.logger.info(f'Asserting csv equals ago count: {self._num_rows_in_upload_file} == {ago_count}')
         assert self._num_rows_in_upload_file == ago_count
 
 
@@ -998,7 +998,7 @@ class AGO():
             elif 'esri_oid' in row_differences and len(row_differences) == 1:
                 pass
             else:
-                print(f'Row differences found!: {row_differences}')
+                self.logger.info(f'Row differences found!: {row_differences}')
                 assert tuple(self.item_fields.keys()) == rows.fieldnames()
         self.logger.info('Fields are the same! Continuing.')
 
@@ -1024,7 +1024,7 @@ class AGO():
                 # Should be length 0 or 1
                 # If we got two or more, we're doubled up and we can delete one.
                 if len(ago_row.sdf) == 2:
-                    print(f'Got two results for one primary key "{row_primary_key}". Deleting second one.')
+                    self.logger.info(f'Got two results for one primary key "{row_primary_key}". Deleting second one.')
                     # Delete the 2nd one.
                     del_objectid = ago_row.sdf.iloc[1]['OBJECTID']
                     # Docs say you can simply pass only the ojbectid as a string and it should work.
@@ -1037,11 +1037,11 @@ class AGO():
                 if not ago_row.sdf.empty:
                     ago_objectid = ago_row.sdf.iloc[0]['OBJECTID']
                 else:
-                    #print(f'DEBUG! ago_row is empty?: {ago_row}')
-                    print(ago_row.sdf)
+                    #self.logger.info(f'DEBUG! ago_row is empty?: {ago_row}')
+                    self.logger.info(ago_row.sdf)
                     ago_objectid = False
 
-                #print(f'DEBUG! ago_objectid: {ago_objectid}')
+                #self.logger.info(f'DEBUG! ago_objectid: {ago_objectid}')
     
                 # Reassign the objectid or assign it to match the row in AGO. This will
                 # make it work with AGO's 'updates' endpoint and work like an upsert.
@@ -1060,23 +1060,23 @@ class AGO():
                     self.logger.info(f'(non geometric) Adding batch of appends, {len(adds)}, at row #: {row_count}...')
                     self.edit_features(rows=adds, row_count=row_count, method='adds')
                     adds = []
-                    print(f'Duration: {time() - start}\n')
+                    self.logger.info(f'Duration: {time() - start}\n')
                 if (len(updates) != 0) and (len(adds) % self.batch_size == 0):
                     start = time()
                     self.logger.info(f'(non geometric) Adding batch of updates {len(updates)}, at row #: {row_count}...')
                     self.edit_features(rows=updates, row_count=row_count, method='updates')
                     updates = []
-                    print(f'Duration: {time() - start}\n')
+                    self.logger.info(f'Duration: {time() - start}\n')
             if adds:
                 start = time()
                 self.logger.info(f'(non geometric) Adding last batch of appends, {len(adds)}, at row #: {row_count}...')
                 self.edit_features(rows=adds, row_count=row_count, method='adds')
-                print(f'Duration: {time() - start}\n')
+                self.logger.info(f'Duration: {time() - start}\n')
             if updates:
                 start = time()
                 self.logger.info(f'(non geometric) Adding last batch of updates, {len(updates)}, at row #: {row_count}...')
                 self.edit_features(rows=updates, row_count=row_count, method='updates')
-                print(f'Duration: {time() - start}\n')
+                self.logger.info(f'Duration: {time() - start}\n')
 
         elif self.geometric:
             for i, row in enumerate(row_dicts):
@@ -1095,7 +1095,7 @@ class AGO():
                 # Should be length 0 or 1
                 # If we got two or more, we're doubled up and we can delete one.
                 if len(ago_row.sdf) == 2:
-                    print(f'Got two results for one primary key "{row_primary_key}". Deleting second one.')
+                    self.logger.info(f'Got two results for one primary key "{row_primary_key}". Deleting second one.')
                     # Delete the 2nd one.
                     del_objectid = ago_row.sdf.iloc[1]['OBJECTID']
                     # Docs say you can simply pass only the ojbectid as a string and it should work.
@@ -1110,7 +1110,7 @@ class AGO():
                 else:
                     ago_objectid = False
 
-                #print(f'DEBUG! ago_objectid: {ago_objectid}')
+                #self.logger.info(f'DEBUG! ago_objectid: {ago_objectid}')
     
                 # Reassign the objectid or assign it to match the row in AGO. This will
                 # make it work with AGO's 'updates' endpoint and work like an upsert.
@@ -1129,7 +1129,7 @@ class AGO():
                     raise AssertionError("SRID not found in shape row! Please export your dataset with 'geom_with_srid=True'.")
 
                 if (not self.in_srid) and 'SRID=' in wkt:
-                    print('Getting SRID from csv...')
+                    self.logger.info('Getting SRID from csv...')
                     self.in_srid = wkt.split(';')[0].strip("SRID=")
 
                 # Get just the WKT from the shape, remove SRID after we extract it
@@ -1184,8 +1184,8 @@ class AGO():
                                      "spatial_reference": {"wkid": self.ago_srid[1]}
                                      }
                     else:
-                        print('Did not recognize geometry in our WKT. Did we extract the dataset properly?')
-                        print(f'Geometry value is: {wkt}')
+                        self.logger.info('Did not recognize geometry in our WKT. Did we extract the dataset properly?')
+                        self.logger.info(f'Geometry value is: {wkt}')
                         raise AssertionError('Unexpected/unreadable geometry value')
 
                 # Once we're done our shape stuff, put our row into it's final format
@@ -1223,7 +1223,7 @@ class AGO():
                     #t2.join()
 
                     adds = []
-                    print(f'Duration: {time() - start}\n')
+                    self.logger.info(f'Duration: {time() - start}\n')
 
                 if (len(updates) != 0) and (len(updates) % self.batch_size == 0):
                     self.logger.info(f'Adding batch of updates, {len(updates)}, at row #: {row_count}...')
@@ -1244,18 +1244,18 @@ class AGO():
                     #t2.join()
 
                     updates = []
-                    print(f'Duration: {time() - start}\n')
+                    self.logger.info(f'Duration: {time() - start}\n')
             # add leftover rows outside the loop if they don't add up to 4000
             if adds:
                 start = time()
                 self.logger.info(f'Adding last batch of appends, {len(adds)}, at row #: {row_count}...')
                 self.edit_features(rows=adds, row_count=row_count, method='adds')
-                print(f'Duration: {time() - start}')
+                self.logger.info(f'Duration: {time() - start}')
             if updates:
                 start = time()
                 self.logger.info(f'Adding last batch of updates, {len(updates)}, at row #: {row_count}...')
                 self.edit_features(rows=updates, row_count=row_count, method='updates')
-                print(f'Duration: {time() - start}')
+                self.logger.info(f'Duration: {time() - start}')
 
         ago_count = self.layer_object.query(return_count_only=True)
         self.logger.info(f'count after batch adds: {str(ago_count)}')
@@ -1278,30 +1278,30 @@ class AGO():
                 return output
             except Exception as e:
                 if 'request has timed out' in str(e):
-                    print(f'Request timed out, retrying. Error: {str(e)}')
+                    self.logger.info(f'Request timed out, retrying. Error: {str(e)}')
                     tries += 1
                     sleep(5)
                     continue
                 # Ambiguous mysterious error returned to us sometimes1
                 if 'Unable to perform query' in str(e):
-                    print('"Unable to perform query" error received, retrying.')
-                    print(f'wherequery used is: "{wherequery}"')
+                    self.logger.info('"Unable to perform query" error received, retrying.')
+                    self.logger.info(f'wherequery used is: "{wherequery}"')
                     tries += 1
                     sleep(20)
                     continue
                 # Gateway error recieved, sleep for a bit longer.
                 if '502' in str(e):
-                    print(f'502 Gateway error received, retrying. Error: {str(e)}')
+                    self.logger.info(f'502 Gateway error received, retrying. Error: {str(e)}')
                     tries += 1
                     sleep(20)
                     continue
                 if '503' in str(e):
-                    print(f'503 Gateway error received, retrying. Error: {str(e)}')
+                    self.logger.info(f'503 Gateway error received, retrying. Error: {str(e)}')
                     tries += 1
                     sleep(20)
                     continue
                 if '504' in str(e):
-                    print(f'503 Gateway Timeout received, retrying. Error: {str(e)}')
+                    self.logger.info(f'503 Gateway Timeout received, retrying. Error: {str(e)}')
                     tries += 1
                     sleep(20)
                     continue
@@ -1369,42 +1369,42 @@ class AGO():
             url = f'https://services.arcgis.com/{self.ago_org_id}/arcgis/rest/admin/services/{self.item_name}/FeatureServer/0/addToDefinition'
 
             headers = { 'Content-Type': 'application/x-www-form-urlencoded' }
-            print(f'\nPosting index for {field}...')
-            print(jsonData)
+            self.logger.info(f'\nPosting index for {field}...')
+            self.logger.info(jsonData)
             r = requests.post(f'{url}?token={ago_token}', data = {'f': 'json', 'addToDefinition': jsonData }, headers=headers, timeout=360)
 
 
             if 'Invalid definition' in r.text:
-                print('''
+                self.logger.info('''
                 Index appears to already be set, got "Invalid Definition" error (this is usually a good thing, but still
                 possible your index was actually rejected. ESRI just doesnt code in proper errors).
                 ''')
             # Seen this error before that prevents an index from being added. Sleep and try to add again.
             elif 'Operation failed. The index entry of length' in r.text:
-                print('Got a retriable error, retrying in 10 minutes...')
+                self.logger.info('Got a retriable error, retrying in 10 minutes...')
                 sleep(600)
-                print(f'Error was: {r.text}')
-                print(f"Posting the index for '{key}'..")
+                self.logger.info(f'Error was: {r.text}')
+                self.logger.info(f"Posting the index for '{key}'..")
                 headers = {'Content-Type': 'application/x-www-form-urlencoded'}
                 r = requests.post(f'{url}?token={token}', data={'f': 'json', 'addToDefinition': jsonData}, headers=headers,
                                   timeout=3600)
                 if 'success' not in r.text:
-                    print('Retry on this index failed. Returned AGO error:')
-                    print(r.text)
+                    self.logger.info('Retry on this index failed. Returned AGO error:')
+                    self.logger.info(r.text)
             # Retry once on timeout.
             elif 'Your request has timed out' in r.text:
-                print('Got a timeout error, retrying in 10 minutes...')
+                self.logger.info('Got a timeout error, retrying in 10 minutes...')
                 sleep(600)
-                print(f'Error was: {r.text}')
-                print(f"Posting the index for '{key}'..")
+                self.logger.info(f'Error was: {r.text}')
+                self.logger.info(f"Posting the index for '{key}'..")
                 headers = {'Content-Type': 'application/x-www-form-urlencoded'}
                 r = requests.post(f'{url}?token={token}', data={'f': 'json', 'addToDefinition': jsonData}, headers=headers,
                                   timeout=3600)
                 if 'success' not in r.text:
-                    print('Retry on this index failed. Returned AGO error:')
-                    print(r.text)
+                    self.logger.info('Retry on this index failed. Returned AGO error:')
+                    self.logger.info(r.text)
             else:
-                print(r.text)
+                self.logger.info(r.text)
 
 
         ################################
@@ -1425,11 +1425,11 @@ class AGO():
         ##############################################
         # now double check to make sure all indexes were made.
 
-        print('Checking for missing indexes..')
-        print('Sleep for 5 minutes first in hopes that index creation finishes by then..')
+        self.logger.info('Checking for missing indexes..')
+        self.logger.info('Sleep for 5 minutes first in hopes that index creation finishes by then..')
         sleep(300)
         check_url = f'https://services.arcgis.com/{self.ago_org_id}/ArcGIS/rest/services/{self.item_name}/FeatureServer/0?f=pjson'
-        print(f'Item defintion json URL: {check_url}')
+        self.logger.info(f'Item defintion json URL: {check_url}')
         headers = {'Content-Type': 'application/x-www-form-urlencoded'}
         r = requests.get(f'{check_url}&token={ago_token}', headers=headers, timeout=3600)
         data = r.json()
@@ -1451,11 +1451,11 @@ class AGO():
         missing_indexes = set(index_names) - set(ago_indexes_list)
 
         if missing_indexes:
-            print('It appears that not all indexes were added, although often AGO just doesnt accurately list installed indexes in the feature server definition. We will retry adding them anyway.')
+            self.logger.info('It appears that not all indexes were added, although often AGO just doesnt accurately list installed indexes in the feature server definition. We will retry adding them anyway.')
             for index_name in missing_indexes:
                 post_index(missing_index, 'false')
         else:
-            print('No missing indexes found.')
+            self.logger.info('No missing indexes found.')
 
 
 @click.group()
