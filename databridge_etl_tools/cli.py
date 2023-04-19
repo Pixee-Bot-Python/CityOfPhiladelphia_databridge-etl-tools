@@ -107,6 +107,21 @@ def postgres_extract(table_name, table_schema, connection_string, s3_bucket, s3_
         with_srid=with_srid)
     postgres.extract()
 
+@main.command()
+@click.option('--table_name')
+@click.option('--table_schema')
+@click.option('--connection_string')
+@click.option('--s3_bucket')
+@click.option('--s3_key')
+def postgres_extract_json_schema(table_name, table_schema, connection_string, s3_bucket, s3_key):
+    """Extracts a dataset's schema in Oracle into a JSON file in S3"""
+    postgres = Postgres(
+        table_name=table_name,
+        table_schema=table_schema,
+        connection_string=connection_string,
+        s3_bucket=s3_bucket,
+        s3_key=s3_key)
+    postgres.load_json_schema_to_s3()
 
 
 # AGO truncate and append

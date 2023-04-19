@@ -500,21 +500,27 @@ class Postgres():
             self.cleanup()
 
 
-    def load_csv_and_schema_to_s3(self):
+    def load_json_schema_to_s3(self):
+        json_schema_path = self.csv_path.replace('.csv','') + '.json'
+        json_s3_key = self.s3_key.replace('staging', 'schemas').replace('.csv', '.json')
+
+        self.logger.info('Starting load to s3: {}'.format(json_s3_key))
+
+        with open(json_schema_path, 'w') as f:
+            f.write(self.export_json_schema)
+
+        s3 = boto3.resource('s3')
+        s3.Object(self.s3_bucket, json_s3_key).put(Body=open(json_schema_path, 'rb'))
+        self.logger.info('Successfully loaded to s3: {}'.format(json_s3_key))
+
+
+    def load_csv_to_s3(self):
         self.logger.info('Starting load to s3: {}'.format(self.s3_key))
 
         s3 = boto3.resource('s3')
         s3.Object(self.s3_bucket, self.s3_key).put(Body=open(self.csv_path, 'rb'))
         
         self.logger.info('Successfully loaded to s3: {}'.format(self.s3_key))
-
-        json_schema_path = self.csv_path.replace('.csv','') + '_postgres_schema.json'
-        json_s3_key = self.s3_key.replace('.csv','') + '_postgres_schema.json'
-        with open(json_schema_path, 'w') as f:
-            f.write(self.export_json_schema)
-
-        s3.Object(self.s3_bucket, json_s3_key).put(Body=open(json_schema_path, 'rb'))
-        self.logger.info('Successfully loaded to s3: {}'.format(json_s3_key))
 
 
     def extract_verify_row_count(self):
@@ -606,5 +612,5 @@ class Postgres():
         assert self.row_count == num_rows_in_csv
 
         self.check_remove_nulls()
-        self.load_csv_and_schema_to_s3()
+        self.load_csv_to_s3()
 
