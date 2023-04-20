@@ -65,8 +65,12 @@ class AGO():
         self.export_zipped = kwargs.get('export_zipped', False)
         self.batch_size = kwargs.get('batch_size', 500)
         self.export_dir_path = kwargs.get('export_dir_path', os.getcwd() + '\\' + self.item_name.replace(' ', '_'))
-        # unimportant since this will be run in AWS batch
-        self.csv_path = '/home/worker/temp.csv'
+        # Try to use /tmp dir, it should exist. Else, use our current user's home dir
+        if not os.path.isdir('/tmp'):
+            homedir = os.path.expanduser('~')
+            self.csv_path = os.path.join(homedir, f'{self.item_name}.csv')
+        else:
+            self.csv_path = f'/tmp/{self.item_name}.csv'
         # Global variable to inform other processes that we're upserting
         self.upserting = None
         if self.clean_columns == 'False':
@@ -307,10 +311,14 @@ class AGO():
     def write_errors_to_s3(self, rows):
         try:
             ts = int(time())
-            file_timestamp = f'-{ts}-errors.txt'
-            error_s3_key = self.s3_key.replace('.csv', file_timestamp)
+            file_timestamp_name = f'-{ts}-errors.txt'
+            error_s3_key = self.s3_key.replace('.csv', file_timestamp_name)
             self.logger.info(f'Writing bad rows to file in s3 {error_s3_key}...')
-            error_filepath = '/home/worker/errors-temp.csv'
+            if not os.path.isdir('/tmp'):
+                homedir = os.path.expanduser('~')
+                error_filepath = os.path.join(homedir, file_timestamp_name)
+            else:
+                error_filepath = f'/tmp/{file_timestamp_name}'
             with open(error_filepath, 'a') as csv_file:
                 for i in rows:
                     csv_file.write(str(i))
@@ -323,6 +331,7 @@ class AGO():
         except Exception as e:
             self.logger.info('Failed to put errors in csv and upload to S3.')
             self.logger.info(f'Error: {str(e)}')
+        os.remove(error_filepath)
 
 
     @property
@@ -450,7 +459,7 @@ class AGO():
         try:
             rows = etl.fromcsv(self.csv_path, encoding='utf-8')
         except UnicodeError:
-            logger.info("Exception encountered trying to import rows wtih utf-8 encoding, trying latin-1...")
+            self.logger.info("Exception encountered trying to import rows wtih utf-8 encoding, trying latin-1...")
             rows = etl.fromcsv(self.csv_path, encoding='latin-1')
         # Compare headers in the csv file vs the fields in the ago item.
         # If the names don't match and we were to upload to AGO anyway, AGO will not actually do 
@@ -983,7 +992,7 @@ class AGO():
         try:
             rows = etl.fromcsv(self.csv_path, encoding='utf-8')
         except UnicodeError:
-            logger.info("Exception encountered trying to import rows wtih utf-8 encoding, trying latin-1...")
+            self.logger.info("Exception encountered trying to import rows wtih utf-8 encoding, trying latin-1...")
             rows = etl.fromcsv(self.csv_path, encoding='latin-1')
         # Compare headers in the csv file vs the fields in the ago item.
         # If the names don't match and we were to upload to AGO anyway, AGO will not actually do
@@ -1385,7 +1394,7 @@ class AGO():
                 self.logger.info(f'Error was: {r.text}')
                 self.logger.info(f"Posting the index for '{field}'..")
                 headers = {'Content-Type': 'application/x-www-form-urlencoded'}
-                r = requests.post(f'{url}?token={token}', data={'f': 'json', 'addToDefinition': jsonData}, headers=headers,
+                r = requests.post(f'{url}?token={ago_token}', data={'f': 'json', 'addToDefinition': jsonData}, headers=headers,
                                   timeout=3600)
                 if 'success' not in r.text:
                     self.logger.info('Retry on this index failed. Returned AGO error:')
@@ -1397,7 +1406,7 @@ class AGO():
                 self.logger.info(f'Error was: {r.text}')
                 self.logger.info(f"Posting the index for '{field}'..")
                 headers = {'Content-Type': 'application/x-www-form-urlencoded'}
-                r = requests.post(f'{url}?token={token}', data={'f': 'json', 'addToDefinition': jsonData}, headers=headers,
+                r = requests.post(f'{url}?token={ago_token}', data={'f': 'json', 'addToDefinition': jsonData}, headers=headers,
                                   timeout=3600)
                 if 'success' not in r.text:
                     self.logger.info('Retry on this index failed. Returned AGO error:')
@@ -1451,7 +1460,7 @@ class AGO():
 
         if missing_indexes:
             self.logger.info('It appears that not all indexes were added, although often AGO just doesnt accurately list installed indexes in the feature server definition. We will retry adding them anyway.')
-            for index_name in missing_indexes:
+            for missing_index in missing_indexes:
                 post_index(missing_index, 'false')
         else:
             self.logger.info('No missing indexes found.')
