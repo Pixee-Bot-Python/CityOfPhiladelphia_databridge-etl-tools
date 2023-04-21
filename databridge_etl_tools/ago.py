@@ -301,7 +301,9 @@ class AGO():
             s3.Object(self.s3_bucket, self.s3_key).download_file(self.csv_path)
         except botocore.exceptions.ClientError as e:
             if e.response['Error']['Code'] == "404":
-                raise AssertionError(f'CSV file doesnt appear to exist in S3! key: {self.s3_key}')
+                raise AssertionError(f'CSV file doesnt appear to exist in S3 bucket! key: {self.s3_key}')
+            if 'HeadObject operation: Not Found' in str(e):
+                raise AssertionError(f'CSV file doesnt appear to exist in S3 bucket! key: {self.s3_key}')
             else:
                 raise e
 
@@ -399,6 +401,17 @@ class AGO():
                 self.logger.info(wkt_shape)
             ring = format_ring(poly)
             return ring
+        elif 'MULTILINESTRING' in wkt_shape:
+            #raise NotImplementedError('MULTILINESTRING not implemented yet!')
+            multipaths = shapely.wkt.loads(wkt_shape)
+            list_of_paths = []
+            for path in multipaths.geoms:
+                if not path.is_valid:
+                    self.logger.info('Warning, shapely found this WKT to be invalid! Might want to fix this!')
+                    self.logger.info(wkt_shape)
+                path = format_path(path)
+                list_of_paths.append(path)
+            return list_of_paths
         elif 'LINESTRING' in wkt_shape:
             path = shapely.wkt.loads(wkt_shape)
             path = format_path(path)
@@ -628,6 +641,14 @@ class AGO():
                         geom_dict = {"rings": [ring],
                                      "spatial_reference": {"wkid": self.ago_srid[1]}
                                      }
+                    elif 'MULTILINESTRING' in wkt:
+                        paths = self.project_and_format_shape(wkt)
+                        # Don't know why yet but some bug is sending us multilines with an extra enclosing list
+                        if len(paths) == 1:
+                            paths = paths[0]
+                        geom_dict = {"paths": paths,
+                                    "spatial_reference": {"wkid": self.ago_srid[0], "latestWkid": self.ago_srid[1]}
+                                    } 
                     elif 'LINESTRING' in wkt:
                         paths = self.project_and_format_shape(wkt)
                         geom_dict = {"paths": [paths],
@@ -961,6 +982,14 @@ class AGO():
             #row_to_append = {"attributes": row,
             #                 "geometry": geom_dict
             #                 }
+        elif 'MULTILINESTRING' in wkt:
+            paths = self.project_and_format_shape(wkt)
+            # Don't know why yet but some bug is sending us multilines with an extra enclosing list
+            if len(paths) == 1:
+                paths = paths[0]
+            geom_dict = {"paths": paths,
+                         "spatial_reference": {"wkid": self.ago_srid[0], "latestWkid": self.ago_srid[1]}
+                         } 
         elif 'LINESTRING' in wkt:
             paths = self.project_and_format_shape(wkt)
             geom_dict = {"paths": [paths],
@@ -1186,6 +1215,14 @@ class AGO():
                         geom_dict = {"rings": [ring],
                                      "spatial_reference": {"wkid": self.ago_srid[1]}
                                      }
+                    elif 'MULTILINESTRING' in wkt:
+                        paths = self.project_and_format_shape(wkt)
+                        # Don't know why yet but some bug is sending us multilines with an extra enclosing list
+                        if len(paths) == 1:
+                            paths = paths[0]
+                        geom_dict = {"paths": paths,
+                                    "spatial_reference": {"wkid": self.ago_srid[0], "latestWkid": self.ago_srid[1]}
+                                    } 
                     elif 'LINESTRING' in wkt:
                         paths = self.project_and_format_shape(wkt)
                         geom_dict = {"paths": [paths],
