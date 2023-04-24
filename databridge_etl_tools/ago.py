@@ -212,7 +212,9 @@ class AGO():
                 # show up for point layers. geometryType is more reliable I think?
                 #is_geometric = self.layer_object.properties.hasGeometryProperties
                 geometry_type = self.layer_object.properties.geometryType
-            except:
+            except KeyboardInterrupt as e:
+                raise e
+            except Exception as e:
                 self._geometric = False
             if geometry_type:
                 #self._geometric = True
@@ -330,6 +332,8 @@ class AGO():
 
             s3 = boto3.resource('s3')
             s3.Object(self.s3_bucket, error_s3_key).put(Body=open(error_filepath, 'rb'))
+        except KeyboardInterrupt as e:
+            raise e
         except Exception as e:
             self.logger.info('Failed to put errors in csv and upload to S3.')
             self.logger.info(f'Error: {str(e)}')
@@ -402,7 +406,6 @@ class AGO():
             ring = format_ring(poly)
             return ring
         elif 'MULTILINESTRING' in wkt_shape:
-            #raise NotImplementedError('MULTILINESTRING not implemented yet!')
             multipaths = shapely.wkt.loads(wkt_shape)
             list_of_paths = []
             for path in multipaths.geoms:
@@ -455,6 +458,8 @@ class AGO():
                     adate = dateutil.parser.parse(row[col])
                     # if parse above works, convert
                     row[col] = adate
+                except KeyboardInterrupt as e:
+                    raise e
                 except dateutil.parser._parser.ParserError as e:
                     pass
                 #if 'datetime' in col and '+0000' in row[col]:
@@ -643,9 +648,8 @@ class AGO():
                                      }
                     elif 'MULTILINESTRING' in wkt:
                         paths = self.project_and_format_shape(wkt)
-                        # Don't know why yet but some bug is sending us multilines with an extra enclosing list
-                        if len(paths) == 1:
-                            paths = paths[0]
+                        # Don't know why yet but some bug is sending us multilines with an already enclosing list
+                        # Don't enclose in list if multilinestring
                         geom_dict = {"paths": paths,
                                     "spatial_reference": {"wkid": self.ago_srid[0], "latestWkid": self.ago_srid[1]}
                                     } 
@@ -984,9 +988,8 @@ class AGO():
             #                 }
         elif 'MULTILINESTRING' in wkt:
             paths = self.project_and_format_shape(wkt)
-            # Don't know why yet but some bug is sending us multilines with an extra enclosing list
-            if len(paths) == 1:
-                paths = paths[0]
+            # Don't know why yet but some bug is sending us multilines with an already enclosing list
+            # Don't enclose in list if multilinestring
             geom_dict = {"paths": paths,
                          "spatial_reference": {"wkid": self.ago_srid[0], "latestWkid": self.ago_srid[1]}
                          } 
@@ -1217,9 +1220,8 @@ class AGO():
                                      }
                     elif 'MULTILINESTRING' in wkt:
                         paths = self.project_and_format_shape(wkt)
-                        # Don't know why yet but some bug is sending us multilines with an extra enclosing list
-                        if len(paths) == 1:
-                            paths = paths[0]
+                        # Don't know why yet but some bug is sending us multilines with an already enclosing list
+                        # Don't enclose in list if multilinestring
                         geom_dict = {"paths": paths,
                                     "spatial_reference": {"wkid": self.ago_srid[0], "latestWkid": self.ago_srid[1]}
                                     } 
