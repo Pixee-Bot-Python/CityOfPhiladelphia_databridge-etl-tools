@@ -178,9 +178,9 @@ class Oracle():
         import geopetl
 
         # Note: data isn't read just yet at this point
-        print('Initializing data var with etl.fromoraclesde()..')
+        self.logger.info('Initializing data var with etl.fromoraclesde()..')
         data = etl.fromoraclesde(self.conn, self.schema_table_name, geom_with_srid=True)
-        print('Initialized.')
+        self.logger.info('Initialized.')
 
 
         datetime_fields = []
@@ -204,32 +204,32 @@ class Oracle():
             interval = 1
 
         if datetime_fields:
-            print(f'Converting {datetime_fields} fields to Eastern timezone datetime')
+            self.logger.info(f'Converting {datetime_fields} fields to Eastern timezone datetime')
             #data = etl.convert(data, datetime_fields, pytz.timezone('US/Eastern').localize)
             # Reasign to new object, so below "times_db_called" works
             # data_conv unbecomes a geopetl object after a convert() and becomes a 'petl.transform.conversions.FieldConvertView' object
             data_conv = etl.convert(data, datetime_fields, pytz.timezone('US/Eastern').localize)
             # Write to a CSV
             try:
-                print(f'Writing to temporary local csv {self.csv_path}..')
+                self.logger.info(f'Writing to temporary local csv {self.csv_path}..')
                 etl.tocsv(data_conv.progress(interval), self.csv_path, encoding='utf-8')
             except UnicodeError:
                 self.logger.info("Exception encountered trying to extract to CSV with utf-8 encoding, trying latin-1...")
-                print(f'Writing to temporary local csv {self.csv_path}..')
+                self.logger.info(f'Writing to temporary local csv {self.csv_path}..')
                 etl.tocsv(data_conv.progress(interval), self.csv_path, encoding='latin-1')
         else:
             # Write to a CSV
             try:
-                print(f'Writing to temporary local csv {self.csv_path}..')
+                self.logger.info(f'Writing to temporary local csv {self.csv_path}..')
                 etl.tocsv(data.progress(interval), self.csv_path, encoding='utf-8')
             except UnicodeError:
                 self.logger.info("Exception encountered trying to extract to CSV with utf-8 encoding, trying latin-1...")
-                print(f'Writing to temporary local csv {self.csv_path}..')
+                self.logger.info(f'Writing to temporary local csv {self.csv_path}..')
                 etl.tocsv(data.progress(interval), self.csv_path, encoding='latin-1')
 
         # Used solely in pytest to ensure database is called only once.
         self.times_db_called = data.times_db_called
-        print(f'Times database queried: {self.times_db_called}')
+        self.logger.info(f'Times database queried: {self.times_db_called}')
 
         # Confirm CSV isn't empty
         try:
@@ -244,9 +244,25 @@ class Oracle():
         if num_rows_in_csv == 0:
             raise AssertionError('Error! Dataset is empty? Line count of CSV is 0.')
 
-        print(f'Asserting counts match between db and extracted csv')
-        print(f'{self.row_count} == {num_rows_in_csv}')
+        self.logger.info(f'Asserting counts match between recorded count in db and extracted csv')
+        self.logger.info(f'{self.row_count} == {num_rows_in_csv}')
         assert self.row_count == num_rows_in_csv
+
+        self.logger.info(f'Checking row count again and comparing against csv count, this can catch large datasets that are actively updating..')
+
+        if 'OBJECTID' in self.fields:
+            stmt=f'''
+            SELECT COUNT(OBJECTID) FROM {self.table_schema.upper()}.{self.table_name.upper()}
+            '''
+        else:
+            stmt=f'''
+            SELECT COUNT(*) FROM {self.table_schema.upper()}.{self.table_name.upper()}
+            '''
+        cursor = self.conn.cursor()
+        cursor.execute(stmt)
+        recent_row_count = cursor.fetchone()[0]
+        self.logger.info(f'{recent_row_count} == {num_rows_in_csv}')
+        assert recent_row_count == num_rows_in_csv
 
         self.load_csv_to_s3()
         os.remove(self.csv_path)

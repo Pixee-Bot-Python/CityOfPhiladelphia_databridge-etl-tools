@@ -607,9 +607,15 @@ class Postgres():
         if num_rows_in_csv == 0:
             raise AssertionError('Error! Dataset is empty? Line count of CSV is 0.')
 
-        self.logger.info(f'Asserting counts match between db and extracted csv')
+        self.logger.info(f'Asserting counts match between previously recorded count in db and extracted csv')
         self.logger.info(f'{self.row_count} == {num_rows_in_csv}')
         assert self.row_count == num_rows_in_csv
+
+        self.logger.info(f'Checking row count again and comparing against csv count, this can catch large datasets that are actively updating..')
+        data = self.execute_sql('SELECT count(*) FROM {};'.format(self.table_schema_name), fetch='many')
+        recent_row_count = data[0][0]
+        self.logger.info(f'{recent_row_count} == {num_rows_in_csv}')
+        assert recent_row_count == num_rows_in_csv
 
         self.check_remove_nulls()
         self.load_csv_to_s3()
