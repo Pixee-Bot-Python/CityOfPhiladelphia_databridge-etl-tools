@@ -159,7 +159,7 @@ python -m databridge_etl_tools \
     oracle \
     --table_name li_appeals_type \
     --table_schema gis_lni \
-    --connection_string <user>/<password>@(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)      (HOST=<host_name>)(PORT=<port>))(CONNECT_DATA=(SID=<dbname>))) \
+    --connection_string <user>/<password>@(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=<host_name>)(PORT=<port>))(CONNECT_DATA=(SID=<dbname>))) \
     --s3_bucket s3-bucket \
     --s3_key s3_key \
     extract
@@ -261,7 +261,7 @@ For this reason you should make changes to the test branch, make sure they pass 
             * Args: 
                 * `--json_schema_s3_key` TEXT
                 * `--with_srid` BOOLEAN Likely only needed for certain views. This controls whether the geopetl frompostgis() function exports with geom_with_srid. That wont work for some views so just export without. [default: True]
-        * `extract-json-schema` Extracts a dataset's schema in Oracle into a JSON file in S3
+        * `extract-json-schema` Extracts a dataset's schema in Postgres into a JSON file in S3
         * `load` Loads from S3 to a postgres table, usually etl_staging.
     
 

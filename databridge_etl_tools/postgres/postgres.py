@@ -10,7 +10,6 @@ import boto3
 import geopetl
 import petl as etl
 
-
 csv.field_size_limit(sys.maxsize)
 
 DATA_TYPE_MAP = {
@@ -100,7 +99,6 @@ class Postgres():
             json_schema_file_name = self.json_schema_s3_key
         return json_schema_file_name
 
-
     @property
     def json_schema_path(self):
         if self.json_schema_file_name == None:
@@ -113,7 +111,6 @@ class Postgres():
             json_schema_directory = os.path.join('/tmp')
             json_schema_path = os.path.join(json_schema_directory, self.json_schema_file_name)
         return json_schema_path
-
 
     @property
     def conn(self):
@@ -139,10 +136,10 @@ class Postgres():
             self._export_json_schema = json.dumps(results)
         return self._export_json_schema
 
-
     @property
     def geom_field(self):
         return self._geom_field
+
     # Seperate out our property's setter method so we're not repeatedly making this db call
     # should only get called once.
     @geom_field.setter
@@ -203,10 +200,10 @@ class Postgres():
                             self._geom_field = result[0]
             # Else, there truly isn't a shape field and we're not geometric? Leave as None.
 
-
     @property
     def geom_type(self):
         return self._geom_type
+
     # Seperate out our property's setter method so we're not repeatedly making this db call
     # should only get called once.
     @geom_type.setter
@@ -231,22 +228,6 @@ class Postgres():
                     self._geom_type = result[0]
             else:
                 self._geom_type = None
-
-    # not currently used, getting SRID from the csv
-    #@property
-    #def geom_srid(self):
-    #    if self._geom_srid is None:
-    #        with open(self.json_schema_path) as json_file:
-    #            schema = json.load(json_file).get('fields', None)
-    #            if not schema:
-    #                self.logger.error('Json schema malformatted...')
-    #                raise
-    #            for scheme in schema:
-    #                scheme_type = DATA_TYPE_MAP.get(scheme['type'].lower(), scheme['type'])
-    #                if scheme_type == 'geometry':
-    #                    geom_srid = scheme.get('srid', None)
-    #                    self._geom_srid = geom_srid
-    #    return self._geom_srid
 
     @property
     def schema(self):
@@ -320,14 +301,11 @@ class Postgres():
 
         self.logger.info('CSV successfully downloaded.\n'.format(self.s3_bucket, self.s3_key))
 
-
     def create_indexes(self, table_name):
         raise NotImplementedError
 
-
     def write(self):
         self.get_csv_from_s3()
-        # self.get_json_schema_from_s3()
         try:
             rows = etl.fromcsv(self.csv_path, encoding='utf-8')
         except UnicodeError:    
@@ -399,7 +377,6 @@ class Postgres():
         # Write our possibly modified lines into the temp_csv file
         write_file = self.temp_csv_path
         rows.tocsv(write_file)
-        #self.logger.info("DEBUG Rows: " + str(etl.look(rows)))
 
         with open(write_file, 'r') as f:
             with self.conn.cursor() as cursor:
@@ -414,20 +391,8 @@ class Postgres():
 
         self.logger.info('Postgres Write Successful: {} rows imported.\n'.format(response[0]))
 
-
     def get_geom_field(self):
         """Not currently implemented. Relying on csv to be extracted by geopetl fromoraclesde with geom_with_srid = True"""
-        # with open(self.json_schema_path) as json_file:
-        #     schema = json.load(json_file).get('fields', '')
-        #     if not schema:
-        #         self.logger.error('json schema malformatted...')
-        #         raise
-        #     for scheme in schema:
-        #         scheme_type = DATA_TYPE_MAP.get(scheme['type'].lower(), scheme['type'])
-        #         if scheme_type == 'geometry':
-        #             geom_srid = scheme.get('srid', '')
-        #             geom_field = scheme.get('name', '')
-        #
         raise NotImplementedError
 
     @property
@@ -483,7 +448,6 @@ class Postgres():
                         self.logger.info(f'Failed removing file {f}.')
                         pass
 
-
     def load(self):
         try:
             self.write()
@@ -499,7 +463,6 @@ class Postgres():
         finally:
             self.cleanup()
 
-
     def load_json_schema_to_s3(self):
         json_schema_path = self.csv_path.replace('.csv','') + '.json'
         json_s3_key = self.s3_key.replace('staging', 'schemas').replace('.csv', '.json')
@@ -513,7 +476,6 @@ class Postgres():
         s3.Object(self.s3_bucket, json_s3_key).put(Body=open(json_schema_path, 'rb'))
         self.logger.info('Successfully loaded to s3: {}'.format(json_s3_key))
 
-
     def load_csv_to_s3(self):
         self.logger.info('Starting load to s3: {}'.format(self.s3_key))
 
@@ -521,7 +483,6 @@ class Postgres():
         s3.Object(self.s3_bucket, self.s3_key).put(Body=open(self.csv_path, 'rb'))
         
         self.logger.info('Successfully loaded to s3: {}'.format(self.s3_key))
-
 
     def extract_verify_row_count(self):
         with open(self.csv_path, 'r') as file:
@@ -559,8 +520,6 @@ class Postgres():
                     writer = csv.writer(outfile)
                     writer.writerows(reader)
             os.replace(temp_file, self.csv_path)
-
-
 
     def extract(self):
         self.logger.info(f'Starting extract from {self.table_schema_name}')
@@ -613,4 +572,3 @@ class Postgres():
 
         self.check_remove_nulls()
         self.load_csv_to_s3()
-

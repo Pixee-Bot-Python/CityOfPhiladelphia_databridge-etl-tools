@@ -4,9 +4,9 @@ import click
 
 @click.group()
 @click.pass_context
-@click.option('--table_name')
-@click.option('--table_schema')
-@click.option('--connection_string')
+@click.option('--table_name', required=True)
+@click.option('--table_schema', required=True)
+@click.option('--connection_string', required=True)
 @click.option('--s3_bucket')
 @click.option('--s3_key')
 def postgres(ctx, **kwargs):
@@ -29,7 +29,7 @@ def extract(ctx, **kwargs):
 
 @postgres.command()
 def extract_json_schema(ctx):
-    """Extracts a dataset's schema in Oracle into a JSON file in S3"""
+    """Extracts a dataset's schema in Postgres into a JSON file in S3"""
     postgres = Postgres(**ctx.obj)
     postgres.load_json_schema_to_s3()
     
@@ -40,3 +40,16 @@ def load(ctx, **kwargs):
     """Loads from S3 to a postgres table, usually etl_staging."""
     postgres = Postgres(**ctx.obj, **kwargs)
     postgres.load()
+
+@postgres.command()
+@click.pass_context
+def upsert_csv(ctx, **kwargs): 
+    '''Upserts a CSV file in S3 to a Postgres table'''
+    pass
+
+@postgres.command()
+@click.pass_context
+def upsert_table(ctx, **kwargs): 
+    '''Upserts a Postgres to a Postgres table in the same database'''
+    pass
+
