@@ -125,7 +125,7 @@ databridge_etl_tools \
     --table_name li_appeals_type \
     --table_schema gis_lni \
     --connection_string <user>/<password>@(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)      (HOST=<host_name>)(PORT=<port>))(CONNECT_DATA=(SID=<dbname>))) \
-    --s3_bucket s3_bucket \
+    --s3_bucket s3-bucket \
     --s3_key s3_key \
     extract
 
@@ -141,25 +141,28 @@ databridge_etl_tools \
     update
 
 # Load a table from S3 to Postgres
-databridge_etl_tools load \
-    --table_name li_appeals_type \
-    --table_schema lni \
-    --connection-string postgresql://user:password@host:port/db_name \
-    --s3_bucket s3_bucket \
-    --json_schema_s3_key json_schema_s3_key \
-    --csv_s3_key csv_s3_key
-```                             |
+databridge_etl_tools \
+    postgres \
+	--table_name li_appeals_type \
+	--table_schema lni \
+	--connection_string postgresql://user:password@host:port/db_name \
+	--s3_bucket test \
+	--s3_key test \
+    load \
+	--json_schema_s3_key test
+```
 
 ## Development
 To manually test while developing, the package can be entered using the -m module flag (due to the presence of the `__main__.py` file)
 ```bash
-python -m databridge_etl_tools load \
+python -m databridge_etl_tools \
+    oracle \
     --table_name li_appeals_type \
-    --table_schema lni \
-    --connection-string postgresql://user:password@host:port/db_name \
-    --s3_bucket s3_bucket \
-    --json_schema_s3_key json_schema_s3_key \
-    --csv_s3_key csv_s3_key
+    --table_schema gis_lni \
+    --connection_string <user>/<password>@(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)      (HOST=<host_name>)(PORT=<port>))(CONNECT_DATA=(SID=<dbname>))) \
+    --s3_bucket s3-bucket \
+    --s3_key s3_key \
+    extract
 ```
 
 

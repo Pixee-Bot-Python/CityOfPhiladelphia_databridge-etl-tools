@@ -17,7 +17,3 @@ main.add_command(db2)
 main.add_command(oracle)
 main.add_command(opendata)
 main.add_command(postgres)
-
-
-# if __name__ == '__main__':
-#     main()
