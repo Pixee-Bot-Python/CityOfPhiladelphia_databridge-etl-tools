@@ -9,7 +9,7 @@ py_modules = ['databridge_etl_tools']
 
 [project]
 name = "databridge-etl-tools"
-version = "0.2.0"
+version = "1.0.0"
 description = "Command line tools to extract and load SQL data to various endpoints"
 authors = [
     {name = "citygeo", email = "maps@phila.gov"},
@@ -20,7 +20,7 @@ license = {text = "MIT"}
 dependencies = [
     "geopetl @ git+https://github.com/CityOfPhiladelphia/geopetl.git@master",
     "setuptools>=67.6.0",
-    "arcgis>=2.0.0",
+    "arcgis",
     "boto3>=1.21.15",
     "botocore",
     "certifi",
@@ -34,7 +34,7 @@ dependencies = [
     "petl",
     "pyrestcli",
     "python-dateutil",
-    "pyproj<=3.2.1",
+    "pyproj",
     "requests",
     "s3transfer",
     "six",

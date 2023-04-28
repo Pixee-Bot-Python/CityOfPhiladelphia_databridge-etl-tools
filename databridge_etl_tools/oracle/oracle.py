@@ -5,6 +5,7 @@ import csv
 import pytz
 import boto3
 import petl as etl
+import geopetl
 import json
 
 
@@ -89,7 +90,6 @@ class Oracle():
             csv_path = '/tmp/{}.csv'.format(csv_file_name)
         return csv_path
 
-
     @property
     def json_schema_path(self):
         if self._json_schema_path:
@@ -107,7 +107,6 @@ class Oracle():
            self._logger = logger
        return self._logger
 
-
     def load_csv_to_s3(self):
         self.logger.info('Starting load to s3: {}'.format(self.s3_key))
 
@@ -115,8 +114,6 @@ class Oracle():
         s3.Object(self.s3_bucket, self.s3_key).put(Body=open(self.csv_path, 'rb'))
         
         self.logger.info('Successfully loaded to s3: {}'.format(self.s3_key))
-    
-
 
     def load_json_schema_to_s3(self):
         s3 = boto3.resource('s3')
@@ -126,7 +123,6 @@ class Oracle():
         json_s3_key = self.s3_key.replace('staging', 'schemas').replace('.csv', '.json')
         s3.Object(self.s3_bucket, json_s3_key).put(Body=open(self.json_schema_path, 'rb'))
         self.logger.info('Successfully loaded to s3: {}'.format(json_s3_key))
-
 
     def check_remove_nulls(self):
         '''
@@ -161,7 +157,6 @@ class Oracle():
                     writer = csv.writer(outfile)
                     writer.writerows(reader)
             os.replace(temp_file, self.csv_path)
-
 
     def extract(self):
         '''
@@ -255,4 +250,3 @@ class Oracle():
 
     def write(self):
         raise NotImplementedError
-
