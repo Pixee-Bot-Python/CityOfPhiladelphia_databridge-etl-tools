@@ -15,6 +15,6 @@ def carto(ctx, **kwargs):
 
 @carto.command()
 @click.pass_context
-def carto_update(ctx):
+def update(ctx):
     """Loads a datasets from S3 into carto"""
     ctx.obj.run_workflow()

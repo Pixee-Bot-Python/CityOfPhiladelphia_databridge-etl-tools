@@ -81,10 +81,11 @@ The tool can be use either with Docker or as a standalone Python package.
     * `export aws_access_key_id=<aws_access_key_id>`
     * `export aws_secret_access_key=<aws_secret_access_key>`
 * Ensure docker is installed on the system - it may be necessary to run `sudo apt install docker.io`
+* Download the oracle-client (`oracle-instantclient18.5-basiclite-18.5.0.0.0-3.x86_64.rpm`) to the project folder from the _citygeo-oracle-instant-client_ bucket
 * Run `docker build -f Dockerfile.fast -t dbtools --build-arg AWS_ACCESS_KEY_ID="$aws_access_key_id" --build-arg AWS_SECRET_ACCESS_KEY="$aws_secret_access_key" ./`
 
 ## Usage
-This package uses a nested series of commands (via sub-modules) to implement _separation of concerns_. This makes it easier to isolate any bugs and offer additional functionality over time. At any time, add `--help` to the command to review the help guide for that command or sub-group. In `click`, commands and sub-groups are internally the same thing.
+This package uses a nested series of commands (via sub-modules) to implement _separation of concerns_. This makes it easier to isolate any bugs and offer additional functionality over time. At any time, add `--help` to the command to review the help guide for that command or sub-group. In `click`, commands and sub-groups are internally the same thing. 
 
 All commands will take the form of 
 ```
@@ -96,7 +97,84 @@ databridge_etl_tools \
     [COMMAND or SUB_GROUP2] \
     [COMMAND ARGS or SUB_GROUP2 ARGS] ...
 ```
-### GROUPs, ARGS, SUB-GROUPs and COMMANDs:
+See **GROUPS, ARGS, SUB-GROUPS and COMMANDS** at the end of this README for a full documentation of all possible methods. 
+
+### Examples
+```bash
+# Remember to add --help after any command for an explanation and its parameters
+
+# Upsert a record into AGO using a primary key
+databridge_etl_tools \
+    ago \
+    --ago_org_url test \
+    --ago_user test \
+    --ago_pw test \
+    --ago_item_name test \
+    --s3_bucket test \
+    --s3_key test \
+    append-group \
+    --in_srid 0 \
+    --clean_columns test \
+    --batch_size 0 \
+    upsert \
+    --primary_key test
+
+# Extract a table from Oracle SDE to S3
+databridge_etl_tools \
+    oracle \
+    --table_name li_appeals_type \
+    --table_schema gis_lni \
+    --connection_string <user>/<password>@(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)      (HOST=<host_name>)(PORT=<port>))(CONNECT_DATA=(SID=<dbname>))) \
+    --s3_bucket s3_bucket \
+    --s3_key s3_key \
+    extract
+
+# Load a table from S3 to Carto
+databridge_etl_tools \
+    carto \
+	--table_name test \
+	--connection_string carto://user:apikey \
+	--s3_bucket test \
+	--s3_key test \
+	--select_users optional \
+	--index_fields optional 
+    update
+
+# Load a table from S3 to Postgres
+databridge_etl_tools load \
+    --table_name li_appeals_type \
+    --table_schema lni \
+    --connection-string postgresql://user:password@host:port/db_name \
+    --s3_bucket s3_bucket \
+    --json_schema_s3_key json_schema_s3_key \
+    --csv_s3_key csv_s3_key
+```                             |
+
+## Development
+To manually test while developing, the package can be entered using the -m module flag (due to the presence of the `__main__.py` file)
+```bash
+python -m databridge_etl_tools load \
+    --table_name li_appeals_type \
+    --table_schema lni \
+    --connection-string postgresql://user:password@host:port/db_name \
+    --s3_bucket s3_bucket \
+    --json_schema_s3_key json_schema_s3_key \
+    --csv_s3_key csv_s3_key
+```
+
+
+
+## Run tests
+```bash
+source scripts/run_tests.sh
+```
+
+## Deployment
+When a commit is made to master, Travis CI bundles the code and its dependencies into a zip file, loads it to S3, and then publishes a new version of a lambda function using that updated zip file in S3. Additionally, Travis CI builds a docker image with an installed version of this repo and pushes it to ECR.
+
+For this reason you should make changes to the test branch, make sure they pass automated tests and manual QA testing before making any changes to master.
+
+## GROUPS, ARGS, SUB-GROUPS and COMMANDS:
 * `ago`: Run ETL commands for AGO
     * Args: 
         * `--ago_org_url` TEXT    [required]
@@ -129,7 +207,7 @@ databridge_etl_tools \
         * `--select_users` TEXT
         * `--index_fields` TEXT    
     * Commands: 
-        * `carto-update`  Loads a datasets from S3 into carto
+        * `update`  Loads a datasets from S3 into carto
 * `db2`: Run ETL commands for DB2
     * Args: 
         * `--table_name` TEXT    [required]
@@ -175,62 +253,12 @@ databridge_etl_tools \
         * `--s3_bucket` TEXT
         * `--s3_key` TEXT    
     * Commands: 
-        * `postgres-extract` Extracts data from a postgres table into a CSV file in S3. Has spatial and SRID detection
+        * `extract` Extracts data from a postgres table into a CSV file in S3. Has spatial and SRID detection
     and will output it in a way that the ago append commands will recognize.
             * Args: 
                 * `--json_schema_s3_key` TEXT
                 * `--with_srid` BOOLEAN Likely only needed for certain views. This controls whether the geopetl frompostgis() function exports with geom_with_srid. That wont work for some views so just export without. [default: True]
-        * `postgres-extract-json-schema` Extracts a dataset's schema in Oracle into a JSON file in S3
-        * `postgres-load` Loads from S3 to a postgres table, usually etl_staging.
+        * `extract-json-schema` Extracts a dataset's schema in Oracle into a JSON file in S3
+        * `load` Loads from S3 to a postgres table, usually etl_staging.
     
 
-```bash
-# Extract a table from Oracle SDE to S3
-databridge_etl_tools extract \
-    --table_name li_appeals_type \
-    --table_schema gis_lni \
-    --connection_string user/password@db_alias \
-    --s3_bucket s3_bucket \
-    --s3_key s3_key
-
-# Load a table from S3 to Carto
-databridge_etl_tools cartoupdate \
-    --table_name li_appeals_type \
-    --connection_string carto://user:apikey \
-    --s3_bucket s3_bucket \
-    --json_schema_s3_key json_schema_s3_key\
-    --csv_s3_key csv_s3_key \
-    --select_users select_users \
-    --index_fields index_fields
-
-# Load a table from S3 to Postgres
-databridge_etl_tools load \
-    --table_name li_appeals_type \
-    --table_schema lni \
-    --connection-string postgresql://user:password@host:port/db_name \
-    --s3_bucket s3_bucket \
-    --json_schema_s3_key json_schema_s3_key \
-    --csv_s3_key csv_s3_key
-```                             |
-
-## Development
-To manually test while developing, the package can be entered using the -m module flag (due to the presence of the `__main__.py` file)
-```bash
-python -m databridge_etl_tools load \
-    --table_name li_appeals_type \
-    --table_schema lni \
-    --connection-string postgresql://user:password@host:port/db_name \
-    --s3_bucket s3_bucket \
-    --json_schema_s3_key json_schema_s3_key \
-    --csv_s3_key csv_s3_key
-```
-
-## Run tests
-```bash
-source scripts/run_tests.sh
-```
-
-## Deployment
-When a commit is made to master, Travis CI bundles the code and its dependencies into a zip file, loads it to S3, and then publishes a new version of a lambda function using that updated zip file in S3. Additionally, Travis CI builds a docker image with an installed version of this repo and pushes it to ECR.
-
-For this reason you should make changes to the test branch, make sure they pass automated tests and manual QA testing before making any changes to master.

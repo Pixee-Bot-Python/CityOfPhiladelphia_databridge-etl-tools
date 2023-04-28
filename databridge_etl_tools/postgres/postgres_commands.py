@@ -21,14 +21,14 @@ def postgres(ctx, **kwargs):
         help='''Likely only needed for certain views. This
         controls whether the geopetl frompostgis() function exports with geom_with_srid. That wont work
         for some views so just export without.''')
-def postgres_extract(ctx, **kwargs):
+def extract(ctx, **kwargs):
     """Extracts data from a postgres table into a CSV file in S3. Has spatial and SRID detection
     and will output it in a way that the ago append commands will recognize."""
     postgres = Postgres(**ctx.obj, **kwargs)
     postgres.extract()
 
 @postgres.command()
-def postgres_extract_json_schema(ctx):
+def extract_json_schema(ctx):
     """Extracts a dataset's schema in Oracle into a JSON file in S3"""
     postgres = Postgres(**ctx.obj)
     postgres.load_json_schema_to_s3()
@@ -36,7 +36,7 @@ def postgres_extract_json_schema(ctx):
 @postgres.command()
 @click.pass_context
 @click.option('--json_schema_s3_key', default=None, required=False)
-def postgres_load(ctx, **kwargs):
+def load(ctx, **kwargs):
     """Loads from S3 to a postgres table, usually etl_staging."""
     postgres = Postgres(**ctx.obj, **kwargs)
     postgres.load()
