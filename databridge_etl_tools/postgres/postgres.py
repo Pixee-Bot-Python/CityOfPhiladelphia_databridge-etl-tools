@@ -4,41 +4,14 @@ import sys
 import os
 import json
 import csv
-
+import re
 import psycopg2
 import boto3
 import geopetl
 import petl as etl
+from .postgres_map import DATA_TYPE_MAP, GEOM_TYPE_MAP
 
 csv.field_size_limit(sys.maxsize)
-
-DATA_TYPE_MAP = {
-    'string':                      'text',
-    'number':                      'numeric',
-    'float':                       'numeric',
-    'double precision':            'numeric',
-    'integer':                     'integer',
-    'boolean':                     'boolean',
-    'object':                      'jsonb',
-    'array':                       'jsonb',
-    'date':                        'date',
-    'time':                        'time',
-    'datetime':                    'timestamp without time zone',
-    'timestamp without time zone': 'timestamp without time zone',
-    'timestamp with time zone':    'timestamp with time zone',
-    'geom':                        'geometry',
-    'geometry':                    'geometry'
-}
-
-GEOM_TYPE_MAP = {
-    'point':           'Point',
-    'line':            'Linestring',
-    'linestring':      'Linestring',
-    'polygon':         'MultiPolygon',
-    'multipolygon':    'MultiPolygon',
-    'multilinestring': 'MultiLineString',
-    'geometry':        'Geometry',
-}
 
 class Postgres():
 
@@ -47,13 +20,9 @@ class Postgres():
     _schema = None
     _export_json_schema = None
     _row_count = None
+    _primary_keys = None
 
-    def __init__(self, 
-                 table_name, 
-                 table_schema, 
-                 connection_string, 
-                 s3_bucket, 
-                 s3_key,
+    def __init__(self, table_name, table_schema, connection_string, s3_bucket, s3_key, 
                  **kwargs):
         self.table_name = table_name
         self.table_schema = table_schema
@@ -114,6 +83,7 @@ class Postgres():
 
     @property
     def conn(self):
+        '''Create or Make the Postgres db connection'''
         if self._conn is None:
             self.logger.info('Trying to connect to postgres...')
             conn = psycopg2.connect(self.connection_string, connect_timeout=5)
@@ -132,9 +102,24 @@ class Postgres():
             AND table_name = '{self.table_name}'
             '''
             results = self.execute_sql(stmt, fetch='all')
-            #self.logger.info(f'DEBUG: {results}')
             self._export_json_schema = json.dumps(results)
         return self._export_json_schema
+
+    @property
+    def primary_keys(self) -> 'tuple': 
+        '''Get or return the primary keys of the table'''
+        if self._primary_keys == None: 
+            stmt = f'''
+            SELECT a.attname
+            FROM   pg_index i
+            JOIN   pg_attribute a ON a.attrelid = i.indrelid
+                                AND a.attnum = ANY(i.indkey)
+            WHERE  i.indrelid = '{self.table_schema_name}'::regclass
+            AND    i.indisprimary;
+            '''
+            results = self.execute_sql(stmt, fetch='all')
+            self._primary_keys = tuple(x[0] for x in results)
+        return self._primary_keys
 
     @property
     def geom_field(self):
@@ -304,7 +289,11 @@ class Postgres():
     def create_indexes(self, table_name):
         raise NotImplementedError
 
-    def write(self):
+    def prepare_file(self) -> 'str':
+        '''
+        Get a CSV from S3; prepare its geometry and headers for insertion into Postgres; 
+        write to CSV at self.temp_csv_path; return header
+        '''
         self.get_csv_from_s3()
         try:
             rows = etl.fromcsv(self.csv_path, encoding='utf-8')
@@ -329,7 +318,6 @@ class Postgres():
             # so we need to convert all polygon datasets to multipolygon for a successful copy_export.
             # 1) identify if multi in geom_field AND non-multi
             # Grab the geom type in a wierd way for all rows and insert into new column
-            #rows = rows.addfield('row_geom_type', lambda a: a[f'{self.geom_field}'].split('(')[0].split(';')[1].strip())
             rows = rows.addfield('row_geom_type', lambda a: a[f'{self.geom_field}'].split('(')[0].split(';')[1].strip() if a[f'{self.geom_field}'] and '(' in a[f'{self.geom_field}'] else None)
             # 2) Update geom_field "POLYGON" type values to "MULTIPOLYGON":
             #    Also add a third paranthesis around the geom info to make it a MUTLIPOLYGON type
@@ -337,59 +325,47 @@ class Postgres():
             # Remove our temporary column
             rows = rows.cutout('row_geom_type')
 
-
-        # Grab our header string for the copy_stmt beflow
         header = rows[0]
-        str_header = ''
-        num_fields = len(header)
+        str_header = ', '.join(header).replace('#', '_')
         self._num_rows_in_upload_file = rows.nrows()
-        for i, field in enumerate(header):
-            if i < num_fields - 1:
-                str_header += field + ', '
-            else:
-                str_header += field
 
-        # Workaround: oracle allows special characters into it's column names
-        # We copy the oracle schema to postgres with ArcPy which at least for 
-        # the character '#' replaces it with an '_'. So do that here.
-        str_header = str_header.replace('#', '_')
-
-        # Workaround: We have many datasets in Oracle where the objectid field is "objectid_1".
-        # When I make an empty dataset from Oracle with "create-beta-enterprise-table.py" it seems
-        # to remake the dataset with a proper 'objectid' primary key. However the CSV we make from Oracle
-        # will still have "objectid_1" in it.
-        # We'll attempt to handle this by replacing the "objectid_1" with "objectid" in the
-        # CSV header if there's not a second objectid field in there.
-        # Note: could be made smarter with regex
-        if ('objectid_1,' in str_header) and ('objectid,' not in str_header):
-            self.logger.info('\nDetected objectid_1 primary key, implementing workaround and modifying header...')
-            rows = rows.rename('objectid_1', 'objectid')
-            str_header = str_header.replace('objectid_1', 'objectid')
-
-        if ('objectid_2,' in str_header) and ('objectid,' not in str_header):
-            self.logger.info('\nDetected objectid_2 primary key, implementing workaround and modifying header...')
-            rows = rows.rename('objectid_2', 'objectid')
-            str_header = str_header.replace('objectid_2', 'objectid')
+        # Many Oracle datasets have the objectid field as "objectid_1". Making an 
+        # empty dataset from Oracle with "create-beta-enterprise-table.py" remakes 
+        # the dataset with a proper 'objectid' primary key. However the CSV made from Oracle
+        # will still have "objectid_1" in it. Handle this by replacing "objectid_1" 
+        # with "objectid" in CSV header if "objectid" doesn't already exist.
+        if (re.search('objectid,', str_header) == None and 
+        (match := re.search('(objectid_\d+),', str_header)) != None): 
+            old_col = match.groups()[0]
+            self.logger.info(f'\nDetected {old_col} primary key, implementing workaround and modifying header...')
+            str_header = str_header.replace(f'{old_col}', 'objectid')
+        rows = rows.rename({old:new for old, new in zip(header, str_header.split(', '))})
 
         self.logger.info(str_header)
-        self.logger.info('\nWriting to table: {}...'.format(self.table_schema_name))
 
         # Write our possibly modified lines into the temp_csv file
         write_file = self.temp_csv_path
         rows.tocsv(write_file)
 
-        with open(write_file, 'r') as f:
+    def write(self, write_file):
+        '''Use Postgres COPY FROM method to append a table to a Postgres table, 
+        gathering the header from the first line of the file'''
+
+        self.logger.info('\nWriting to table: {}...'.format(self.table_schema_name))
+        with open(write_file, 'r') as f: 
+            # f.readline() moves cursor position from 0 to 1, so tell COPY there is no header
+            str_header = f.readline().strip() 
             with self.conn.cursor() as cursor:
                 copy_stmt = f'''
-                    COPY {self.table_schema_name} ({str_header}) FROM STDIN WITH (FORMAT csv, HEADER true)
+                    COPY {self.table_schema_name} ({str_header}) FROM STDIN WITH (FORMAT csv, HEADER false)
                 '''
                 self.logger.info('copy_stmt: ' + copy_stmt)
                 cursor.copy_expert(copy_stmt, f)
 
-        check_load_stmt = "SELECT COUNT(*) FROM {table_name}".format(table_name=self.table_schema_name)
-        response = self.execute_sql(check_load_stmt, fetch='one')
-
-        self.logger.info('Postgres Write Successful: {} rows imported.\n'.format(response[0]))
+        # check_load_stmt = "SELECT COUNT(*) FROM {table_name}".format(table_name=self.table_schema_name)
+        # response = self.execute_sql(check_load_stmt, fetch='one')
+        # Change this to only show the number of rows added or imported
+        # self.logger.info('Postgres Write Successful: {} rows imported.\n'.format(response[0]))
 
     def get_geom_field(self):
         """Not currently implemented. Relying on csv to be extracted by geopetl fromoraclesde with geom_with_srid = True"""
@@ -419,11 +395,6 @@ class Postgres():
         self.logger.info(message)
         if num_rows_in_table != num_rows_expected:
             self.logger.error('Did not insert all rows, reverting...')
-            stmt = 'BEGIN;' + \
-                    'DROP TABLE if exists {} cascade;'.format(self.table_schema_name) + \
-                    'COMMIT;'
-            self.execute_sql(stmt)
-            exit(1)
 
     def vacuum_analyze(self):
         self.logger.info('Vacuum analyzing table: {}'.format(self.table_schema_name))
@@ -450,11 +421,11 @@ class Postgres():
 
     def load(self):
         try:
-            self.write()
-            self.conn.commit()
-            self.verify_count()
+            self.write(self.temp_csv_path)
+            # self.verify_count() # Broken until acccounting for insert/update
             self.vacuum_analyze()
             self.logger.info('Done!')
+            self.conn.commit()
         except Exception as e:
             self.logger.error('Workflow failed...')
             self.logger.error(f'Error: {str(e)}')
@@ -572,3 +543,33 @@ class Postgres():
 
         self.check_remove_nulls()
         self.load_csv_to_s3()
+
+    def __upsert_csv(self): 
+        '''Upsert a CSV file from S3 to a Postgres table'''
+        self.prepare_file()
+        # Delete existing primary key values
+        self.load()
+        pass
+
+    def __upsert_db(self): 
+        '''Upsert a table within the same Postgres database to a Postgres table'''
+        pass
+    
+    def upsert(self, method): 
+        '''Updates data from a CSV or from within the same database to a Postgres 
+        table, which must have at least one primary key. This method will 
+            - Delete data in the Postgres table where the primary key ID appears in the 
+        new data, 
+            - Leave any old data in the Postgres table where the primary key ID 
+        does not appear in the new data, 
+            - Append all data from the new table
+        
+        Method should be one of "csv", "db"
+        '''
+        if self.primary_keys == (): 
+            raise ValueError(f'Upsert method requires that table "{self.table_schema_name}" have at least one column as primary key.')
+        
+        if method == 'csv': 
+            self.__upsert_csv()
+        elif method == 'db': 
+            self.__upsert_db()

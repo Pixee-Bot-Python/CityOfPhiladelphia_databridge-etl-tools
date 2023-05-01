@@ -27,7 +27,7 @@ def extract(ctx, **kwargs):
     postgres = Postgres(**ctx.obj, **kwargs)
     postgres.extract()
 
-@postgres.command()
+@postgres.command() # Is this right?
 def extract_json_schema(ctx):
     """Extracts a dataset's schema in Postgres into a JSON file in S3"""
     postgres = Postgres(**ctx.obj)
@@ -45,11 +45,14 @@ def load(ctx, **kwargs):
 @click.pass_context
 def upsert_csv(ctx, **kwargs): 
     '''Upserts a CSV file in S3 to a Postgres table'''
+    postgres = Postgres(**ctx.obj, **kwargs)
+    # 
+    postgres.load()
     pass
 
 @postgres.command()
 @click.pass_context
 def upsert_table(ctx, **kwargs): 
-    '''Upserts a Postgres to a Postgres table in the same database'''
+    '''Upserts a Postgres table to a Postgres table in the same database'''
     pass
 
