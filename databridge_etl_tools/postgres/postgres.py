@@ -6,9 +6,11 @@ import json
 import csv
 import re
 import psycopg2
+from psycopg2.sql import Identifier, SQL
 import boto3
 import geopetl
 import petl as etl
+import pandas as pd
 from .postgres_map import DATA_TYPE_MAP, GEOM_TYPE_MAP
 
 csv.field_size_limit(sys.maxsize)
@@ -26,6 +28,9 @@ class Postgres():
                  **kwargs):
         self.table_name = table_name
         self.table_schema = table_schema
+        self.table_schema_name = f'{self.table_schema}.{self.table_name}'
+        self.temp_table_name = self.table_name + '_t'
+        self.temp_table_schema_name = f'{self.table_schema}.{self.temp_table_name}'
         self.connection_string = connection_string
         self.s3_bucket = s3_bucket
         self.s3_key = s3_key
@@ -35,11 +40,6 @@ class Postgres():
         self.with_srid = kwargs.get('with_srid', None)
         # just initialize this self variable here so we connect first
         self.conn
-
-    @property
-    def table_schema_name(self):
-        # schema.tablehealth__child_blood_lead_levels_by_zip
-        return '{}.{}'.format(self.table_schema, self.table_name)
 
     @property
     def csv_path(self):
@@ -252,11 +252,15 @@ class Postgres():
            self._logger = logger
        return self._logger
 
-    def execute_sql(self, stmt, fetch=None):
-        #self.logger.info('Executing: {}'.format(stmt))
-
+    def execute_sql(self, stmt, data=None, fetch=None):
+        '''
+        Execute an SQL statement and fetch rows if specified. 
+            - stmt can allow for passing parameters via %s if data != None
+            - data should be a tuple or list
+            - fetch should be one of None, "one", "many", "all"
+        '''
         with self.conn.cursor() as cursor:
-            cursor.execute(stmt)
+            cursor.execute(stmt, data)
 
             if fetch == 'one':
                 result = cursor.fetchone()
@@ -270,29 +274,45 @@ class Postgres():
                 result = cursor.fetchall()
                 return result
 
-    def get_json_schema_from_s3(self):
-        self.logger.info('Fetching json schema: s3://{}/{}'.format(self.s3_bucket, self.json_schema_s3_key))
+    def _interact_with_s3(self, method: str, path: str, s3_key: str): 
+        '''
+        - method should be one of "get", "load"
+        '''
+        self.logger.info(f"{method.upper()}-ing file: s3://{self.s3_bucket}/{s3_key}")
 
         s3 = boto3.resource('s3')
-        s3.Object(self.s3_bucket, self.json_schema_s3_key).download_file(self.json_schema_path)
-
-        self.logger.info('Json schema successfully downloaded.\n'.format(self.s3_bucket, self.json_schema_s3_key))
+        if method == 'get': 
+            s3.Object(self.s3_bucket, s3_key).download_file(path)
+            self.logger.info(f'File successfully downloaded from S3 to {path}\n')
+        elif method == 'load': 
+            s3.Object(self.s3_bucket, s3_key).put(Body=open(path, 'rb'))
+            self.logger.info(f'File successfully uploaded from {path} to S3\n')
+    
+    def get_json_schema_from_s3(self):
+        self._interact_with_s3('get', self.json_schema_path, self.json_schema_s3_key)
 
     def get_csv_from_s3(self):
-        self.logger.info('Fetching csv s3://{}/{}'.format(self.s3_bucket, self.s3_key))
+        self._interact_with_s3('get', self.csv_path, self.s3_key)
 
-        s3 = boto3.resource('s3')
-        s3.Object(self.s3_bucket, self.s3_key).download_file(self.csv_path)
+    def load_json_schema_to_s3(self):
+        json_schema_path = self.csv_path.replace('.csv','') + '.json'
+        json_s3_key = self.s3_key.replace('staging', 'schemas').replace('.csv', '.json')
 
-        self.logger.info('CSV successfully downloaded.\n'.format(self.s3_bucket, self.s3_key))
+        with open(json_schema_path, 'w') as f:
+            f.write(self.export_json_schema)
+        
+        self._interact_with_s3('load', json_schema_path, json_s3_key)
+
+    def load_csv_to_s3(self):
+        self._interact_with_s3('load', self.csv_path, self.s3_key)
 
     def create_indexes(self, table_name):
         raise NotImplementedError
 
-    def prepare_file(self) -> 'str':
+    def prepare_file(self):
         '''
         Get a CSV from S3; prepare its geometry and headers for insertion into Postgres; 
-        write to CSV at self.temp_csv_path; return header
+        write to CSV at self.temp_csv_path
         '''
         self.get_csv_from_s3()
         try:
@@ -341,31 +361,27 @@ class Postgres():
             str_header = str_header.replace(f'{old_col}', 'objectid')
         rows = rows.rename({old:new for old, new in zip(header, str_header.split(', '))})
 
-        self.logger.info(str_header)
+        self.logger.info(f'Header:\n\t{str_header}')
 
         # Write our possibly modified lines into the temp_csv file
         write_file = self.temp_csv_path
         rows.tocsv(write_file)
 
-    def write(self, write_file):
+    def write(self, write_file: str, table_schema_name: str):
         '''Use Postgres COPY FROM method to append a table to a Postgres table, 
         gathering the header from the first line of the file'''
 
-        self.logger.info('\nWriting to table: {}...'.format(self.table_schema_name))
+        self.logger.info('\nWriting to table: {}...'.format(table_schema_name))
         with open(write_file, 'r') as f: 
             # f.readline() moves cursor position from 0 to 1, so tell COPY there is no header
             str_header = f.readline().strip() 
             with self.conn.cursor() as cursor:
                 copy_stmt = f'''
-                    COPY {self.table_schema_name} ({str_header}) FROM STDIN WITH (FORMAT csv, HEADER false)
-                '''
+    COPY {table_schema_name} ({str_header}) 
+    FROM STDIN WITH (FORMAT csv, HEADER false)'''
                 self.logger.info('copy_stmt: ' + copy_stmt)
                 cursor.copy_expert(copy_stmt, f)
-
-        # check_load_stmt = "SELECT COUNT(*) FROM {table_name}".format(table_name=self.table_schema_name)
-        # response = self.execute_sql(check_load_stmt, fetch='one')
-        # Change this to only show the number of rows added or imported
-        # self.logger.info('Postgres Write Successful: {} rows imported.\n'.format(response[0]))
+                self.logger.info(f'Postgres Write Successful: {cursor.rowcount:,} rows imported.\n')
 
     def get_geom_field(self):
         """Not currently implemented. Relying on csv to be extracted by geopetl fromoraclesde with geom_with_srid = True"""
@@ -409,6 +425,7 @@ class Postgres():
         self.logger.info('Vacuum analyze complete.\n')
 
     def cleanup(self):
+        '''Remove local CSV, temp CSV, JSON schema; DROP temp table if exists'''
         self.logger.info('Attempting to drop temp files...')
         for f in [self.csv_path, self.temp_csv_path, self.json_schema_path]:
             if f is not None:
@@ -418,14 +435,15 @@ class Postgres():
                     except Exception as e:
                         self.logger.info(f'Failed removing file {f}.')
                         pass
+        self.drop_table(self.temp_table_name, exists='log')                
 
     def load(self):
         try:
-            self.write(self.temp_csv_path)
+            self.write(self.temp_csv_path, self.table_schema_name)
+            self.conn.commit()
             # self.verify_count() # Broken until acccounting for insert/update
             self.vacuum_analyze()
             self.logger.info('Done!')
-            self.conn.commit()
         except Exception as e:
             self.logger.error('Workflow failed...')
             self.logger.error(f'Error: {str(e)}')
@@ -433,27 +451,7 @@ class Postgres():
             raise e
         finally:
             self.cleanup()
-
-    def load_json_schema_to_s3(self):
-        json_schema_path = self.csv_path.replace('.csv','') + '.json'
-        json_s3_key = self.s3_key.replace('staging', 'schemas').replace('.csv', '.json')
-
-        self.logger.info('Starting load to s3: {}'.format(json_s3_key))
-
-        with open(json_schema_path, 'w') as f:
-            f.write(self.export_json_schema)
-
-        s3 = boto3.resource('s3')
-        s3.Object(self.s3_bucket, json_s3_key).put(Body=open(json_schema_path, 'rb'))
-        self.logger.info('Successfully loaded to s3: {}'.format(json_s3_key))
-
-    def load_csv_to_s3(self):
-        self.logger.info('Starting load to s3: {}'.format(self.s3_key))
-
-        s3 = boto3.resource('s3')
-        s3.Object(self.s3_bucket, self.s3_key).put(Body=open(self.csv_path, 'rb'))
-        
-        self.logger.info('Successfully loaded to s3: {}'.format(self.s3_key))
+            self.conn.commit()
 
     def extract_verify_row_count(self):
         with open(self.csv_path, 'r') as file:
@@ -543,11 +541,76 @@ class Postgres():
 
         self.check_remove_nulls()
         self.load_csv_to_s3()
+    
+    def create_temp_table(self): 
+        '''Create an empty temp table from self.table_name'''
+        with self.conn.cursor() as cursor:
+            cursor.execute(SQL('''
+            CREATE TABLE {} AS 
+                SELECT * 
+                FROM {}
+            WHERE 1=0;
+            ''').format(                          # This is psycopg2.sql.SQL.format() not f string format
+                Identifier(self.temp_table_name), # See https://www.psycopg.org/docs/sql.html
+                Identifier(self.table_name)))
+            self.logger.info(f'Created temp table {self.temp_table_name}')
+    
+    def delete_using(self, deleted_table: 'str', deleting_table: 'str', keys: 'list'): 
+        '''Delete records from a table using another table in the same database. Postgres
+        equivalent of a DELETE JOIN. 
+        '''
+        # DELETE FROM ... WHERE PKEY = ANY(ARRAY[...]) AND PKEY2 = ANY(ARRAY[...]) 
+        # won't work because of composite primary keys. 
+
+        assert len(keys) >= 1
+        where_stmt = 'WHERE ' + ' AND '.join([f'a.{{pk{x[0]}}} = b.{{pk{x[0]}}}' for x in enumerate(self.primary_keys)])
+        # Example: 'WHERE a.{pk0} = b.{pk0} AND a.{pk1} = b.{pk1} AND ...'
+        pkeys_dict = {f'pk{i}': Identifier(x) for i, x in enumerate(self.primary_keys)} 
+        # Example: {pk0: Identifier(self.primary_keys[0]), pk1: Identifier(self.primary_keys[1]), ...}
+        with self.conn.cursor() as cursor:
+            cursor.execute(
+                SQL('''
+                DELETE 
+                FROM {deleted_table} as a
+                USING {deleting_table} as b
+                ''' + where_stmt
+                ).format(    
+                    deleted_table=Identifier(deleted_table), 
+                    deleting_table=Identifier(deleting_table), 
+                    **pkeys_dict) # Example: pk0 = self.primary_keys[0], pk1 = self.primary_keys[1], ...
+                    )
+            self.logger.info(f'Deleted {cursor.rowcount} rows from {deleted_table}')
+    
+    def drop_table(self, table_name: 'str', exists='log'): 
+        '''DROP a table
+            - table_name - Table name to drop
+            - exists - One of "log", "error". If the table name already exists, 
+            whether to record that in the log or raise an error
+        '''
+        self.logger.info(f'Attempting to drop table if exists {table_name}')
+        cursor = self.conn.cursor()
+        try: 
+            cursor.execute(
+                SQL('''SELECT * FROM {} LIMIT 1''').format(Identifier(table_name)))
+        except psycopg2.errors.UndefinedTable as e: 
+            self.logger.info(f'\tTable {table_name} does not exist.')
+            self.conn.rollback()
+        else:
+            if exists == 'error': 
+                raise ValueError(f'Table {table_name} already exists and was set to be dropped.')
+            if exists == 'log': 
+                self.logger.info(f'\tExisting table {table_name} will be dropped.')
+        cursor.execute(
+            SQL('''DROP TABLE IF EXISTS {}''').format(Identifier(table_name)))
+        self.logger.info('DROP IF EXISTS statement successfully executed.\n')
 
     def __upsert_csv(self): 
         '''Upsert a CSV file from S3 to a Postgres table'''
+        self.drop_table(self.temp_table_name, exists='error')
         self.prepare_file()
-        # Delete existing primary key values
+        self.create_temp_table()
+        self.write(self.temp_csv_path, self.temp_table_schema_name)
+        self.delete_using(self.table_name, self.temp_table_name, self.primary_keys)
         self.load()
         pass
 
