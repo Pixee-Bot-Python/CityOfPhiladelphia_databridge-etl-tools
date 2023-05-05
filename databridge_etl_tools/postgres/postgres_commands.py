@@ -35,24 +35,22 @@ def extract_json_schema(ctx):
     
 @postgres.command()
 @click.pass_context
-@click.option('--json_schema_s3_key', default=None, required=False)
+@click.option('--json_schema_s3_key', default=None, required=False) # Is this right?
 def load(ctx, **kwargs):
     """Loads from S3 to a postgres table, usually etl_staging."""
-    postgres = Postgres(**ctx.obj, **kwargs)
-    postgres.load()
+    with Postgres(**ctx.obj, **kwargs) as postgres: 
+        postgres.load()
 
 @postgres.command()
 @click.pass_context
 def upsert_csv(ctx, **kwargs): 
     '''Upserts a CSV file in S3 to a Postgres table'''
-    postgres = Postgres(**ctx.obj, **kwargs)
-    # 
-    postgres.load()
-    pass
+    with Postgres(**ctx.obj, **kwargs) as postgres: 
+        postgres.upsert('csv')
 
 @postgres.command()
 @click.pass_context
 def upsert_table(ctx, **kwargs): 
     '''Upserts a Postgres table to a Postgres table in the same database'''
-    pass
-
+    with Postgres(**ctx.obj, **kwargs) as postgres: 
+        postgres.upsert('table')
