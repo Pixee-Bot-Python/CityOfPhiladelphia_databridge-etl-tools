@@ -2,6 +2,7 @@ import csv
 import sys
 import csv
 import re
+import ast
 import psycopg2
 from psycopg2.sql import Identifier, SQL
 import geopetl
@@ -58,37 +59,42 @@ class Postgres():
 
     def __enter__(self):
         '''Context manager functions to be called BEFORE any functions inside
-        
-        with Postgres(...) as postgres: 
+        ```
+        with Postgres(...) as pg: 
             ...
-        # see https://book.pythontips.com/en/latest/context_managers.html
+        ```
+        See https://book.pythontips.com/en/latest/context_managers.html
         '''
         self.start_row_count = self.get_row_count()
         return self
     
     def __exit__(self, type, value, traceback):
         '''Context manager functions to execute AFTER all functions inside 
-        
-        with Postgres(...) as postgres: 
+        ```
+        with Postgres(...) as pg: 
             ...
+        ```
         '''
-        try: 
-            self.drop_table(self.temp_table_name, exists='log')   
-            self.verify_count(
-                start=self.start_row_count, 
-                inserted=self.inserted_row_count, 
-                deleted=self.deleted_row_count) 
-            self.conn.commit()
-            self.vacuum_analyze()
-            self.logger.info('Done!')
-        except Exception as e:
-            self.logger.error('Workflow failed...')
-            self.logger.error(f'Error: {str(e)}')
+        if type == None: # No exception was raised before __exit__()
+            try: 
+                self.drop_table(self.table_schema, self.temp_table_name, exists='log')   
+                self.verify_count(
+                    start=self.start_row_count, 
+                    inserted=self.inserted_row_count, 
+                    deleted=self.deleted_row_count) 
+                self.conn.commit()
+                self.vacuum_analyze()
+                self.logger.info('Done! All transactions committed.\n')
+            except Exception as e:
+                self.logger.error('Workflow failed... rolling back database transactions.\n')
+                self.conn.rollback()
+            finally:
+                self.cleanup() 
+        else: # An exception was raised before __exit__()
+            self.logger.error('Workflow failed... rolling back database transactions.\n')
             self.conn.rollback()
-            raise e
-        finally:
             self.cleanup() 
-    
+
     def execute_sql(self, stmt, data=None, fetch=None):
         '''
         Execute an SQL statement and fetch rows if specified. 
@@ -102,11 +108,9 @@ class Postgres():
             if fetch == 'one':
                 result = cursor.fetchone()
                 return result
-
             elif fetch == 'many':
                 result = cursor.fetchmany()
                 return result
-
             elif fetch == 'all':
                 result = cursor.fetchall()
                 return result
@@ -114,10 +118,12 @@ class Postgres():
     def create_indexes(self, table_name):
         raise NotImplementedError
 
-    def prepare_file(self, file):
+    def prepare_file(self, file, **kwargs):
         '''
-        Prepare a CSV file's geometry and headers for insertion into Postgres; 
-        write to CSV at self.temp_csv_path
+        Prepare a CSV file's geometry and header for insertion into Postgres; 
+        write to CSV at self.temp_csv_path. If the keyword arguments "column_mappings" or 
+        "mappings_file" are passed with values other than None, no edits are made 
+        to the data header.
         '''
         try:
             rows = etl.fromcsv(file, encoding='utf-8')
@@ -150,39 +156,78 @@ class Postgres():
             rows = rows.cutout('row_geom_type')
 
         header = rows[0]
-        str_header = ', '.join(header).replace('#', '_')
+        str_header = ', '.join(header)
+        if kwargs.get('column_mappings', None) == None and kwargs.get('mappings_file', None) == None: 
+            str_header = str_header.replace('#', '_')
 
-        # Many Oracle datasets have the objectid field as "objectid_1". Making an 
-        # empty dataset from Oracle with "create-beta-enterprise-table.py" remakes 
-        # the dataset with a proper 'objectid' primary key. However the CSV made from Oracle
-        # will still have "objectid_1" in it. Handle this by replacing "objectid_1" 
-        # with "objectid" in CSV header if "objectid" doesn't already exist.
-        if (re.search('objectid,', str_header) == None and 
-        (match := re.search('(objectid_\d+),', str_header)) != None): 
-            old_col = match.groups()[0]
-            self.logger.info(f'\nDetected {old_col} primary key, implementing workaround and modifying header...')
-            str_header = str_header.replace(f'{old_col}', 'objectid')
-        rows = rows.rename({old:new for old, new in zip(header, str_header.split(', '))})
-
-        self.logger.info(f'Header:\n\t{str_header}\n')
-
+            # Many Oracle datasets have the objectid field as "objectid_1". Making an 
+            # empty dataset from Oracle with "create-beta-enterprise-table.py" remakes 
+            # the dataset with a proper 'objectid' primary key. However the CSV made from Oracle
+            # will still have "objectid_1" in it. Handle this by replacing "objectid_1" 
+            # with "objectid" in CSV header if "objectid" doesn't already exist.
+            if (re.search('objectid,', str_header) == None and 
+            (match := re.search('(objectid_\d+),', str_header)) != None): 
+                old_col = match.groups()[0]
+                self.logger.info(f'\nDetected {old_col} primary key, implementing workaround and modifying header...')
+                str_header = str_header.replace(f'{old_col}', 'objectid')
+            rows = rows.rename({old:new for old, new in zip(header, str_header.split(', '))})
+        
         # Write our possibly modified lines into the temp_csv file
         write_file = self.temp_csv_path
         rows.tocsv(write_file)
 
-    def write(self, write_file: 'str', table_schema_name: 'str'):
+    def _map_header(self, str_header: str, column_mappings:str = None, mappings_file:str = None) -> str: 
+        '''Internal function to transform a header according to a mapping'''
+        if column_mappings != None: 
+            mapping_dict = ast.literal_eval(column_mappings)
+        elif mappings_file != None: 
+            with open(mappings_file, 'r') as f: 
+                mapping_text = f.read()
+            mapping_dict = ast.literal_eval(mapping_text)
+        assert type(mapping_dict) == dict, 'Column mappings could not be read as a Python dictionary'
+        
+        mapped_header = []
+        header_list = str_header.split(',')
+        for h in header_list: 
+            if h in mapping_dict: 
+                mapped_header.append(mapping_dict[h])
+            else: 
+                mapped_header.append(h)
+        mapped_header = ','.join(mapped_header)
+        
+        return mapped_header   
+    
+    def write(self, write_file: 'str', table_schema_name: 'str', column_mappings=None, mappings_file=None):
         '''Use Postgres COPY FROM method to append a table to a Postgres table, 
         gathering the header from the first line of the file. If the write occurs to 
-        self.table_name, it remembers the inserted row count'''
+        self.table_name, it remembers the inserted row count. Use column_mappings or 
+        mappings_file to specify a mapping of data file columns to database table columns.
+        
+        - write_file: Path of file for postgresql COPY FROM
+        - table_schema_name: Destination table
+        - column_mappings: A string that can be read as a dictionary using `ast.literal_eval()`. 
+            - It should take the form '{"data_col": "db_table_col", "data_col2": "db_table_col2", ...}'
+            - Note the quotes around the curly braces `'{}'` because it is a string
+        - mappings_file: A text file (not Python file) that can be opened with open() 
+        and that contains one Python dictionary that can be read with `ast.literal_eval()`
+            - The file should take the form {"data_col": "db_table_col", "data_col2": "db_table_col2", ... }
+            - Note no quotes around the curly braces `{}`. 
+    
+        Only one of column_mappings or mappings_file should be provided. Note that only the columns whose headers differ between the data file and the database table need to be included. All column names must be quoted. While this method can be called directly, it is preferable to call load() if possible instead.
+        '''
 
         self.logger.info('Writing to table: {}...'.format(table_schema_name))
         with open(write_file, 'r') as f: 
-            # f.readline() moves cursor position from line 0 to line 1, so tell COPY there is no header
+            # f.readline() moves cursor position out of position
             str_header = f.readline().strip() 
+            if column_mappings != None or mappings_file != None: 
+                str_header = self._map_header(str_header, column_mappings, mappings_file)
+            self.logger.info(f'Header:\n\t{str_header}')
+            f.seek(0)
             with self.conn.cursor() as cursor:
                 copy_stmt = f'''
     COPY {table_schema_name} ({str_header}) 
-    FROM STDIN WITH (FORMAT csv, HEADER false)'''
+    FROM STDIN WITH (FORMAT csv, HEADER true)'''
                 self.logger.info('copy_stmt: ' + copy_stmt)
                 cursor.copy_expert(copy_stmt, f)
                 if table_schema_name == self.table_schema_name: 
@@ -293,59 +338,89 @@ class Postgres():
                 self.logger.info(f'{self.table_schema_name} deleted row count updated')
             self.logger.info(f'Deleted {cursor.rowcount} rows from {deleted_table}\n')
     
-    def drop_table(self, table_name: 'str', exists='log'): 
+    def drop_table(self, schema: str, table_name: 'str', exists='log'): 
         '''DROP a table
+            - schema - Schema of table to drop
             - table_name - Table name to drop
             - exists - One of "log", "error". If the table name already exists, 
             whether to record that in the log or raise an error
         '''
         self.logger.info(f'Attempting to drop table if exists {table_name}')
         cursor = self.conn.cursor()
-        try: 
-            cursor.execute(
-                SQL('''SELECT * FROM {} LIMIT 1''').format(Identifier(table_name)))
-        except psycopg2.errors.UndefinedTable as e: 
-            self.logger.info(f'\tTable {table_name} does not exist.')
-            self.conn.rollback()
-        else:
+        cursor.execute('''
+    SELECT EXISTS (
+        SELECT FROM pg_tables
+        WHERE  schemaname = %s
+        AND    tablename  = %s
+    )''', (schema, table_name))
+        rv = cursor.fetchone()[0]
+        if rv == False:         
+            self.logger.info(f'\tTable {table_name} does not exist.\n')
+            return None
+        elif rv == True: 
             if exists == 'error': 
                 raise ValueError(f'Table {table_name} already exists and was set to be dropped.')
             if exists == 'log': 
                 self.logger.info(f'\tExisting table {table_name} will be dropped.')
+        else:
+            raise ValueError('Query return value not boolean')
         cursor.execute(
             SQL('''DROP TABLE IF EXISTS {}''').format(Identifier(table_name)))
         self.logger.info('DROP IF EXISTS statement successfully executed.\n')
 
-    def load(self):
-        '''Load a CSV from S3 to a Postgres table'''
-        self.get_csv_from_s3()
-        self.prepare_file(file=self.csv_path)
-        self.write(self.temp_csv_path, self.table_schema_name)
+    def load(self, **kwargs):
+        '''
+        Prepare and COPY a CSV from S3 to a Postgres table. If the keyword arguments "column_mappings" or "mappings_file" are passed with values other than None, those mappings are used to map data file columns to database table colums.
 
-    def __upsert_csv(self): 
+        - column_mappings: A string that can be read as a dictionary using `ast.literal_eval()`. 
+            - It should take the form '{"data_col": "db_table_col", "data_col2": "db_table_col2", ...}'
+            - Note the quotes around the curly braces `'{}'` because it is a string
+        - mappings_file: A text file that can be opened with open() and that contains one Python dictionary that can be read with `ast.literal_eval()`
+            - The file should take the form {"data_col": "db_table_col", "data_col2": "db_table_col2", ... }
+            - Note no quotes around the curly braces `{}`. 
+    
+        Only one of column_mappings or mappings_file should be provided. Note that only the columns whose headers differ between the data file and the database table need to be included. All column names must be quoted. While this method can be called directly, it is preferable to call load() if possible instead.
+        '''
+        self.get_csv_from_s3()
+        self.prepare_file(file=self.csv_path, **kwargs)
+        self.write(self.temp_csv_path, self.table_schema_name, **kwargs)
+
+    def __upsert_csv(self, **kwargs): 
         '''Upsert a CSV file from S3 to a Postgres table'''
-        self.drop_table(self.temp_table_name, exists='error')
+        self.drop_table(self.table_schema, self.temp_table_name, exists='error')
         self.get_csv_from_s3()
-        self.prepare_file(file=self.csv_path)
+        self.prepare_file(file=self.csv_path, **kwargs)
         self.create_temp_table()
-        self.write(self.temp_csv_path, self.temp_table_schema_name)
+        self.write(self.temp_csv_path, self.temp_table_schema_name, **kwargs)
         self.delete_using(self.table_name, self.temp_table_name, self.primary_keys)
-        self.write(self.temp_csv_path, self.table_schema_name)
+        self.write(self.temp_csv_path, self.table_schema_name, **kwargs)
 
-    def __upsert_table(self): 
+    def __upsert_table(self, **kwargs): 
         '''Upsert a table within the same Postgres database to a Postgres table'''
         pass
     
-    def upsert(self, method): 
+    def upsert(self, method, **kwargs): 
         '''Upserts data from a CSV or from a table within the same database to a 
-        Postgres table, which must have at least one primary key.         
-            - method should be one of "csv", "table"
+        Postgres table, which must have at least one primary key. If the keyword arguments 
+        "column_mappings" or "mappings_file" are passed with values other than None, 
+        those mappings are used to map data file columns to database table colums.
+        
+        - method: Indicates the source type. Should be one of "csv", "table".
+        - column_mappings: A string that can be read as a dictionary using `ast.literal_eval()`. 
+            - It should take the form '{"data_col": "db_table_col", "data_col2": "db_table_col2", ...}'
+            - Note the quotes around the curly braces `'{}'` because it is a string
+        - mappings_file: A text file (not Python file) that can be opened with open() 
+        and that contains one Python dictionary that can be read with `ast.literal_eval()`
+            - The file should take the form {"data_col": "db_table_col", "data_col2": "db_table_col2", ... }
+            - Note no quotes around the curly braces `{}`. 
+    
+        Only one of column_mappings or mappings_file should be provided. Note that only the columns whose headers differ between the data file and the database table need to be included. All column names must be quoted. 
         '''
         self.logger.info(f'{"*" * 80}\nUpserting into {self.table_schema_name}\n')
         if self.primary_keys == (): 
             raise ValueError(f'Upsert method requires that table "{self.table_schema_name}" have at least one column as primary key.')
         
         if method == 'csv': 
-            self.__upsert_csv()
+            self.__upsert_csv(**kwargs)
         elif method == 'table': 
-            self.__upsert_table()
+            self.__upsert_table(**kwargs)

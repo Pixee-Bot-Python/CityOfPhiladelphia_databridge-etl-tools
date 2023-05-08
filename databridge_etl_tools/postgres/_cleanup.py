@@ -34,7 +34,7 @@ def cleanup(self):
                     self.logger.info(f'\tRemoved file {f}.')
                 except Exception as e:
                     self.logger.info(f'Failed to remove file {f}.')
-                    pass
+    print('\tRemoving temp files process completed.\n')
 
 def check_remove_nulls(self):
     '''

@@ -131,3 +131,4 @@ james_script.sh
 james_py.py
 *.rpm
 test.py
+test*.csv
