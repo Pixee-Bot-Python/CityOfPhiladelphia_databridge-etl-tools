@@ -2,6 +2,7 @@ import sys
 import os
 import json
 import psycopg2
+import psycopg2.sql as sql
 import logging
 from .postgres_map import DATA_TYPE_MAP, GEOM_TYPE_MAP
 
@@ -70,20 +71,53 @@ def export_json_schema(self):
     return self._export_json_schema
 
 @property
-def primary_keys(self) -> 'tuple': 
+def primary_keys(self) -> 'set': 
     '''Get or return the primary keys of the table'''
     if self._primary_keys == None: 
-        stmt = f'''
+        stmt = sql.SQL('''
         SELECT a.attname
         FROM   pg_index i
         JOIN   pg_attribute a ON a.attrelid = i.indrelid
                             AND a.attnum = ANY(i.indkey)
-        WHERE  i.indrelid = '{self.table_schema_name}'::regclass
+        WHERE  i.indrelid = %s::regclass
         AND    i.indisprimary;
-        '''
-        results = self.execute_sql(stmt, fetch='all')
-        self._primary_keys = tuple(x[0] for x in results)
+        ''')
+        results = self.execute_sql(stmt, data=[self.table_schema_name], fetch='all')
+        self._primary_keys = set(x[0] for x in results)
     return self._primary_keys
+
+@property
+def pk_constraint_name(self): 
+    '''Get or return the name of the primary key constraint on a Postgres table'''
+    if self._pk_constraint_name == None: 
+        constraint_stmt = sql.SQL('''
+        SELECT con.*
+        FROM pg_catalog.pg_constraint con
+            INNER JOIN pg_catalog.pg_class rel
+                ON rel.oid = con.conrelid
+            INNER JOIN pg_catalog.pg_namespace nsp
+                ON nsp.oid = connamespace
+        WHERE nsp.nspname = %s
+            AND rel.relname = %s
+            AND contype = 'p'
+        ''')
+        results = self.execute_sql(constraint_stmt, data=[self.table_schema, self.table_name], fetch='all')
+        self._pk_constraint_name = results[0][1]
+    return self._pk_constraint_name
+
+@property
+def fields(self) -> 'list': 
+    '''Get or return the fields of a table in a list'''
+    if self._fields == None: 
+        with self.conn.cursor() as cursor: 
+            stmt = sql.SQL('''SELECT * FROM {} LIMIT 0''').format(
+                sql.Identifier(self.table_schema, self.table_name))
+            cursor.execute(stmt)
+        rv = []
+        for column in cursor.description: 
+            rv.append(column.name)
+        self._fields = rv
+    return self._fields
 
 @property
 def geom_field(self):
@@ -211,8 +245,9 @@ def logger(self):
     if self._logger is None:
         logger = logging.getLogger(__name__)
         logger.setLevel(logging.INFO)
-        sh = logging.StreamHandler(sys.stdout)
-        logger.addHandler(sh)
+        if logger.handlers == []: 
+            sh = logging.StreamHandler(sys.stdout)
+            logger.addHandler(sh)
         self._logger = logger
     return self._logger
 
