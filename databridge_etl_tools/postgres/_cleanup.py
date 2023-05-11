@@ -2,15 +2,6 @@ import os
 import csv
 import psycopg2
 
-def verify_count(self, start, inserted=0, deleted=0): 
-    '''Verify the number of rows a table started with plus inserted rows 
-    minus deleted rows equals current row count
-    '''
-    current = self.get_row_count()
-    assert start + inserted - deleted == current, f'{start:,} initial rows + {inserted:,} inserted rows - {deleted:,} deleted rows != {current:,} current rows!'
-    print(f'Count Verified:')
-    print(f'{start:,} initial rows + {inserted:,} inserted rows - {deleted:,} deleted rows == {current:,} current rows\n')
-
 def vacuum_analyze(self):
     self.logger.info('Vacuum analyzing table: {}'.format(self.table_schema_name))
 
