@@ -7,16 +7,6 @@ import logging
 from .postgres_map import DATA_TYPE_MAP, GEOM_TYPE_MAP
 
 @property
-def conn(self):
-    '''Create or Make the Postgres db connection'''
-    if self._conn is None:
-        self.logger.info('Trying to connect to postgres...')
-        conn = psycopg2.connect(self.connection_string, connect_timeout=5)
-        self._conn = conn
-        self.logger.info('Connected to postgres.\n')
-    return self._conn
-
-@property
 def csv_path(self):
     csv_file_name = self.table_name
     # On Windows, save to current directory
@@ -201,7 +191,7 @@ def geom_type(self, value):
         result = self.execute_sql(check_table_stmt, fetch='one')[0]
         if result:
             geom_stmt = f'''
-SELECT geometry_type('{self.table_schema}', '{self.table_name}', '{self.geom_field}')
+    SELECT geometry_type('{self.table_schema}', '{self.table_name}', '{self.geom_field}')
             '''
             self.logger.info(f'Determining our geom_type, running statement: {geom_stmt}')
             result = self.execute_sql(geom_stmt, fetch='one')
@@ -239,17 +229,6 @@ def schema(self):
                     schema_fmt += ','
         self._schema = schema_fmt
     return self._schema
-
-@property
-def logger(self):
-    if self._logger is None:
-        logger = logging.getLogger(__name__)
-        logger.setLevel(logging.INFO)
-        if logger.handlers == []: 
-            sh = logging.StreamHandler(sys.stdout)
-            logger.addHandler(sh)
-        self._logger = logger
-    return self._logger
 
 def get_geom_field(self):
     """Not currently implemented. Relying on csv to be extracted by geopetl fromoraclesde with geom_with_srid = True"""

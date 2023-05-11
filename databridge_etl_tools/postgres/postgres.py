@@ -6,6 +6,7 @@ import ast
 import psycopg2.sql as sql
 import geopetl
 import petl as etl
+from .postgres_connector import Connector
 
 csv.field_size_limit(sys.maxsize)
 
@@ -22,25 +23,25 @@ class Postgres():
 
     To skip the checks, simply call `Postgres(...).<method>(...)`
     '''
-    _conn = None
-    _logger = None
 
     from ._properties import (
-        conn, csv_path, temp_csv_path, json_schema_file_name, json_schema_path, 
+        csv_path, temp_csv_path, json_schema_file_name, json_schema_path, 
         export_json_schema, primary_keys, pk_constraint_name, fields, 
-        geom_field, geom_type, schema, logger, get_geom_field)
+        geom_field, geom_type, schema, get_geom_field)
     from ._s3 import (
         get_csv_from_s3, get_json_schema_from_s3, load_csv_to_s3, load_json_schema_to_s3)
     from ._cleanup import (
         verify_count, vacuum_analyze, cleanup, check_remove_nulls)
 
-    def __init__(self, table_name, table_schema, connection_string, **kwargs):
+    def __init__(self, connector: 'Connector', table_name:str, table_schema:str, **kwargs):
+        self.connector = connector
+        self.logger = self.connector.logger
+        self.conn = self.connector.conn
         self.table_name = table_name
         self.table_schema = table_schema
         self.table_schema_name = f'{self.table_schema}.{self.table_name}'
         self.temp_table_name = self.table_name + '_t'
         self.temp_table_schema_name = f'{self.table_schema}.{self.temp_table_name}'
-        self.connection_string = connection_string
         self.s3_bucket = kwargs.get('s3_bucket', None)
         self.s3_key = kwargs.get('s3_key', None)
         self.json_schema_s3_key = kwargs.get('json_schema_s3_key', None)
@@ -89,6 +90,7 @@ class Postgres():
             except Exception as e:
                 self.logger.error('Workflow failed... rolling back database transactions.\n')
                 self.conn.rollback()
+                raise e
             finally:
                 self.cleanup() 
         else: # An exception was raised before __exit__()
@@ -119,12 +121,9 @@ class Postgres():
     def create_indexes(self, table_name):
         raise NotImplementedError
 
-    def prepare_file(self, file, **kwargs):
+    def prepare_file(self, file:str, mapping_dict:dict=None):
         '''
-        Prepare a CSV file's geometry and header for insertion into Postgres; 
-        write to CSV at self.temp_csv_path. If the keyword arguments "column_mappings" or 
-        "mappings_file" are passed with values other than None, no edits are made 
-        to the data header.
+        Prepare a CSV file's geometry and header for insertion into Postgres; write to CSV at self.temp_csv_path. If mapping_dict is not None, no edits are made to the data header.
         '''
         try:
             rows = etl.fromcsv(file, encoding='utf-8')
@@ -141,7 +140,7 @@ class Postgres():
         # Note: also run this if the data type is 'MULTILINESTRING' some source datasets will export as LINESTRING but the dataset type is actually MULTILINESTRING (one example: GIS_PLANNING.pedbikeplan_bikerec)
         # Note2: Also happening with poygons, example dataset: GIS_PPR.ppr_properties
         self.logger.info(f'self.geom_field is: {self.geom_field}')
-        self.logger.info(f'self.geom_type is: {self.geom_type}')
+        self.logger.info(f'self.geom_type is: {self.geom_type}\n')
         if self.geom_field is not None and (self.geom_type in shape_types):
             self.logger.info('Detected that shape type needs conversion to MULTI....')
             # Multi-geom fix
@@ -158,7 +157,7 @@ class Postgres():
 
         header = rows[0]
         str_header = ', '.join(header)
-        if kwargs.get('column_mappings', None) == None and kwargs.get('mappings_file', None) == None: 
+        if mapping_dict != None: 
             str_header = str_header.replace('#', '_')
 
             # Many Oracle datasets have the objectid field as "objectid_1". Making an 
@@ -169,7 +168,7 @@ class Postgres():
             if (re.search('objectid,', str_header) == None and 
             (match := re.search('(objectid_\d+),', str_header)) != None): 
                 old_col = match.groups()[0]
-                self.logger.info(f'\nDetected {old_col} primary key, implementing workaround and modifying header...')
+                self.logger.info(f'\nDetected {old_col} primary key, implementing workaround and modifying header...\n')
                 str_header = str_header.replace(f'{old_col}', 'objectid')
             rows = rows.rename({old:new for old, new in zip(header, str_header.split(', '))})
         
@@ -177,8 +176,8 @@ class Postgres():
         write_file = self.temp_csv_path
         rows.tocsv(write_file)
 
-    def _map_header(self, str_header: str, column_mappings:str = None, mappings_file:str = None) -> str: 
-        '''Internal function to transform a header according to a mapping'''
+    def _make_mapping_dict(self, column_mappings:str = None, mappings_file:str = None) -> dict: 
+        '''Transform a string dict or a file with a string dict into that dict'''
         if column_mappings != None: 
             mapping_dict = ast.literal_eval(column_mappings)
         elif mappings_file != None: 
@@ -186,7 +185,10 @@ class Postgres():
                 mapping_text = f.read()
             mapping_dict = ast.literal_eval(mapping_text)
         assert type(mapping_dict) == dict, 'Column mappings could not be read as a Python dictionary'
-        
+        return mapping_dict    
+
+    def _map_header(self, str_header: str, mapping_dict: dict) -> str: 
+        '''Internal function to transform a header according to a mapping'''
         mapped_header = []
         header_list = str_header.split(',')
         for h in header_list: 
@@ -198,7 +200,7 @@ class Postgres():
         
         return mapped_header   
     
-    def write_csv(self, write_file:'str', table_schema_name:'str', column_mappings:'str'=None, mappings_file:'str'=None):
+    def write_csv(self, write_file:'str', table_name:'str', schema_name:'str', mapping_dict:dict={}):
         '''Use Postgres COPY FROM method to append a CSV to a Postgres table, 
         gathering the header from the first line of the file. If the write occurs to 
         self.table_name, it remembers the inserted row count. Use column_mappings or 
@@ -217,23 +219,30 @@ class Postgres():
         Only one of column_mappings or mappings_file should be provided. Note that only the columns whose headers differ between the data file and the database table need to be included. All column names must be quoted. While this method can be called directly, it is preferable to call load() if possible instead.
         '''
 
-        self.logger.info(f'Writing to table {table_schema_name} from {write_file}...')
+        self.logger.info(f'Writing to table {schema_name}.{table_name} from {write_file}...')
         with open(write_file, 'r') as f: 
             # f.readline() moves cursor position out of position
-            str_header = f.readline().strip() 
-            if column_mappings != None or mappings_file != None: 
-                str_header = self._map_header(str_header, column_mappings, mappings_file)
-            self.logger.info(f'Header:\n\t{str_header}')
+            str_header = f.readline().strip().split(',')            
             f.seek(0)
+
             with self.conn.cursor() as cursor:
-                copy_stmt = f'''
-    COPY {table_schema_name} ({str_header}) 
-    FROM STDIN WITH (FORMAT csv, HEADER true)'''
-                self.logger.info('copy_stmt: ' + copy_stmt)
+                cols_composables = []
+                for col in str_header: 
+                    mapped_col = mapping_dict.get(col, col)
+                    cols_composables.append(sql.Identifier(mapped_col))
+                cols_composed = sql.Composed(cols_composables).join(', ')
+                
+                copy_stmt = sql.SQL('''
+    COPY {table_schema_name} ({cols_composed}) 
+    FROM STDIN WITH (FORMAT csv, HEADER true)''').format(
+                    table_schema_name=sql.Identifier(schema_name, table_name), 
+                    cols_composed=cols_composed)
+                self.logger.info(f'copy_statement:{cursor.mogrify(copy_stmt).decode()}')
                 cursor.copy_expert(copy_stmt, f)
-                if table_schema_name == self.table_schema_name: 
-                    self._inserted_row_count += cursor.rowcount
-                    self.logger.info(f'{self.table_schema_name} inserted row count updated')
+
+                # if table_schema_name == self.table_schema_name: 
+                #     self._inserted_row_count += cursor.rowcount
+                #     self.logger.info(f'{self.table_schema_name} inserted row count updated')
                 self.logger.info(f'Postgres Write Successful: {cursor.rowcount:,} rows imported.\n')
 
     def get_row_count(self):
@@ -296,7 +305,7 @@ class Postgres():
         self.load_csv_to_s3()
     
     def create_temp_table(self): 
-        '''Create an empty temp table from self.table_name'''
+        '''Create an empty temp table from self.table_name in the same schema'''
         with self.conn.cursor() as cursor:
             cursor.execute(sql.SQL('''
             CREATE TABLE {} AS 
@@ -304,8 +313,8 @@ class Postgres():
                 FROM {}
             WHERE 1=0;
             ''').format(                          # This is psycopg2.sql.SQL.format() not f string format
-                sql.Identifier(self.temp_table_name), # See https://www.psycopg.org/docs/sql.html
-                sql.Identifier(self.table_name)))
+                sql.Identifier(self.table_schema, self.temp_table_name), # See https://www.psycopg.org/docs/sql.html
+                sql.Identifier(self.table_schema, self.table_name)))
             self.logger.info(f'Created temp table {self.temp_table_name}\n')
     
     def delete_using(self, deleted_table: 'str', deleting_table: 'str', keys: 'list'): 
@@ -387,7 +396,7 @@ class Postgres():
 
     def _upsert_data_from_db(self, other: 'Postgres', mapping_dict:dict={}): 
         '''
-        Create the SQL statements to upsert a table from another. In general form, this SQL takes the form of 
+        Create the SQL statements to upsert a table into another. In general form, this SQL takes the form of 
         ```
         INSERT INTO {table_schema_name} AS EXISTING (col1, col2, ...)
         SELECT UPDATES.col1, UPDATES.col2, ...
@@ -407,7 +416,7 @@ class Postgres():
         other_fields_composables = []
         update_set_composables = []
         for other_field in other.fields: 
-            existing_field = mapping_dict.get(other_field, other_field)
+            existing_field = mapping_dict.get(other_field, other_field) # If there is a mapping for other_field, use that mapping, otherwise just use other_field
             
             existing_fields_composables.append(sql.Identifier(existing_field))
             other_fields_composables.append(sql.SQL('UPDATES.') + sql.Identifier(other_field))
@@ -415,7 +424,7 @@ class Postgres():
                 sql.Composed(
                     sql.Identifier(existing_field) + 
                     sql.SQL(' = EXCLUDED.') + 
-                    sql.Identifier(other_field)))
+                    sql.Identifier(existing_field)))
         
         # Any composed statement can be examined with print(<sql.Composed>.as_string(cursor))
         existing_fields_composed = sql.Composed(existing_fields_composables).join(', ')
@@ -424,18 +433,15 @@ class Postgres():
         
         # Iterate through self.primary_keys and use the mapping_dict to create 
         # one sql.Composed statement: where_composed
-        reversed_mapping_dict = {existing_field: other_field for other_field, existing_field in mapping_dict.items()}
         where_composables = []
         for pk in self.primary_keys: 
-            other_pk = reversed_mapping_dict.get(pk, pk)
-            
             where_composables.append(
                 sql.Composed(
                     sql.SQL('EXISTING.') + 
                     sql.Identifier(pk) + 
                     sql.SQL(' = ') + 
                     sql.SQL('EXCLUDED.') + 
-                    sql.Identifier(other_pk)))
+                    sql.Identifier(pk)))
         
         where_composed = sql.Composed(where_composables).join(' AND ')
 
@@ -456,41 +462,48 @@ class Postgres():
             where_composed=where_composed)
 
         with self.conn.cursor() as cursor: 
+            self.logger.info(f'upsert_statement:{cursor.mogrify(upsert_stmt).decode()}')
             cursor.execute(upsert_stmt)
-            print(f'upsert_statement:{cursor.mogrify(upsert_stmt).decode()}')
+            self.logger.info(f'Upsert Successful: {cursor.rowcount:,} rows updated/inserted.\n')
 
-    def _upsert_csv(self, **kwargs): 
+    def _upsert_csv(self, mapping_dict:dict): 
         '''Upsert a CSV file from S3 to a Postgres table'''
-        # self.drop_table(self.table_schema, self.temp_table_name, exists='error')
+        self.drop_table(self.table_schema, self.temp_table_name, exists='error')
         self.get_csv_from_s3()
-        self.prepare_file(file=self.csv_path, **kwargs)
-        # self.create_temp_table()
-        # self.write_csv(self.temp_csv_path, self.temp_table_schema_name, **kwargs)
-        # self.delete_using(self.table_name, self.temp_table_name, self.primary_keys)
-        # self.write_csv(self.temp_csv_path, self.table_schema_name, **kwargs)
+        self.prepare_file(self.csv_path, mapping_dict)
+        self.create_temp_table()
+        self.write_csv(write_file=self.temp_csv_path, table_name=self.temp_table_name, 
+                       schema_name=self.table_schema, mapping_dict=mapping_dict)
+        other = Postgres(connector=self.connector, table_name=self.temp_table_name, 
+                         table_schema=self.table_schema)
+        self._upsert_data_from_db(other=other, mapping_dict=mapping_dict)
 
-    def _upsert_table(self, other_table, other_schema=None, **kwargs): 
+    def _upsert_table(self, mapping_dict:dict, other_table:str, other_schema:str=None): 
         '''Upsert a table within the same Postgres database to a Postgres table'''
         if not other_schema: 
             other_schema = self.table_schema
-        other = Postgres(other_table, other_schema, self.connection_string)
-        self._upsert_data_from_db(other)
+        other = Postgres(connector=self.connector, table_name=other_table, 
+                         table_schema=other_schema)
+        self._upsert_data_from_db(other=other, mapping_dict=mapping_dict)
     
-    def upsert(self, method, **kwargs): 
+    def upsert(self, method:str, other_table:str=None, other_schema:str=None, 
+            column_mappings:str=None, mappings_file:str=None): 
         '''Upserts data from a CSV or from a table within the same database to a 
         Postgres table, which must have at least one primary key. If upserting from a 
         database table, "other_table" must be passed as a parameter, and the primary keys 
         of the other table must exactly match those of the table being upserted to. 
         Whether upserting from a CSV or Postgres table, the keyword arguments "column_mappings" or "mappings_file" 
-        may be passed with values other than None to map data file columns to database table colums.
+        may be passed with values other than None to map data file columns to database table columns.
         
         - method: Indicates the source type. Should be one of "csv", "table".
-        - other_table: Name of table if upserting from a Postgres table
-        - column_mappings: A string that can be read as a dictionary using `ast.literal_eval()`. 
+        - other_table: Name of Postgres table to upsert from 
+        - other_schema: Schema of Postgres table to upsert from. If None, assume the 
+        same schema as the table being upserted to
+        - column_mappings: A string that can be read as a dict using `ast.literal_eval()`. 
             - It should take the form '{"data_col": "db_table_col", "data_col2": "db_table_col2", ...}'
             - Note the quotes around the curly braces `'{}'` because it is a string
         - mappings_file: A text file (not Python file) that can be opened with open() 
-        and that contains one Python dictionary that can be read with `ast.literal_eval()`
+        and that contains one Python dict that can be read with `ast.literal_eval()`
             - The file should take the form {"data_col": "db_table_col", "data_col2": "db_table_col2", ... }
             - Note no quotes around the curly braces `{}`. 
     
@@ -499,10 +512,14 @@ class Postgres():
         self.logger.info(f'{"*" * 80}\nUpserting into {self.table_schema_name}\n')
         if self.primary_keys == set(): 
             raise ValueError(f'Upsert method requires that table "{self.table_schema_name}" have at least one column as primary key.')
-        
+        if column_mappings != None or mappings_file != None: 
+            mapping_dict = self._make_mapping_dict(column_mappings, mappings_file)
+        else: 
+            mapping_dict = {}
+
         if method == 'csv': 
-            self._upsert_csv(**kwargs)
+            self._upsert_csv(mapping_dict)
         elif method == 'table': 
-            self._upsert_table(**kwargs)
+            self._upsert_table(mapping_dict, other_table, other_schema)
         else: 
             raise KeyError('Method {method} not recognized for upsert')
