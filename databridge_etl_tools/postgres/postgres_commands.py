@@ -45,7 +45,7 @@ def extract_json_schema(ctx):
 @click.pass_context
 @click.option('--column_mappings', required=False, help='''
     A string that can be read as a dictionary using `ast.literal_eval()`. It should 
-    take the form "{'data_col': 'db_table_col', 'data_col2': 'db_table_col2', ...}")''')
+    take the form "{'data_col': 'db_table_col', 'data_col2': 'db_table_col2', ...}"''')
 @click.option('--mappings_file', required=False, help='''
     A text file that can be opened with `open()` and that contains one Python dict
     that can be read with `ast.literal_eval()`. The file should take the form 
@@ -67,7 +67,7 @@ def load(ctx, **kwargs):
 @postgres.command()
 @click.option('--column_mappings', required=False, help='''
     A string that can be read as a dictionary using `ast.literal_eval()`. It should 
-    take the form "{'data_col': 'db_table_col', 'data_col2': 'db_table_col2', ...}")''')
+    take the form "{'data_col': 'db_table_col', 'data_col2': 'db_table_col2', ...}"''')
 @click.option('--mappings_file', required=False, help='''
     A text file that can be opened with `open()` and that contains one Python dict
     that can be read with `ast.literal_eval()`. The file should take the form 
@@ -92,7 +92,7 @@ def upsert_csv(ctx, **kwargs):
     to upsert from. If None, assume the same schema as the table being upserted to''')
 @click.option('--column_mappings', required=False, help='''
     A string that can be read as a dictionary using `ast.literal_eval()`. It should 
-    take the form "{'data_col': 'db_table_col', 'data_col2': 'db_table_col2', ...}")''')
+    take the form "{'data_col': 'db_table_col', 'data_col2': 'db_table_col2', ...}"''')
 @click.option('--mappings_file', required=False, help='''
     A text file that can be opened with `open()` and that contains one Python dict
     that can be read with `ast.literal_eval()`. The file should take the form 

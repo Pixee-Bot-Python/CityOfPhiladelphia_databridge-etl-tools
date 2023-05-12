@@ -250,18 +250,29 @@ For this reason you should make changes to the test branch, make sure they pass 
         * `extract-json-schema` Extracts a dataset's schema in Oracle into a JSON file in S3
 * `postgres`: Run ETL commands for Postgres
     * Args: 
-        * `--table_name` TEXT
-        * `--table_schema` TEXT
-        * `--connection_string` TEXT
+        * `--table_name` TEXT [required]
+        * `--table_schema` TEXT [required]
+        * `--connection_string` TEXT [required]
         * `--s3_bucket` TEXT
         * `--s3_key` TEXT    
     * Commands: 
         * `extract` Extracts data from a postgres table into a CSV file in S3. Has spatial and SRID detection
-    and will output it in a way that the ago append commands will recognize.
+    and will output it in a way that the ago append commands will recognize.  
             * Args: 
-                * `--json_schema_s3_key` TEXT
                 * `--with_srid` BOOLEAN Likely only needed for certain views. This controls whether the geopetl frompostgis() function exports with geom_with_srid. That wont work for some views so just export without. [default: True]
-        * `extract-json-schema` Extracts a dataset's schema in Postgres into a JSON file in S3
-        * `load` Loads from S3 to a postgres table, usually etl_staging.
-    
+        * `extract-json-schema` Extracts a dataset's schema in Postgres into a JSON file in S3  
+        * `load` Prepare and COPY a CSV from S3 to a Postgres table. The keyword arguments "column_mappings" or "mappings_file" can be used to map data file columns to database table colums with different names. Only one of column_mappings or mappings_file should be provided. Note that only the columns whose headers differ between the data file and the database table need to be included. All column names must be quoted.  
+            * Args: 
+                * `--column_mappings` TEXT  A string that can be read as a dictionary using `ast.literal_eval()`. It should  take the form `"{'data_col': 'db_table_col', 'data_col2': 'db_table_col2', ...}"`  
+                * `--mappings_file` TEXT    A text file that can be opened with `open()` and that contains one Python dict that can be read with `ast.literal_eval()`. The file should take the form `{"data_col": "db_table_col", "data_col2": "db_table_col2", ... }`. Note no quotes around the curly braces `{}`.
+        * `upsert-csv` Upserts data from a CSV to a Postgres table, which must have at least one primary key. The keyword arguments "column_mappings" or "mappings_file" can be used to map data file columns to database table colums with different names. Only one of column_mappings or mappings_file should be provided. Note that only the columns whose headers differ between the data file and the database table need to be included. All column names must be quoted.  
 
+            * Args: 
+                * `--column_mappings` TEXT  A string that can be read as a dictionary using `ast.literal_eval()`. It should  take the form `"{'data_col': 'db_table_col', 'data_col2': 'db_table_col2', ...}"`  
+                * `--mappings_file` TEXT    A text file that can be opened with `open()` and that contains one Python dict that can be read with `ast.literal_eval()`. The file should take the form `{"data_col": "db_table_col", "data_col2": "db_table_col2", ... }`. Note no quotes around the curly braces `{}`.  
+        * `upsert_table` Upserts data from a Postgres table to a Postgres table in the same database, which must have at least one primary key. The keyword arguments  "column_mappings" or "mappings_file" can be used to map data file columns to database table colums with different names. Only one of column_mappings or mappings_file should be provided. Note that only the columns whose headers differ between the data file and the database table need to be included. All column names must be quoted.  
+            * Args: 
+                * `--column_mappings` TEXT  A string that can be read as a dictionary using `ast.literal_eval()`. It should  take the form `"{'data_col': 'db_table_col', 'data_col2': 'db_table_col2', ...}"`  
+                * `--mappings_file` TEXT    A text file that can be opened with `open()` and that contains one Python dict that can be read with `ast.literal_eval()`. The file should take the form `{"data_col": "db_table_col", "data_col2": "db_table_col2", ... }`. Note no quotes around the curly braces `{}`.  
+                * `--other_schema` TEXT     Schema of Postgres table  to upsert from. If None or absent, assume the same schema as the table being upserted to
+                * `--other_table` TEXT      Name of Postgres table to upsert from   [required]
