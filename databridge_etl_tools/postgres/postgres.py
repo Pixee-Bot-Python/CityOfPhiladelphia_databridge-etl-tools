@@ -6,7 +6,7 @@ import ast
 import psycopg2.sql as sql
 import geopetl
 import petl as etl
-from .postgres_connector import Connector
+from .postgres_connector import Postgres_Connector
 
 csv.field_size_limit(sys.maxsize)
 
@@ -32,7 +32,7 @@ class Postgres():
                       load_json_schema_to_s3)
     from ._cleanup import (vacuum_analyze, cleanup, check_remove_nulls)
 
-    def __init__(self, connector: 'Connector', table_name:str, table_schema:str, 
+    def __init__(self, connector: 'Postgres_Connector', table_name:str, table_schema:str, 
                  **kwargs):
         self.connector = connector
         self.logger = self.connector.logger
@@ -64,7 +64,15 @@ class Postgres():
         ```
         See https://book.pythontips.com/en/latest/context_managers.html
         '''
-        self._start_row_count = self.get_row_count()
+        
+        # First make sure the table exists:
+        exists_query = sql.SQL('SELECT to_regclass(%s)')
+        result = self.execute_sql(exists_query, data=[self.table_schema_name], fetch='one')[0]
+        
+        assert result != None, f'Table does not exist in this DB: {self.table_schema}.{self.table_name}'
+        
+        self.get_row_count()
+        self.logger.info(f'{"*" * 80}\n')
         return self
     
     def __exit__(self, type, value, traceback):
@@ -251,30 +259,27 @@ class Postgres():
         return count
 
     def extract(self):
+        """Extracts data from a postgres table into a CSV file in S3. Has spatial 
+        and SRID detection and will output it in a way that the ago append commands 
+        will recognize."""
+        row_count = self.get_row_count()
+        
         self.logger.info(f'Starting extract from {self.table_schema_name}')
-        self.logger.info(f'Rows to extract: {self.get_row_count()}')
+        self.logger.info(f'Rows to extract: {row_count}')
         self.logger.info("Note: petl can cause log messages to seemingly come out of order.")
-
-        # First make sure the table exists:
-        exists_query = f'''SELECT to_regclass('{self.table_schema}.{self.table_name}');'''
-        result = self.execute_sql(exists_query, fetch='one')[0]
-
-        if self.get_row_count() == 0:
-            raise AssertionError('Error! Row count of dataset in database is 0??')
+        
+        assert row_count != 0, 'Error! Row count of dataset in database is 0??'
 
         # Try to get an (arbitrary) sensible interval to print progress on by dividing by the row count
-        if self.get_row_count() < 10000:
-            interval = int(self.get_row_count()/3)
-        if self.get_row_count() > 10000:
-            interval = int(self.get_row_count()/15)
-        if self.get_row_count() == 1:
+        if row_count < 10000:
+            interval = int(row_count/3)
+        if row_count > 10000:
+            interval = int(row_count/15)
+        if row_count == 1:
             interval = 1
         # If it rounded down to 0 with int(), that means we have a very small amount of rows
         if not interval:
             interval = 1
-
-        if result is None:
-            raise AssertionError(f'Table does not exist in this DB: {self.table_schema}.{self.table_name}!')
 
         self.logger.info('Initializing data var with etl.frompostgis()..')
         if self.with_srid is True:
@@ -296,8 +301,8 @@ class Postgres():
             raise AssertionError('Error! Dataset is empty? Line count of CSV is 0.')
 
         self.logger.info(f'Asserting counts match between db and extracted csv')
-        self.logger.info(f'{self.get_row_count()} == {num_rows_in_csv}')
-        assert self.get_row_count() == num_rows_in_csv
+        self.logger.info(f'{row_count} == {num_rows_in_csv}')
+        assert row_count == num_rows_in_csv
 
         self.check_remove_nulls()
         self.load_csv_to_s3()
@@ -472,10 +477,8 @@ class Postgres():
     def upsert(self, method:str, other_table:str=None, other_schema:str=None, 
                column_mappings:str=None, mappings_file:str=None): 
         '''Upserts data from a CSV or from a table within the same database to a 
-        Postgres table, which must have at least one primary key. If upserting from a 
-        database table, "other_table" must be passed as a parameter, and the primary keys 
-        of the other table must exactly match those of the table being upserted to. 
-        Whether upserting from a CSV or Postgres table, the keyword arguments 
+        Postgres table, which must have at least one primary key. Whether 
+        upserting from a CSV or Postgres table, the keyword arguments 
         "column_mappings" or "mappings_file" may be passed with values other than 
         None to map data file columns to database table columns.
         
@@ -497,7 +500,7 @@ class Postgres():
         only the columns whose headers differ between the data file and the database 
         table need to be included. All column names must be quoted. 
         '''
-        self.logger.info(f'{"*" * 80}\nUpserting into {self.table_schema_name}\n')
+        self.logger.info(f'Upserting into {self.table_schema_name}\n')
         if self.primary_keys == set(): 
             raise ValueError(f'Upsert method requires that table "{self.table_schema_name}" have at least one column as primary key.')
         mapping_dict = self._make_mapping_dict(column_mappings, mappings_file)

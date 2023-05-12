@@ -2,9 +2,9 @@ import sys
 import logging
 import psycopg2
 
-class Connector(): 
-    '''A class to represent a Postgres connection'''
-    def __init__(self, connection_string): 
+class Postgres_Connector(): 
+    '''Represent a Postgres connection. Do not remove **kwargs from class.'''
+    def __init__(self, connection_string, **kwargs): 
         self.connection_string = connection_string
         self._logger = None
         self._conn = None

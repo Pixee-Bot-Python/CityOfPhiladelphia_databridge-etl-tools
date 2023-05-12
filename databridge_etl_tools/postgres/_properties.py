@@ -1,9 +1,6 @@
-import sys
 import os
 import json
-import psycopg2
 import psycopg2.sql as sql
-import logging
 from .postgres_map import DATA_TYPE_MAP, GEOM_TYPE_MAP
 
 @property
@@ -50,13 +47,13 @@ def json_schema_path(self):
 def export_json_schema(self):
     '''Json schema to export to s3 during extraction, for use when uploading to places like Carto.'''
     if self._export_json_schema is None:
-        stmt = f'''
+        stmt = sql.SQL('''
         SELECT column_name, data_type, numeric_precision, numeric_scale
         FROM information_schema.columns
-        WHERE table_schema = '{self.table_schema}'
-        AND table_name = '{self.table_name}'
-        '''
-        results = self.execute_sql(stmt, fetch='all')
+        WHERE table_schema = %s
+        AND table_name = %s
+        ''')
+        results = self.execute_sql(stmt, data=[self.table_schema, self.table_name], fetch='all')
         self._export_json_schema = json.dumps(results)
     return self._export_json_schema
 
