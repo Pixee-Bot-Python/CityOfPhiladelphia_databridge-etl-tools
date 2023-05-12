@@ -202,25 +202,18 @@ class Postgres():
     def write_csv(self, write_file:'str', table_name:'str', schema_name:'str', 
                   mapping_dict:dict={}):
         '''Use Postgres COPY FROM method to append a CSV to a Postgres table, 
-        gathering the header from the first line of the file. Use column_mappings or 
-        mappings_file to specify a mapping of data file columns to database table columns.
+        gathering the header from the first line of the file. Use mapping_dict to
+        map data file columns to database table columns.
         
         - write_file: Path of file for postgresql COPY FROM
-        - table_schema_name: Destination table
-        - column_mappings: A string that can be read as a dictionary using `ast.literal_eval()`. 
-            - It should take the form '{"data_col": "db_table_col", 
-                                        "data_col2": "db_table_col2", ...}'
-            - Note the quotes around the curly braces `'{}'` because it is a string
-        - mappings_file: A text file (not Python file) that can be opened with open() 
-        and that contains one Python dictionary that can be read with `ast.literal_eval()`
-            - The file should take the form {"data_col": "db_table_col", 
-                                            "data_col2": "db_table_col2", ... }
-            - Note no quotes around the curly braces `{}`. 
-    
-        Only one of column_mappings or mappings_file should be provided. Note that 
-        only the columns whose headers differ between the data file and the database 
-        table need to be included. All column names must be quoted. While this method 
-        can be called directly, it is preferable to call load() if possible instead.
+        - table_name: Destination table
+        - schema_name: Schema of destination table
+        - mapping_dict: A dict of the form 
+            - {"data_col": "db_table_col", "data_col2": "db_table_col2", ... }
+        
+        Note that only the columns whose names differ between the data file and 
+        the database table need to be included. While this method can be called 
+        directly, it is preferable to call load() if possible instead.
         '''
 
         self.logger.info(f'Writing to table {schema_name}.{table_name} from {write_file}...')
