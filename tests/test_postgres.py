@@ -1,36 +1,44 @@
 import pytest
 
 from .constants import S3_BUCKET
-from databridge_etl_tools.postgres import Postgres
+from databridge_etl_tools.postgres.postgres import Postgres,Postgres_Connector
+
+            
+def test_postgres_point_extract(user, password, host, database):
+    with Postgres_Connector(connection_string=f'postgresql://{user}:{password}@{host}:5432/{database}') as connector:
+        with Postgres(connector=connector,
+            table_name='point_table_2272',
+            table_schema='citygeo',
+            s3_bucket='airflow-testing-v2',
+            s3_key='staging/test/point_table_2272.csv') as pg:
+                pg.extract()
 
 
-@pytest.fixture
-def postgres_point(user, password, host, database):
-    conn_string = f'postgresql://{user}:{password}@{host}:5432/{database}'
-    postgres_point_client = Postgres(
-        table_name='point_table_2272',
-        table_schema='citygeo',
-        connection_string=conn_string,
-        s3_bucket='airflow-testing-v2',
-        s3_key='staging/test/point_table_2272.csv'
-    )
-    return postgres_point_client
-
-def test_postgres_point_extract(postgres_point):
-    postgres_point.extract()
+def test_postgres_upsert(user, password, host, database):
+    with Postgres_Connector(connection_string=f'postgresql://{user}:{password}@{host}:5432/{database}') as connector:
+        with Postgres(connector=connector,
+            table_name='test_contractor_violations',
+            table_schema='citygeo',
+            s3_bucket='airflow-testing-v2',
+            s3_key='staging/lni/contractor_violations.csv') as pg:
+                pg.upsert('csv')
 
 
-@pytest.fixture
-def postgres_multi(user, password, host, database):
-    conn_string = f'postgresql://{user}:{password}@{host}:5432/{database}'
-    postgres_multi_client = Postgres(
-        table_name='multipolygon_table_2272',
-        table_schema='citygeo',
-        connection_string=conn_string,
-        s3_bucket='airflow-testing-v2',
-        s3_key='staging/test/multipolygon_table_2272.csv'
-    )
-    return postgres_multi_client
+def test_postgres_load(user, password, host, database):
+    with Postgres_Connector(connection_string=f'postgresql://{user}:{password}@{host}:5432/{database}') as connector:
+        with Postgres(connector=connector,
+            table_name='test_contractor_violations',
+            table_schema='citygeo',
+            s3_bucket='airflow-testing-v2',
+            s3_key='staging/lni/contractor_violations.csv') as pg:
+                pg.load()
 
-def test_postgres_multipolygon_extract(postgres_multi):
-    postgres_multi.extract()
+
+def test_postgres_json_schema_extract(user, password, host, database):
+    with Postgres_Connector(connection_string=f'postgresql://{user}:{password}@{host}:5432/{database}') as connector:
+        with Postgres(connector=connector,
+            table_name='point_table_2272',
+            table_schema='citygeo',
+            s3_bucket='airflow-testing-v2',
+            s3_key='schemas/citygeo/point_table_2272.json') as pg:
+                pg.load_json_schema_to_s3()
