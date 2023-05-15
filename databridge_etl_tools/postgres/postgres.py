@@ -350,6 +350,17 @@ class Postgres():
             sql.SQL('''DROP TABLE IF EXISTS {}''').format(sql.Identifier(table_name)))
         self.logger.info('DROP IF EXISTS statement successfully executed.\n')
 
+    def truncate(self):
+        '''
+        Simply Truncates a table
+        '''
+        truncate_stmt = sql.SQL('TRUNCATE TABLE {table_schema_name}').format(
+            table_schema_name=sql.Identifier(self.table_schema, self.table_name))
+        with self.conn.cursor() as cursor: 
+            self.logger.info(f'truncate_stmt:{cursor.mogrify(truncate_stmt).decode()}')
+            cursor.execute(truncate_stmt)
+            self.logger.info(f'Truncate successful: {cursor.rowcount:,} rows updated/inserted.\n')
+
     def load(self, column_mappings:str=None, mappings_file:str=None):
         '''
         Prepare and COPY a CSV from S3 to a Postgres table. If the keyword arguments 
@@ -465,6 +476,7 @@ class Postgres():
         other = Postgres(connector=self.connector, table_name=self.temp_table_name, 
                          table_schema=self.table_schema)
         self._upsert_data_from_db(other=other, mapping_dict=mapping_dict)
+
 
     def _upsert_table(self, mapping_dict:dict, other_table:str, other_schema:str=None): 
         '''Upsert a table within the same Postgres database to a Postgres table'''

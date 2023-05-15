@@ -1,5 +1,4 @@
 import pytest
-
 from .constants import S3_BUCKET
 from databridge_etl_tools.postgres.postgres import Postgres,Postgres_Connector
 
@@ -31,6 +30,7 @@ def test_postgres_load(user, password, host, database):
             table_schema='citygeo',
             s3_bucket='airflow-testing-v2',
             s3_key='staging/lni/contractor_violations.csv') as pg:
+                pg.truncate()
                 pg.load()
 
 
