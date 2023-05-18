@@ -93,12 +93,21 @@ def pk_constraint_name(self):
     return self._pk_constraint_name
 
 @property
+def table_self_identifier(self): 
+    '''Return the correct sql.Identifier() for a TEMP table vs. BASE table'''
+    if self.table_schema == None: 
+        table_identifier = sql.Identifier(self.table_name)
+    else: 
+        table_identifier = sql.Identifier(self.table_schema, self.table_name)
+    
+    return table_identifier
+
+@property
 def fields(self) -> 'list': 
     '''Get or return the fields of a table in a list'''
     if self._fields == None: 
         with self.conn.cursor() as cursor: 
-            stmt = sql.SQL('''SELECT * FROM {} LIMIT 0''').format(
-                sql.Identifier(self.table_schema, self.table_name))
+            stmt = sql.SQL('''SELECT * FROM {} LIMIT 0''').format(self.table_self_identifier)
             cursor.execute(stmt)
         rv = []
         for column in cursor.description: 
@@ -190,7 +199,6 @@ def geom_type(self, value):
             geom_stmt = f'''
     SELECT geometry_type('{self.table_schema}', '{self.table_name}', '{self.geom_field}')
             '''
-            self.logger.info(f'Determining our geom_type, running statement: {geom_stmt}')
             result = self.execute_sql(geom_stmt, fetch='one')
             if result == None:
                 self._geom_type = None

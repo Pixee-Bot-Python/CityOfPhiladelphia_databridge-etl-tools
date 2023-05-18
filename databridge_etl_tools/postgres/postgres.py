@@ -26,14 +26,15 @@ class Postgres():
 
     from ._properties import (
         csv_path, temp_csv_path, json_schema_file_name, json_schema_path, 
-        export_json_schema, primary_keys, pk_constraint_name, fields, 
-        geom_field, geom_type, schema, get_geom_field)
+        export_json_schema, primary_keys, pk_constraint_name, table_self_identifier, 
+        fields, geom_field, geom_type, schema, get_geom_field)
     from ._s3 import (get_csv_from_s3, get_json_schema_from_s3, load_csv_to_s3, 
                       load_json_schema_to_s3)
     from ._cleanup import (vacuum_analyze, cleanup, check_remove_nulls)
 
-    def __init__(self, connector: 'Postgres_Connector', table_name:str, table_schema:str, 
+    def __init__(self, connector: 'Postgres_Connector', table_name:str, table_schema:str=None, 
                  **kwargs):
+        '''Pass table_schema = None for TEMP tables'''
         self.connector = connector
         self.logger = self.connector.logger
         self.conn = self.connector.conn
@@ -53,8 +54,17 @@ class Postgres():
         self._primary_keys = None
         self._pk_constraint_name = None
         self._fields = None
-        # just initialize this self variable here so we connect first
-        self.conn
+
+        # First make sure the table exists: 
+        if self.table_schema == None: 
+            assert_statement = f'TEMPORARY Table {self.table_name} does not exist in this DB'
+            logger_statement = f'TEMPORARY table {self.table_name}'
+        else: 
+            assert_statement = f'Table {self.table_schema}.{self.table_name} does not exist in this DB'
+            logger_statement = f'table {self.table_schema_name}'
+        
+        assert self.check_exists(self.table_name, self.table_schema), assert_statement
+        self.logger.info(f'Connected to {logger_statement}\n')
 
     def __enter__(self):
         '''Context manager functions to be called BEFORE any functions inside
@@ -64,12 +74,6 @@ class Postgres():
         ```
         See https://book.pythontips.com/en/latest/context_managers.html
         '''
-        
-        # First make sure the table exists:
-        exists_query = sql.SQL('SELECT to_regclass(%s)')
-        result = self.execute_sql(exists_query, data=[self.table_schema_name], fetch='one')[0]
-        
-        assert result != None, f'Table does not exist in this DB: {self.table_schema}.{self.table_name}'
         
         self.get_row_count()
         self.logger.info(f'{"*" * 80}\n')
@@ -84,7 +88,7 @@ class Postgres():
         '''
         if type == None: # No exception was raised before __exit__()
             try: 
-                self.drop_table(self.table_schema, self.temp_table_name, exists='log')
+                # self.drop_table(self.table_schema, self.temp_table_name, exists='log')
                 self.get_row_count()   
                 self.conn.commit()
                 self.vacuum_analyze()
@@ -100,6 +104,28 @@ class Postgres():
             self.conn.rollback()
             self.cleanup() 
 
+    def check_exists(self, table_name: str, schema_name:str) -> bool: 
+        '''Check if a table exists, returning True or False. 
+        - type: If None or "base" or "table", look for a BASE TABLE. If "temp" 
+        or "temporary", look for a LOCAL TEMPORARY table. 
+        '''
+        stmt = sql.SQL('''
+    SELECT *
+    FROM information_schema.tables
+    WHERE table_name = %s AND
+    table_type = %s''')
+        
+        data = [table_name]
+        if schema_name != None: 
+            stmt += sql.SQL(' AND table_schema = %s')
+            data.extend(['BASE TABLE', self.table_schema])
+        else: 
+            data.append('LOCAL TEMPORARY')
+        with self.conn.cursor() as cursor: 
+            cursor.execute(stmt, data)
+            rv = cursor.fetchone()
+            return rv != None
+    
     def execute_sql(self, stmt, data=None, fetch=None):
         '''
         Execute an sql.SQL statement and fetch rows if specified. 
@@ -208,23 +234,30 @@ class Postgres():
         return mapped_header   
     
     def write_csv(self, write_file:'str', table_name:'str', schema_name:'str', 
-                  mapping_dict:dict={}):
+                  mapping_dict:dict={}, temp_table:bool=False):
         '''Use Postgres COPY FROM method to append a CSV to a Postgres table, 
         gathering the header from the first line of the file. Use mapping_dict to
         map data file columns to database table columns.
         
         - write_file: Path of file for postgresql COPY FROM
         - table_name: Destination table
-        - schema_name: Schema of destination table
+        - schema_name: Schema of destination table, ignored if temp_table == True
         - mapping_dict: A dict of the form 
             - {"data_col": "db_table_col", "data_col2": "db_table_col2", ... }
+        - temp_table: True if the table is a TEMP TABLE, False otherwise
         
         Note that only the columns whose names differ between the data file and 
         the database table need to be included. While this method can be called 
         directly, it is preferable to call load() if possible instead.
         '''
 
-        self.logger.info(f'Writing to table {schema_name}.{table_name} from {write_file}...')
+        if temp_table: # temp_tables do not exist in a user-defined schema
+            self.logger.info(f'Writing to TEMP table {table_name} from {write_file}...')
+            table_identifier = sql.Identifier(table_name)
+        else: 
+            self.logger.info(f'Writing to table {schema_name}.{table_name} from {write_file}...')
+            table_identifier = sql.Identifier(schema_name, table_name)
+        
         with open(write_file, 'r') as f: 
             # f.readline() moves cursor position out of position
             str_header = f.readline().strip().split(',')            
@@ -238,11 +271,11 @@ class Postgres():
                 cols_composed = sql.Composed(cols_composables).join(', ')
                 
                 copy_stmt = sql.SQL('''
-    COPY {table_schema_name} ({cols_composed}) 
+    COPY {table} ({cols_composed}) 
     FROM STDIN WITH (FORMAT csv, HEADER true)''').format(
-                    table_schema_name=sql.Identifier(schema_name, table_name), 
+                    table=table_identifier, 
                     cols_composed=cols_composed)
-                self.logger.info(f'copy_statement:{cursor.mogrify(copy_stmt).decode()}')
+                self.logger.info(f'copy_statement:{cursor.mogrify(copy_stmt).decode()}') # Does this mean they need to be correctly capitalized as identifiers?
                 cursor.copy_expert(copy_stmt, f)
 
                 self.logger.info(f'Postgres Write Successful: {cursor.rowcount:,} rows imported.\n')
@@ -252,7 +285,7 @@ class Postgres():
         row counts change.'''
         data = self.execute_sql(
             sql.SQL('SELECT count(*) FROM {}').format(
-                sql.Identifier(self.table_schema, self.table_name)), 
+                self.table_self_identifier), 
             fetch='many')
         count = data[0][0]
         self.logger.info(f'{self.table_schema_name} current row count: {count:,}\n')
@@ -309,16 +342,16 @@ class Postgres():
     
     def create_temp_table(self): 
         '''Create an empty temp table from self.table_name in the same schema'''
-        with self.conn.cursor() as cursor:
+        with self.conn.cursor() as cursor: 
             cursor.execute(sql.SQL('''
-            CREATE TABLE {} AS 
+            CREATE TEMPORARY TABLE {} AS 
                 SELECT * 
                 FROM {}
-            WHERE 1=0;
+                WHERE 1=0;
             ''').format(    # This is psycopg2.sql.SQL.format() not f string format
-                sql.Identifier(self.table_schema, self.temp_table_name), # See https://www.psycopg.org/docs/sql.html
-                sql.Identifier(self.table_schema, self.table_name)))
-            self.logger.info(f'Created temp table {self.temp_table_name}\n')
+                sql.Identifier(self.temp_table_name), # Temp tables cannot be created in a user-defined schema
+                self.table_self_identifier)) # See https://www.psycopg.org/docs/sql.html
+            self.logger.info(f'Created TEMP table {self.temp_table_name}\n')
     
     def drop_table(self, schema: str, table_name: 'str', exists='log'): 
         '''DROP a table
@@ -351,11 +384,10 @@ class Postgres():
         self.logger.info('DROP IF EXISTS statement successfully executed.\n')
 
     def truncate(self):
-        '''
-        Simply Truncates a table
-        '''
+        '''Simply Truncates a table'''
+        
         truncate_stmt = sql.SQL('TRUNCATE TABLE {table_schema_name}').format(
-            table_schema_name=sql.Identifier(self.table_schema, self.table_name))
+            table_schema_name=self.table_self_identifier)
         with self.conn.cursor() as cursor: 
             self.logger.info(f'truncate_stmt:{cursor.mogrify(truncate_stmt).decode()}')
             cursor.execute(truncate_stmt)
@@ -394,8 +426,8 @@ class Postgres():
         this SQL takes the form of 
         ```
         INSERT INTO {table_schema_name} AS EXISTING (col1, col2, ...)
-        SELECT UPDATES.col1, UPDATES.col2, ...
-        FROM {other_table_schema_name} AS UPDATES
+        SELECT OTHER.col1, OTHER.col2, ...
+        FROM {other_table_schema_name} AS OTHER
         ON CONFLICT ON CONSTRAINT {pk_constraint}
         DO UPDATE SET 
             col1 = EXCLUDED.col1, col2 = EXCLUDED.col2, ...
@@ -418,7 +450,7 @@ class Postgres():
             existing_field = mapping_dict.get(other_field, other_field) 
             
             existing_fields_composables.append(sql.Identifier(existing_field))
-            other_fields_composables.append(sql.SQL('UPDATES.') + sql.Identifier(other_field))
+            other_fields_composables.append(sql.SQL('OTHER.') + sql.Identifier(other_field))
             update_set_composables.append(
                 sql.Composed(
                     sql.Identifier(existing_field) + 
@@ -447,15 +479,15 @@ class Postgres():
         upsert_stmt = sql.SQL('''
     INSERT INTO {table_schema_name} AS EXISTING ({existing_fields_composed})
     SELECT {other_fields}
-    FROM {other_table_schema_name} AS UPDATES
+    FROM {other_table_schema_name} AS OTHER
     ON CONFLICT ON CONSTRAINT {pk_constraint}
     DO UPDATE SET {update_set_composed}
     WHERE {where_composed}
     ''').format(
-            table_schema_name=sql.Identifier(self.table_schema, self.table_name), 
+            table_schema_name=self.table_self_identifier, 
             existing_fields_composed=existing_fields_composed,
             other_fields=other_fields_composed, 
-            other_table_schema_name=sql.Identifier(other.table_schema, other.table_name), 
+            other_table_schema_name=other.table_self_identifier, 
             pk_constraint=sql.Identifier(self.pk_constraint_name), 
             update_set_composed=update_set_composed, 
             where_composed=where_composed)
@@ -467,16 +499,16 @@ class Postgres():
 
     def _upsert_csv(self, mapping_dict:dict): 
         '''Upsert a CSV file from S3 to a Postgres table'''
-        self.drop_table(self.table_schema, self.temp_table_name, exists='error')
+        assert self.check_exists(self.temp_table_name, self.table_schema) == False, f'Temporary Table {self.temp_table_name} already exists in this DB!'
+
         self.get_csv_from_s3()
         self.prepare_file(self.csv_path, mapping_dict)
         self.create_temp_table()
         self.write_csv(write_file=self.temp_csv_path, table_name=self.temp_table_name, 
-                       schema_name=self.table_schema, mapping_dict=mapping_dict)
+                       schema_name=self.table_schema, mapping_dict=mapping_dict, temp_table=True)
         other = Postgres(connector=self.connector, table_name=self.temp_table_name, 
-                         table_schema=self.table_schema)
+                         table_schema=None)
         self._upsert_data_from_db(other=other, mapping_dict=mapping_dict)
-
 
     def _upsert_table(self, mapping_dict:dict, other_table:str, other_schema:str=None): 
         '''Upsert a table within the same Postgres database to a Postgres table'''
