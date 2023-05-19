@@ -420,18 +420,66 @@ class Postgres():
         self.write_csv(write_file=self.temp_csv_path, table_name=self.table_name, 
                        schema_name=self.table_schema, mapping_dict=mapping_dict)
 
-    def _upsert_data_from_db(self, other: 'Postgres', mapping_dict:dict={}): 
+    def _delete_using_except(self, staging, mapping_dict:dict): 
+        '''Run a query to delete the rows from a table that do not appear in another 
+        table using EXCEPT'''
+        prod_fields_composables = []
+        staging_fields_composables = []
+        for staging_field in staging.fields: 
+            # If there is a mapping for staging_field, use that mapping, otherwise 
+            # just use staging_field
+            prod_field = mapping_dict.get(staging_field, staging_field) 
+            
+            prod_fields_composables.append(sql.Identifier(prod_field))
+            staging_fields_composables.append(sql.SQL('STAGING.') + sql.Identifier(staging_field))
+        
+        where_composables = []
+        for pk in self.primary_keys: 
+            where_composables.append(
+                sql.Composed(
+                    sql.SQL('PROD.') + sql.Identifier(pk) + 
+                    sql.SQL(' = ') + 
+                    sql.SQL('NOT_MATCHED.') + sql.Identifier(pk)))
+        
+        # Any composed statement can be examined with print(<sql.Composed>.as_string(cursor))
+        prod_fields_composed = sql.Composed(prod_fields_composables).join(', ')
+        staging_fields_composed = sql.Composed(staging_fields_composables).join(', ')
+        where_composed = sql.Composed(where_composables).join(' AND ')
+
+        delete_using_stmt = sql.SQL('''
+    DELETE 
+    FROM {table_schema_name} AS PROD
+    USING
+        (SELECT {prod_fields_composed} 
+        FROM {table_schema_name} 
+        EXCEPT 
+        SELECT {staging_fields_composed} 
+        FROM {staging_table_schema_name} AS STAGING) AS NOT_MATCHED
+    WHERE {where_composed}''').format(
+            table_schema_name=self.table_self_identifier, 
+            prod_fields_composed=prod_fields_composed, 
+            staging_fields_composed=staging_fields_composed,
+            staging_table_schema_name=staging.table_self_identifier, 
+            where_composed=where_composed)
+    
+        with self.conn.cursor() as cursor: 
+            self.logger.info(f'delete_using_statement:{cursor.mogrify(delete_using_stmt).decode()}')
+            cursor.execute(delete_using_stmt)
+            self.logger.info(f'Delete Using Except statement successful: {cursor.rowcount:,} rows deleted.\n')
+    
+    def _upsert_data_from_db(self, staging: 'Postgres', mapping_dict:dict={}, 
+                             delete_stale:bool=False): 
         '''
-        Create the SQL statements to upsert a table into another. In general form, 
-        this SQL takes the form of 
+        Create the SQL statements to upsert a table into another, optionally deleting 
+        stale data beforehand. In general form, this SQL takes the form of 
         ```
-        INSERT INTO {table_schema_name} AS EXISTING (col1, col2, ...)
-        SELECT OTHER.col1, OTHER.col2, ...
-        FROM {other_table_schema_name} AS OTHER
+        INSERT INTO {table_schema_name} AS PROD (col1, col2, ...)
+        SELECT STAGING.col1, STAGING.col2, ...
+        FROM {staging_table_schema_name} AS STAGING
         ON CONFLICT ON CONSTRAINT {pk_constraint}
         DO UPDATE SET 
             col1 = EXCLUDED.col1, col2 = EXCLUDED.col2, ...
-        WHERE EXISTING.pk1 = EXCLUDED.pk1 AND EXISTING.pk2 = EXCLUDED.pk2 AND ...
+        WHERE PROD.pk1 = EXCLUDED.pk1 AND PROD.pk2 = EXCLUDED.pk2 AND ...
         ```
         See https://www.psycopg.org/docs/sql.html for how sql.Composable, sql.SQL, 
         sql.Identifier, and sql.Composed related to each other       
@@ -439,28 +487,26 @@ class Postgres():
         # See https://www.postgresql.org/docs/current/sql-insert.html for why the 
         # table is called EXCLUDED
         
+        if delete_stale: 
+            self._delete_using_except(staging=staging, mapping_dict=mapping_dict)
+
         # Iterate through the Other table's fields and use the mapping_dict to create 
-        # three sql.Composed statements: existing_fields, other_fields, update_set
-        existing_fields_composables = []
-        other_fields_composables = []
+        # three sql.Composed statements: prod_fields, staging_fields, update_set
+        prod_fields_composables = []
+        staging_fields_composables = []
         update_set_composables = []
-        for other_field in other.fields: 
-            # If there is a mapping for other_field, use that mapping, otherwise 
-            # just use other_field
-            existing_field = mapping_dict.get(other_field, other_field) 
+        for staging_field in staging.fields: 
+            # If there is a mapping for staging_field, use that mapping, otherwise 
+            # just use staging_field
+            prod_field = mapping_dict.get(staging_field, staging_field) 
             
-            existing_fields_composables.append(sql.Identifier(existing_field))
-            other_fields_composables.append(sql.SQL('OTHER.') + sql.Identifier(other_field))
+            prod_fields_composables.append(sql.Identifier(prod_field))
+            staging_fields_composables.append(sql.SQL('STAGING.') + sql.Identifier(staging_field))
             update_set_composables.append(
                 sql.Composed(
-                    sql.Identifier(existing_field) + 
+                    sql.Identifier(prod_field) + 
                     sql.SQL(' = EXCLUDED.') + 
-                    sql.Identifier(existing_field)))
-        
-        # Any composed statement can be examined with print(<sql.Composed>.as_string(cursor))
-        existing_fields_composed = sql.Composed(existing_fields_composables).join(', ')
-        other_fields_composed = sql.Composed(other_fields_composables).join(', ')
-        update_set_composed = sql.Composed(update_set_composables).join(', ')
+                    sql.Identifier(prod_field)))
         
         # Iterate through self.primary_keys and use the mapping_dict to create 
         # one sql.Composed statement: where_composed
@@ -468,26 +514,28 @@ class Postgres():
         for pk in self.primary_keys: 
             where_composables.append(
                 sql.Composed(
-                    sql.SQL('EXISTING.') + 
-                    sql.Identifier(pk) + 
+                    sql.SQL('PROD.') + sql.Identifier(pk) + 
                     sql.SQL(' = ') + 
-                    sql.SQL('EXCLUDED.') + 
-                    sql.Identifier(pk)))
+                    sql.SQL('EXCLUDED.') + sql.Identifier(pk)))
         
+        # Any composed statement can be examined with print(<sql.Composed>.as_string(cursor))
+        prod_fields_composed = sql.Composed(prod_fields_composables).join(', ')
+        staging_fields_composed = sql.Composed(staging_fields_composables).join(', ')
+        update_set_composed = sql.Composed(update_set_composables).join(', ')
         where_composed = sql.Composed(where_composables).join(' AND ')
 
         upsert_stmt = sql.SQL('''
-    INSERT INTO {table_schema_name} AS EXISTING ({existing_fields_composed})
-    SELECT {other_fields}
-    FROM {other_table_schema_name} AS OTHER
+    INSERT INTO {table_schema_name} AS PROD ({prod_fields_composed})
+    SELECT {staging_fields_composed}
+    FROM {staging_table_schema_name} AS STAGING
     ON CONFLICT ON CONSTRAINT {pk_constraint}
     DO UPDATE SET {update_set_composed}
     WHERE {where_composed}
     ''').format(
             table_schema_name=self.table_self_identifier, 
-            existing_fields_composed=existing_fields_composed,
-            other_fields=other_fields_composed, 
-            other_table_schema_name=other.table_self_identifier, 
+            prod_fields_composed=prod_fields_composed,
+            staging_fields_composed=staging_fields_composed, 
+            staging_table_schema_name=staging.table_self_identifier, 
             pk_constraint=sql.Identifier(self.pk_constraint_name), 
             update_set_composed=update_set_composed, 
             where_composed=where_composed)
@@ -497,7 +545,7 @@ class Postgres():
             cursor.execute(upsert_stmt)
             self.logger.info(f'Upsert Successful: {cursor.rowcount:,} rows updated/inserted.\n')
 
-    def _upsert_csv(self, mapping_dict:dict): 
+    def _upsert_csv(self, mapping_dict:dict, delete_stale:bool): 
         '''Upsert a CSV file from S3 to a Postgres table'''
         assert self.check_exists(self.temp_table_name, self.table_schema) == False, f'Temporary Table {self.temp_table_name} already exists in this DB!'
 
@@ -506,20 +554,21 @@ class Postgres():
         self.create_temp_table()
         self.write_csv(write_file=self.temp_csv_path, table_name=self.temp_table_name, 
                        schema_name=self.table_schema, mapping_dict=mapping_dict, temp_table=True)
-        other = Postgres(connector=self.connector, table_name=self.temp_table_name, 
+        staging = Postgres(connector=self.connector, table_name=self.temp_table_name, 
                          table_schema=None)
-        self._upsert_data_from_db(other=other, mapping_dict=mapping_dict)
+        self._upsert_data_from_db(staging=staging, mapping_dict=mapping_dict, delete_stale=delete_stale)
 
-    def _upsert_table(self, mapping_dict:dict, other_table:str, other_schema:str=None): 
+    def _upsert_table(self, mapping_dict:dict, staging_table:str, staging_schema:str, 
+                      delete_stale:bool): 
         '''Upsert a table within the same Postgres database to a Postgres table'''
-        if not other_schema: 
-            other_schema = self.table_schema
-        other = Postgres(connector=self.connector, table_name=other_table, 
-                         table_schema=other_schema)
-        self._upsert_data_from_db(other=other, mapping_dict=mapping_dict)
+        if not staging_schema: 
+            staging_schema = self.table_schema
+        staging = Postgres(connector=self.connector, table_name=staging_table, 
+                         table_schema=staging_schema)
+        self._upsert_data_from_db(staging=staging, mapping_dict=mapping_dict, delete_stale=delete_stale)
     
-    def upsert(self, method:str, other_table:str=None, other_schema:str=None, 
-               column_mappings:str=None, mappings_file:str=None): 
+    def upsert(self, method:str, staging_table:str=None, staging_schema:str=None, 
+               column_mappings:str=None, mappings_file:str=None, delete_stale:bool=False): 
         '''Upserts data from a CSV or from a table within the same database to a 
         Postgres table, which must have at least one primary key. Whether 
         upserting from a CSV or Postgres table, the keyword arguments 
@@ -527,8 +576,8 @@ class Postgres():
         None to map data file columns to database table columns.
         
         - method: Indicates the source type. Should be one of "csv", "table".
-        - other_table: Name of Postgres table to upsert from 
-        - other_schema: Schema of Postgres table to upsert from. If None, assume the 
+        - staging_table: Name of Postgres table to upsert from 
+        - staging_schema: Schema of Postgres table to upsert from. If None, assume the 
         same schema as the table being upserted to
         - column_mappings: A string that can be read as a dict using `ast.literal_eval()`. 
             - It should take the form '{"data_col": "db_table_col", 
@@ -539,6 +588,8 @@ class Postgres():
             - The file should take the form {"data_col": "db_table_col", 
                                              "data_col2": "db_table_col2", ... }
             - Note no quotes around the curly braces `{}`. 
+        - delete_stale: If True, delete rows that do not appear in the staging 
+        data table. 
     
         Only one of column_mappings or mappings_file should be provided. Note that 
         only the columns whose headers differ between the data file and the database 
@@ -550,8 +601,8 @@ class Postgres():
         mapping_dict = self._make_mapping_dict(column_mappings, mappings_file)
         
         if method == 'csv': 
-            self._upsert_csv(mapping_dict)
+            self._upsert_csv(mapping_dict, delete_stale)
         elif method == 'table': 
-            self._upsert_table(mapping_dict, other_table, other_schema)
+            self._upsert_table(mapping_dict, staging_table, staging_schema, delete_stale)
         else: 
             raise KeyError('Method {method} not recognized for upsert')
