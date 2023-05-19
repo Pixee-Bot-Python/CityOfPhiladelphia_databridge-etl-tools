@@ -88,7 +88,6 @@ class Postgres():
         '''
         if type == None: # No exception was raised before __exit__()
             try: 
-                # self.drop_table(self.table_schema, self.temp_table_name, exists='log')
                 self.get_row_count()   
                 self.conn.commit()
                 self.vacuum_analyze()
@@ -353,34 +352,26 @@ class Postgres():
                 self.table_self_identifier)) # See https://www.psycopg.org/docs/sql.html
             self.logger.info(f'Created TEMP table {self.temp_table_name}\n')
     
-    def drop_table(self, schema: str, table_name: 'str', exists='log'): 
+    def drop_table(self, schema_name: str, table_name: 'str', exists='log'): 
         '''DROP a table
-            - schema - Schema of table to drop
-            - table_name - Table name to drop
-            - exists - One of "log", "error". If the table name already exists, 
-            whether to record that in the log or raise an error
+        - schema - Schema of table to drop, use <self>.table_schema for this object's 
+        schema
+        - table_name - Table name to drop, use <self>.table_name for this object's table
+        - exists - One of "log", "error". If the table name already exists, 
+        whether to record that in the log or raise an error
         '''
         self.logger.info(f'Attempting to drop table if exists {table_name}')
-        cursor = self.conn.cursor()
-        cursor.execute('''
-    SELECT EXISTS (
-        SELECT FROM pg_tables
-        WHERE  schemaname = %s
-        AND    tablename  = %s
-    )''', (schema, table_name))
-        rv = cursor.fetchone()[0]
-        if rv == False:         
-            self.logger.info(f'\tTable {table_name} does not exist.\n')
-            return None
-        elif rv == True: 
+        if self.check_exists(table_name, schema_name): 
             if exists == 'error': 
                 raise ValueError(f'Table {table_name} already exists and was set to be dropped.')
             if exists == 'log': 
                 self.logger.info(f'\tExisting table {table_name} will be dropped.')
-        else:
-            raise ValueError('Query return value not boolean')
-        cursor.execute(
-            sql.SQL('''DROP TABLE IF EXISTS {}''').format(sql.Identifier(table_name)))
+        else:         
+            self.logger.info(f'\tTable {table_name} does not exist.\n')
+            return None
+        with self.conn.cursor() as cursor:
+            cursor.execute(
+                sql.SQL('''DROP TABLE IF EXISTS {}''').format(sql.Identifier(table_name)))
         self.logger.info('DROP IF EXISTS statement successfully executed.\n')
 
     def truncate(self):
