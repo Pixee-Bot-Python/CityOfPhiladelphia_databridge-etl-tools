@@ -1,8 +1,4 @@
-import csv
-import sys
-import csv
-import re
-import ast
+import csv, sys, re, ast
 import psycopg2.sql as sql
 import geopetl
 import petl as etl
