@@ -168,7 +168,7 @@ python -m databridge_etl_tools \
 
 
 ## Run tests
-To one run suite of tests locally, run
+To one run suite of tests locally, from the root `databridge-etl-tools` folder, run
 ```bash
 pytest tests/<test_database.py>
     --user $USER 
@@ -178,6 +178,7 @@ pytest tests/<test_database.py>
     -xv 
     --showlocals 
     --disable-warnings 
+    --show-capture stdout
 ```
 To run just one test, add `::test_name` to the end of `test_database.py`
 

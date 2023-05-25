@@ -25,7 +25,7 @@ class Postgres():
     '''
 
     from ._properties import (
-        csv_path, temp_csv_path, json_schema_file_name, json_schema_path, 
+        csv_path, temp_csv_path, json_schema_path, json_schema_s3_key, 
         export_json_schema, primary_keys, pk_constraint_name, table_self_identifier, 
         fields, geom_field, geom_type, schema)
     from ._s3 import (get_csv_from_s3, get_json_schema_from_s3, load_csv_to_s3, 
@@ -45,10 +45,10 @@ class Postgres():
         self.temp_table_schema_name = f'{self.table_schema}.{self.temp_table_name}'
         self.s3_bucket = kwargs.get('s3_bucket', None)
         self.s3_key = kwargs.get('s3_key', None)
-        self.json_schema_s3_key = kwargs.get('json_schema_s3_key', None)
         self.geom_field = kwargs.get('geom_field', None)
         self.geom_type = kwargs.get('geom_type', None)
         self.with_srid = kwargs.get('with_srid', None)
+        self._json_schema_s3_key = kwargs.get('json_schema_s3_key', None)
         self._schema = None
         self._export_json_schema = None
         self._primary_keys = None
@@ -56,15 +56,16 @@ class Postgres():
         self._fields = None
 
         # First make sure the table exists: 
-        if self.table_schema == None: 
+        if self.table_schema == None: # If no schema provided, assume the table is TEMPORARY
             assert_statement = f'TEMPORARY Table {self.table_name} does not exist in this DB'
             logger_statement = f'TEMPORARY table {self.table_name}'
         else: 
             assert_statement = f'Table {self.table_schema}.{self.table_name} does not exist in this DB'
             logger_statement = f'table {self.table_schema_name}'
         
-        assert self.check_exists(self.table_name, self.table_schema), assert_statement
-        self.logger.info(f'Connected to {logger_statement}\n')
+        if table_name != None: # If no table name was provided, don't bother with checking
+            assert self.check_exists(self.table_name, self.table_schema), assert_statement
+            self.logger.info(f'Connected to {logger_statement}\n')
 
     def __enter__(self):
         '''Context manager functions to be called BEFORE any functions inside
@@ -337,7 +338,7 @@ class Postgres():
         assert row_count == num_rows_in_csv
 
         self.check_remove_nulls()
-        self.load_csv_to_s3()
+        self.load_csv_to_s3(path=self.csv_path)
     
     def create_temp_table(self): 
         '''Create an empty temp table from self.table_name in the same schema'''

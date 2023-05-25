@@ -20,28 +20,17 @@ def temp_csv_path(self):
     return temp_csv_path
 
 @property
-def json_schema_file_name(self):
+def json_schema_s3_key(self):
     # This expects the schema to be in a subfolder on S3
-    if self.json_schema_s3_key is None:
-        json_schema_file_name = None
-    elif ('/') in self.json_schema_s3_key:
-        json_schema_file_name = self.json_schema_s3_key.split('/')[1]
-    else:
-        json_schema_file_name = self.json_schema_s3_key
-    return json_schema_file_name
+    if self._json_schema_s3_key == None: 
+        self._json_schema_s3_key = (self.s3_key
+            .replace('staging', 'schemas')
+            .replace('.csv', '.json'))
+    return self._json_schema_s3_key
 
 @property
 def json_schema_path(self):
-    if self.json_schema_file_name == None:
-        json_schema_path = None
-    # On Windows, save to current directory
-    elif os.name == 'nt':
-        json_schema_path = self.json_schema_file_name
-    # On Linux, save to tmp folder
-    else:
-        json_schema_directory = os.path.join('/tmp')
-        json_schema_path = os.path.join(json_schema_directory, self.json_schema_file_name)
-    return json_schema_path
+    return self.csv_path.replace('.csv','.json')
 
 @property
 def export_json_schema(self):
