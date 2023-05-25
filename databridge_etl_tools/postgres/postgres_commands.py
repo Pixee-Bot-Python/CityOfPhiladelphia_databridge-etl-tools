@@ -13,6 +13,7 @@ import click
 @click.option('--table_schema', required=True)
 @click.option('--s3_bucket')
 @click.option('--s3_key')
+@click.option('--with_srid', type=bool)
 def postgres(ctx, **kwargs):
     '''Run ETL commands for Postgres'''
     ctx.obj = {}

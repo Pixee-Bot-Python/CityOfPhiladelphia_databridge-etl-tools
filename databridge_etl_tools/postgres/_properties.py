@@ -234,7 +234,3 @@ def schema(self):
                     schema_fmt += ','
         self._schema = schema_fmt
     return self._schema
-
-def get_geom_field(self):
-    """Not currently implemented. Relying on csv to be extracted by geopetl fromoraclesde with geom_with_srid = True"""
-    raise NotImplementedError

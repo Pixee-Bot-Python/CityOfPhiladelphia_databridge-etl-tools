@@ -27,7 +27,7 @@ class Postgres():
     from ._properties import (
         csv_path, temp_csv_path, json_schema_file_name, json_schema_path, 
         export_json_schema, primary_keys, pk_constraint_name, table_self_identifier, 
-        fields, geom_field, geom_type, schema, get_geom_field)
+        fields, geom_field, geom_type, schema)
     from ._s3 import (get_csv_from_s3, get_json_schema_from_s3, load_csv_to_s3, 
                       load_json_schema_to_s3)
     from ._cleanup import (vacuum_analyze, cleanup, check_remove_nulls)
