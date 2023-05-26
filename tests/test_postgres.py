@@ -1,7 +1,8 @@
 import pytest
 import os
 from databridge_etl_tools.postgres.postgres import Postgres, Postgres_Connector
-from .constants import (S3_BUCKET, S3_KEY_CSV, TABLE_NAME, FIXTURES_DIR, STAGING_DIR, 
+from .constants import (S3_BUCKET, POINT_TABLE_2272_S3_KEY_CSV, 
+                        POINT_TABLE_2272_NAME, FIXTURES_DIR, STAGING_DIR, 
                         POINT_TABLE_2272_CSV)
 
 TABLE_SCHEMA = 'citygeo'
@@ -54,10 +55,10 @@ def append_to_table(create_table, connector): # Only COPY data to table once for
 def pg(connector): 
     '''Yield a Postgres Table object'''
     with Postgres(connector=connector,
-                  table_name=TABLE_NAME,
+                  table_name=POINT_TABLE_2272_NAME,
                   table_schema=TABLE_SCHEMA,
                   s3_bucket=S3_BUCKET,
-                  s3_key=S3_KEY_CSV, 
+                  s3_key=POINT_TABLE_2272_S3_KEY_CSV, 
                   with_srid=True) as pg_obj:
         yield pg_obj        
 

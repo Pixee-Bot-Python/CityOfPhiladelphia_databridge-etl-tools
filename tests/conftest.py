@@ -8,7 +8,7 @@ import boto3
 from .constants import (
     S3_BUCKET,
     POINT_JSON_SCHEMA, POLYGON_JSON_SCHEMA, 
-    POINT_TABLE_2272_CSV, S3_KEY_CSV, 
+    POINT_TABLE_2272_CSV, POINT_TABLE_2272_S3_KEY_CSV, 
     POLYGON_CSV, FIXTURES_DIR, STAGING_DIR
 )
 
@@ -16,13 +16,6 @@ from .constants import (
 from _pytest.assertion import truncate
 truncate.DEFAULT_MAX_LINES = 9999
 truncate.DEFAULT_MAX_CHARS = 9999
-
-# FIXTURES_DIR = os.path.join(
-#     os.path.dirname(os.path.realpath(__file__)),
-#     'fixtures_data'
-#     )
-# SCHEMA_DIR = 'schemas'
-# STAGING_DIR = 'staging'
 
 # Command line options to be used in our test python files
 # Note: docs say this should only be in the conftest.py file.
@@ -81,7 +74,7 @@ def s3_polygon_schema(s3_bucket):
 @pytest.fixture(scope='session')
 def s3_point_csv(s3_bucket):
     with open(os.path.join(FIXTURES_DIR, STAGING_DIR, POINT_TABLE_2272_CSV)) as f:
-        s3_bucket.put_object(Bucket=S3_BUCKET, Key=S3_KEY_CSV, Body=f.read())
+        s3_bucket.put_object(Bucket=S3_BUCKET, Key=POINT_TABLE_2272_S3_KEY_CSV, Body=f.read())
     print('Wrote CSV to S3\n')
     return s3_bucket
 
