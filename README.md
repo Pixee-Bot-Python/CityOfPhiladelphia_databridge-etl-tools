@@ -182,12 +182,10 @@ pytest tests/<test_database.py>
 ```
 To run just one test, add `::test_name` to the end of `test_database.py`
 
+## Deployment
 When a commit is pushed to the _master_ branch, GitHub actions will automatically run the tests given in `.github/workflows/test_pr_build.yml` using the secrets located in the repository in Settings > Secrets and Variables. 
 
-## Deployment
-When a commit is made to master, Travis CI bundles the code and its dependencies into a zip file, loads it to S3, and then publishes a new version of a lambda function using that updated zip file in S3. Additionally, Travis CI builds a docker image with an installed version of this repo and pushes it to ECR.
-
-For this reason you should make changes to the test branch, make sure they pass automated tests and manual QA testing before making any changes to master.
+For this reason you should make changes to your test branch, make sure they pass automated tests and manual QA testing before merging to master.
 
 ## GROUPS, ARGS, SUB-GROUPS and COMMANDS:
 * `ago`: Run ETL commands for AGO

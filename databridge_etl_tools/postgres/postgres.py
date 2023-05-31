@@ -23,7 +23,7 @@ class Postgres():
     from ._properties import (
         csv_path, temp_csv_path, json_schema_path, json_schema_s3_key, 
         export_json_schema, primary_keys, pk_constraint_name, table_self_identifier, 
-        fields, geom_field, geom_type, schema)
+        fields, geom_field, geom_type)
     from ._s3 import (get_csv_from_s3, get_json_schema_from_s3, load_csv_to_s3, 
                       load_json_schema_to_s3)
     from ._cleanup import (vacuum_analyze, cleanup, check_remove_nulls)
@@ -287,10 +287,16 @@ class Postgres():
         self.logger.info(f'{self.table_schema_name} current row count: {count:,}\n')
         return count
 
-    def extract(self):
-        """Extracts data from a postgres table into a CSV file in S3. Has spatial 
-        and SRID detection and will output it in a way that the ago append commands 
-        will recognize."""
+    def extract(self, return_data:bool=False):
+        """Extract data from a postgres table into a CSV file in S3. 
+        
+        Has spatial and SRID detection and will output it in a way that the ago 
+        append commands will recognize.
+        
+        ### Params: 
+        * return_data (bool): If True return the data in memory as a 'geopetl.postgis.PostgisQuery'
+        otherwise perform null bytes checks, write to CSV, and load to S3. 
+        """
         row_count = self.get_row_count()
         
         self.logger.info(f'Starting extract from {self.table_schema_name}')
@@ -316,14 +322,6 @@ class Postgres():
         else:
             rows = etl.frompostgis(self.conn, self.table_schema_name, geom_with_srid=False)
 
-        # Dump to our CSV temp file
-        self.logger.info('Extracting csv...')
-        try:
-            rows.progress(interval).tocsv(self.csv_path, 'utf-8')
-        except UnicodeError:
-            self.logger.warning("Exception encountered trying to extract to CSV with utf-8 encoding, trying latin-1...")
-            rows.progress(interval).tocsv(self.csv_path, 'latin-1')
-
         num_rows_in_csv = rows.nrows()
 
         if num_rows_in_csv == 0:
@@ -332,6 +330,17 @@ class Postgres():
         self.logger.info(f'Asserting counts match between db and extracted csv')
         self.logger.info(f'{row_count} == {num_rows_in_csv}')
         assert row_count == num_rows_in_csv
+
+        if return_data: 
+            return rows
+        
+        # Dump to our CSV temp file
+        self.logger.info('Extracting csv...')
+        try:
+            rows.progress(interval).tocsv(self.csv_path, 'utf-8')
+        except UnicodeError:
+            self.logger.warning("Exception encountered trying to extract to CSV with utf-8 encoding, trying latin-1...")
+            rows.progress(interval).tocsv(self.csv_path, 'latin-1')
 
         self.check_remove_nulls()
         self.load_csv_to_s3(path=self.csv_path)

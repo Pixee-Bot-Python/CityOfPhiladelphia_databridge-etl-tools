@@ -195,31 +195,3 @@ def geom_type(self, value):
                 self._geom_type = result[0]
         else:
             self._geom_type = None
-
-@property
-def schema(self):
-    if self._schema is None:
-
-        with open(self.json_schema_path) as json_file:
-            schema = json.load(json_file).get('fields', '')
-            if not schema:
-                logger.error('Json schema malformatted...')
-                raise
-            num_fields = len(schema)
-            schema_fmt = ''
-            for i, scheme in enumerate(schema):
-                scheme_type = DATA_TYPE_MAP.get(scheme['type'].lower(), scheme['type'])
-                if scheme_type == 'geometry':
-                    scheme_srid = scheme.get('srid', '')
-                    scheme_geometry_type = GEOM_TYPE_MAP.get(scheme.get('geometry_type', '').lower(), '')
-                    if scheme_srid and scheme_geometry_type:
-                        scheme_type = '''geometry ({}, {}) '''.format(scheme_geometry_type, scheme_srid)
-                    else:
-                        logger.error('srid and geometry_type must be provided with geometry field...')
-                        raise
-
-                schema_fmt += ' {} {}'.format(scheme['name'], scheme_type)
-                if i < num_fields - 1:
-                    schema_fmt += ','
-        self._schema = schema_fmt
-    return self._schema

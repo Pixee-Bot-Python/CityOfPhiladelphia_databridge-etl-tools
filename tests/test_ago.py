@@ -1,7 +1,7 @@
 import pytest
 
 from .constants import S3_BUCKET
-from databridge_etl_tools.ago import AGO
+from databridge_etl_tools.ago.ago import AGO
 
 @pytest.fixture
 def ago_point(ago_user, ago_password):

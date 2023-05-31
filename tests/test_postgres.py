@@ -1,5 +1,6 @@
 import pytest
-import os
+import os, textwrap
+import petl as etl
 from databridge_etl_tools.postgres.postgres import Postgres, Postgres_Connector
 from .constants import (S3_BUCKET, POINT_TABLE_2272_S3_KEY_CSV, 
                         POINT_TABLE_2272_NAME, FIXTURES_DIR, STAGING_DIR, 
@@ -40,7 +41,7 @@ def create_table(connector):
         ''')
         print('Created table "point_table_2272"\n')
 
-@pytest.fixture(scope='module', autouse=True)
+@pytest.fixture(scope='module')
 def append_to_table(create_table, connector): # Only COPY data to table once for all tests below
     '''Delete any existing data in point_table_2272 and append test data'''
     with connector.conn.cursor() as cursor:
@@ -51,7 +52,7 @@ def append_to_table(create_table, connector): # Only COPY data to table once for
     connector.conn.commit()
     print('Appended test data to table point_table_2272\n')
 
-@pytest.fixture
+@pytest.fixture(scope='module')
 def pg(connector): 
     '''Yield a Postgres Table object'''
     with Postgres(connector=connector,
@@ -62,15 +63,34 @@ def pg(connector):
                   with_srid=True) as pg_obj:
         yield pg_obj        
 
-def test_postgres_point_extract(pg):
-    pg.extract()
+@pytest.fixture(scope='module')
+def extract_data(append_to_table, pg):
+    return pg.extract(return_data=True)
 
-def test_postgres_upsert(pg):
+def assert_two_datasets_same(rows1, rows2): 
+    '''Check for added or subtracted rows between two datasets using PETL
+    
+    #### Raises
+    * assertion error - If the number of added or subtracted rows != 0
+    '''
+    
+    added, subtracted = etl.recorddiff(rows1, rows2)
+    added_nrows = etl.nrows(added)
+    subtracted_nrows = etl.nrows(subtracted)
+    
+    assert added_nrows == 0 and subtracted_nrows == 0, textwrap.dedent(f'''
+        Added rows ({added_nrows}) and/or deleted rows ({subtracted_nrows}) are not zero!''')
+
+def test_postgres_upsert(extract_data, pg):
     pg.upsert('csv')
+    upserted_data = pg.extract(return_data=True)
+    assert_two_datasets_same(extract_data, upserted_data)
 
-def test_postgres_load(pg):
+def test_postgres_load(extract_data, pg):
     pg.truncate()
     pg.load()
+    loaded_data = pg.extract(return_data=True)
+    assert_two_datasets_same(extract_data, loaded_data)
 
 def test_postgres_json_schema_extract(pg):
     pg.load_json_schema_to_s3()

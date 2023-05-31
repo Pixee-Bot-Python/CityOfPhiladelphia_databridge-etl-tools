@@ -1,7 +1,7 @@
 import pytest
 import os
 
-from databridge_etl_tools.carto_ import Carto
+from databridge_etl_tools.carto.carto_ import Carto
 from .constants import (
     S3_BUCKET,  
     POINT_CSV, POLYGON_CSV,
