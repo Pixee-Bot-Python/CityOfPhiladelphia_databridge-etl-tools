@@ -108,3 +108,14 @@ jobs:
       env:
         AGO_USER: ${{ secrets.AGO_USER }}
         AGO_PASSWORD: ${{ secrets.AGO_PASSWORD }}
+
+    - name: Carto pytests
+      run: |
+          docker run --rm dbtools \
+            pytest tests/test_carto.py \
+            -s -vvv -ra --showlocals --tb=long --disable-warnings  \
+            --carto_user $CARTO_USER \
+            --carto_password $CARTO_PASSWORD
+      env:
+        CARTO_USER: ${{ secrets.CARTO_USER }}
+        CARTO_PASSWORD: ${{ secrets.CARTO_PASSWORD }}

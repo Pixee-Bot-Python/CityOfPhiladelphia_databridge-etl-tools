@@ -25,7 +25,9 @@ def pytest_addoption(parser):
     parser.addoption("--password", action="store", default='password', help="db user password")
     parser.addoption("--database", action="store", default='adatabase',  help="db database name")
     parser.addoption("--ago_user", action="store", default='some_user',  help="user for AGO login")
-    parser.addoption("--ago_password", action="store", default='some_user',  help="pw for AGO login")
+    parser.addoption("--ago_password", action="store", default='some_p',  help="pw for AGO login")
+    parser.addoption("--carto_user", action="store", default='some_user',  help="user for Carto login")
+    parser.addoption("--carto_password", action="store", default='some_pw',  help="pw for Carto login")
 
 # Necessary for our tests to access the parameters/args as specified
 # Fixtures are just functions that return objects that can be used by
@@ -43,12 +45,21 @@ def password(pytestconfig):
 @pytest.fixture(scope='session')
 def database(pytestconfig):
     return pytestconfig.getoption("database")
+
 @pytest.fixture(scope='session')
 def ago_user(pytestconfig):
     return pytestconfig.getoption("ago_user")
 @pytest.fixture(scope='session')
 def ago_password(pytestconfig):
     return pytestconfig.getoption("ago_password")
+
+@pytest.fixture(scope='session')
+def carto_user(pytestconfig):
+    return pytestconfig.getoption("carto_user")
+@pytest.fixture(scope='session')
+def carto_password(pytestconfig):
+    return pytestconfig.getoption("carto_password")
+
 
 @pytest.fixture(scope='session')
 def s3_client():
