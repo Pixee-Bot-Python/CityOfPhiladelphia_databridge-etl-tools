@@ -23,7 +23,7 @@ def libpq(ctx, **kwargs):
 @click.pass_context
 def copy_dept_to_enterprise(ctx, **kwargs):
     """Copy from the dept table directly to an enterpise able in a single transaction that can roll back if it fails."""
-    db2 = Db2(**ctx.obj, **kwargs, copy_from_source_schema=kwargs['account_name'])
+    db2 = Db2(**ctx.obj, **kwargs, copy_from_source_schema=ctx.obj['account_name'])
     db2.copy_to_enterprise()
 
 @libpq.command()
