@@ -331,6 +331,13 @@ class Postgres():
         self.logger.info(f'{row_count} == {num_rows_in_csv}')
         assert row_count == num_rows_in_csv
 
+                
+        # New assert as well that will fail if row_count doesn't equal CSV again (because of time difference)
+        db_newest_row_count = self.get_row_count()
+        self.logger.info(f'Asserting counts match between current db count and extracted csv')
+        self.logger.info(f'{db_newest_row_count} == {num_rows_in_csv}')
+        assert db_newest_row_count == num_rows_in_csv
+        
         if return_data: 
             return rows
         
