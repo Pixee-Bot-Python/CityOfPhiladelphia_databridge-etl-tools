@@ -33,7 +33,7 @@ def create_staging_from_enterprise(ctx, **kwargs):
     db2 = Db2(**ctx.obj, **kwargs)
     db2.create_staging_from_enterprise()
 
-@db2.command()
+@libpq.command()
 @click.pass_context
 def copy_staging_to_enterprise(ctx, **kwargs):
     """Copies from etl_staging to the specified enterprise authoritative dataset."""
