@@ -13,7 +13,6 @@ def db2(ctx, **kwargs):
     ctx.obj = {}
     ctx = utils.pass_params_to_ctx(ctx, **kwargs)
 
-
 @db2.command()
 @click.pass_context
 def copy_dept_to_enterprise(ctx, **kwargs):
