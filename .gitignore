@@ -6,6 +6,8 @@ __pycache__/
 # C extensions
 *.so
 
+secrets.sh
+
 # Distribution / packaging
 .Python
 build/
@@ -130,3 +132,6 @@ build/
 james_script.sh
 james_py.py
 *.rpm
+test.py
+test*.csv
+pytest.ini

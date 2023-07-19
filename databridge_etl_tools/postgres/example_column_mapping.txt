@@ -1,0 +1,12 @@
+{
+    'objectid_x': 'objectid',
+	'casenumber_x': 'casenumber',
+	'violationnumber_x': 'violationnumber',
+	'violationdate_x': 'violationdate',
+	'violationcode_x': 'violationcode',
+	'violationcodetitle_x': 'violationcodetitle',
+	'responsibleparty_x': 'responsibleparty',
+	'licensenumber_x': 'licensenumber',
+	'licensetype_x': 'licensetype',
+	'posse_jobid_x': 'posse_jobid'
+}

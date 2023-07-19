@@ -48,7 +48,6 @@ class Db2():
         # Setup our function to catch kill signals so we can gracefully exit.
         self.signal_catch_setup()
 
-
     def signal_catch_setup(self):
         #print("DEBUG! Setting up signal catching")
         # Handle terminations from AWS
@@ -75,8 +74,6 @@ class Db2():
 
         print("exiting the container gracefully")
         sys.exit(signum)
-
-
 
     @property
     def pg_cursor(self):
@@ -118,14 +115,12 @@ class Db2():
             self._enterprise_dataset_name = f'{self.account_name.replace("GIS_","").lower()}__{self.table_name}'
         return self._enterprise_dataset_name
 
-
     def confirm_table_existence(self):
         exist_stmt = f"SELECT to_regclass('{self.enterprise_schema}.{self.enterprise_dataset_name}');"
         self.logger.info(f'Table exists statement: {exist_stmt}')
         self.pg_cursor.execute(exist_stmt)
         table_exists_check = self.pg_cursor.fetchone()[0]
         assert table_exists_check
-
 
     def get_table_column_info_from_enterprise(self):
         """Queries the information_schema.columns table to get column names and data types"""
@@ -151,7 +146,6 @@ class Db2():
         assert column_info
         self.column_info = column_info
         #return column_info
-
 
     def get_geom_column_info(self):
         """Queries the geometry_columns table to geom field and srid, then queries the sde table to get geom_type"""
@@ -252,7 +246,6 @@ class Db2():
 
         #return {'geom_field': geom_column, 'geom_type': geom_type, 'srid': srid}
 
-
     def generate_ddl(self):
         """Builds the DDL based on the table's generic and geom column info"""
         # If geom_info is not None
@@ -278,7 +271,6 @@ class Db2():
             ({column_type_map_string})'''
         self.ddl = ddl
         #return ddl
-
 
     def run_ddl(self):
         drop_stmt = f'DROP TABLE IF EXISTS {self.staging_schema}.{self.enterprise_dataset_name}'
@@ -311,14 +303,12 @@ class Db2():
         except Exception as e:
             raise Exception("DEBUG: " + str(e) + " RETURN: " + str(return_val) + " DDL: " + self.ddl + " check query" + check_stmt)
 
-
     def create_staging_from_enterprise(self):
         self.confirm_table_existence()
         self.get_table_column_info_from_enterprise()
         self.get_geom_column_info()
         self.generate_ddl()
         self.run_ddl()
-
 
     def copy_to_enterprise(self):
         get_enterprise_columns_stmt = f'''
@@ -519,8 +509,6 @@ class Db2():
         assert result
         print('Success!')
 
-
-
     def update_oracle_scn(self):
         
         # Commenting this out, instead lets pull the SCN from our recorded table
@@ -581,8 +569,6 @@ class Db2():
             '''
             self.logger.info('Executing stmt: ' + str(stmt))
             self.oracle_cursor.execute(stmt)
-
-
 
 
 @click.group()

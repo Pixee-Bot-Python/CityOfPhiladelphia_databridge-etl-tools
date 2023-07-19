@@ -1,7 +1,7 @@
 import pytest
 
 from .constants import S3_BUCKET
-from databridge_etl_tools.ago import AGO
+from databridge_etl_tools.ago.ago import AGO
 
 @pytest.fixture
 def ago_point(ago_user, ago_password):
@@ -10,7 +10,7 @@ def ago_point(ago_user, ago_password):
         ago_item_name='POINT_TABLE_2272',
         ago_user=ago_user,
         ago_pw=ago_password,
-        s3_bucket='airflow-testing-v2',
+        s3_bucket=S3_BUCKET,
         s3_key='staging/test/point_table_2272.csv',
         in_srid=2272
     )
@@ -29,7 +29,7 @@ def ago_multipolygon(ago_user, ago_password):
         ago_item_name='MULTIPOLYGON_TABLE_2272',
         ago_user=ago_user,
         ago_pw=ago_password,
-        s3_bucket='airflow-testing-v2',
+        s3_bucket=S3_BUCKET,
         s3_key='staging/test/multipolygon_table_2272.csv',
         in_srid=2272
     )
