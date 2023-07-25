@@ -24,7 +24,7 @@ def create_table(connector):
     '''CREATE TABLE IF NOT EXISTS'''
     with connector.conn.cursor() as cursor: 
         cursor.execute(f'''
-    CREATE TABLE if not exists point_table_2272 (
+    CREATE TABLE if not exists test_dbtools_point_2272 (
         objectid int4 NOT NULL,
         textfield varchar(255) NULL,
         datefield timestamp NULL,
@@ -34,23 +34,23 @@ def create_table(connector):
         newcol varchar(20) NULL,
         shape public.geometry NULL,
         CONSTRAINT enforce_srid_shape CHECK ((st_srid(shape) = 2272)),
-        CONSTRAINT point_table_2272_pk PRIMARY KEY (objectid)
+        CONSTRAINT test_dbtools_point_2272_pk PRIMARY KEY (objectid)
     );
-    CREATE INDEX if not exists a298_ix1 ON point_table_2272 USING gist (shape);
-    CREATE UNIQUE INDEX if not exists r496_sde_rowid_uk ON point_table_2272 USING btree (objectid) WITH (fillfactor='75');
+    CREATE INDEX if not exists a298_ix1 ON test_dbtools_point_2272 USING gist (shape);
+    CREATE UNIQUE INDEX if not exists r496_sde_rowid_uk ON test_dbtools_point_2272 USING btree (objectid) WITH (fillfactor='75');
         ''')
-        print('Created table "point_table_2272"\n')
+        print('Created table "test_dbtools_point_2272"\n')
 
 @pytest.fixture(scope='module')
 def append_to_table(create_table, connector): # Only COPY data to table once for all tests below
-    '''Delete any existing data in point_table_2272 and append test data'''
+    '''Delete any existing data in test_dbtools_point_2272 and append test data'''
     with connector.conn.cursor() as cursor:
-        cursor.execute('DELETE FROM point_table_2272;')     
+        cursor.execute('DELETE FROM test_dbtools_point_2272;')     
         with open(os.path.join(FIXTURES_DIR, STAGING_DIR, POINT_TABLE_2272_CSV)) as f:
-            stmt = 'COPY point_table_2272 FROM STDIN WITH (FORMAT csv, HEADER true)'
+            stmt = 'COPY test_dbtools_point_2272 FROM STDIN WITH (FORMAT csv, HEADER true)'
             cursor.copy_expert(stmt, f)
     connector.conn.commit()
-    print('Appended test data to table point_table_2272\n')
+    print('Appended test data to table test_dbtools_point_2272\n')
 
 @pytest.fixture(scope='module')
 def pg(connector): 
