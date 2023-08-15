@@ -150,6 +150,16 @@ databridge_etl_tools \
 	--s3_key test \
     load \
 	--json_schema_s3_key test
+
+# Extract a json schema from Oracle (right now needed for carto uploads)
+databridge_etl_tools \
+    oracle \
+    --table_name li_appeals_type \
+    --table_schema gis_lni \
+    --connection_string <user>/<password>@(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)      (HOST=<host_name>)(PORT=<port>))(CONNECT_DATA=(SID=<dbname>))) \
+    --s3_bucket=test \
+    --s3_key=schemas/lni/li_appeals_type.json \
+    extract-json-schema
 ```
 
 ## Development
@@ -286,3 +296,4 @@ For this reason you should make changes to your test branch, make sure they pass
                 * `--mappings_file` TEXT    A text file that can be opened with `open()` and that contains one Python dict that can be read with `ast.literal_eval()`. The file should take the form `{"data_col": "db_table_col", "data_col2": "db_table_col2", ... }`. Note no quotes around the curly braces `{}`.  
                 * `--other_schema` TEXT     Schema of Postgres table  to upsert from. If None or absent, assume the same schema as the table being upserted to
                 * `--other_table` TEXT      Name of Postgres table to upsert from   [required]
+

@@ -119,7 +119,7 @@ class Oracle():
         s3 = boto3.resource('s3')
 
         # load the schema into a tmp file in /tmp/
-        etl.extract_table_schema(dbo=self.conn, table_name=self.schema_table_name, table_schema_output_path=self.json_schema_path)
+        etl.oracle_extract_table_schema(dbo=self.conn, table_name=self.schema_table_name, table_schema_output_path=self.json_schema_path)
         json_s3_key = self.s3_key.replace('staging', 'schemas').replace('.csv', '.json')
         s3.Object(self.s3_bucket, json_s3_key).put(Body=open(self.json_schema_path, 'rb'))
         self.logger.info('Successfully loaded to s3: {}'.format(json_s3_key))
