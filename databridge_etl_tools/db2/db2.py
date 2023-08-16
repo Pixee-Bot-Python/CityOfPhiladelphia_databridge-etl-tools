@@ -112,7 +112,12 @@ class Db2():
     @property
     def enterprise_dataset_name(self):
         if self._enterprise_dataset_name is None:
-            self._enterprise_dataset_name = f'{self.account_name.replace("GIS_","").lower()}__{self.table_name}'
+            if self.enterprise_schema == 'viewer' or self.enterprise_schema == 'import':
+                self._enterprise_dataset_name = f'{self.account_name.replace("GIS_","").lower()}__{self.table_name}'
+        # If we're simply copying into a department account, than the department table
+        # is the "enterprise" table.
+            else:
+                self._enterprise_dataset_name = self.table_name
         return self._enterprise_dataset_name
 
     def confirm_table_existence(self):
