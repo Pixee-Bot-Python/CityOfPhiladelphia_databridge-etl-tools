@@ -106,7 +106,7 @@ class Db2():
     @property
     def staging_dataset_name(self):
         if self._staging_dataset_name is None:
-            self._staging_dataset_name = f'{self.staging_schema}__{self.table_name}'
+            self._staging_dataset_name = f'{self.staging_schema}.{self.account_name.replace("GIS_","").lower()}__{self.table_name}'
         return self._staging_dataset_name
 
     @property
@@ -405,7 +405,7 @@ class Db2():
         # If etl_staging, that means we got data uploaded from S3 or an ArcPy copy
         # so use the appropriate name which would be "etl_staging.dept_name__table_name"
         if self.copy_from_source_schema == 'etl_staging':
-            stage_table = f'{self.copy_from_source_schema}.{self.enterprise_dataset_name}'
+            stage_table = self.staging_dataset_name
         # If it's not etl_staging, that means we're copying directly from the dept table to entreprise
         # so appropriate name would be "dept_name.table_name"
         else:
@@ -491,7 +491,7 @@ class Db2():
 
         # If successful, drop the etl_staging and old table when we're done to save space.
         if self.copy_from_source_schema == 'etl_staging':
-            self.pg_cursor.execute(f'DROP TABLE etl_staging.{self.enterprise_dataset_name}')
+            self.pg_cursor.execute(f'DROP TABLE {stage_table}')
             self.pg_cursor.execute('COMMIT')
 
         #self.pg_cursor.execute(f'DROP TABLE IF EXISTS {table_copy}')
