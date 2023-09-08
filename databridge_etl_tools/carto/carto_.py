@@ -8,6 +8,8 @@ import json
 from carto.sql import SQLClient
 from carto.auth import APIKeyAuthClient
 from carto.exceptions import CartoException
+from carto.datasets import DatasetManager
+from carto.auth import APIKeyAuthClient
 import boto3
 import requests
 import petl as etl
@@ -392,6 +394,36 @@ class Carto():
         self.logger.info(stmt)
         self.execute_sql(stmt)
 
+    # Force privacy settings because carto is unreliable about privacy
+    def enforce_privacy(self):
+        auth_client = APIKeyAuthClient(
+                api_key=self.api_key,
+                base_url=USR_BASE_URL.format(user=self.user)
+                )
+        dataset_manager = DatasetManager(auth_client)
+
+        # Fetch your dataset
+        print('\nFetching cato information via DatasetManager function..')
+        dataset = dataset_manager.get(self.table_name)
+        print(f'Carto dataset name: {dataset.name}')
+        print(f'Carto dataset id: {dataset.id}')
+        print(f'Carto dataset url: {dataset.url}')
+
+        if 'publicuser' in self.select_users:
+            privacy = 'PUBLIC'
+        else:
+            privacy = 'PRIVATE'
+
+        # You can set to 'LINK', 'PRIVATE', or 'PUBLIC'
+        print(f"Force setting dataset privacy to '{privacy}' to be double sure..")
+        dataset.privacy = privacy
+        dataset.save()
+
+        # Refetch and double check
+        dataset = dataset_manager.get(self.table_name)
+        assert dataset.privacy == privacy
+        print('Privacy set.\n')
+
     def run_workflow(self):
         try:
             self.create_table()
@@ -400,6 +432,7 @@ class Carto():
             self.cartodbfytable()
             self.vacuum_analyze()
             self.swap_table()
+            self.enforce_privacy()
             self.logger.info('Done!')
         except Exception as e:
             self.logger.error('Workflow failed, reverting...')
