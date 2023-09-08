@@ -1,4 +1,4 @@
-name: Build and test docker image only for PRs
+ame: Build and test docker image only for PRs
 
 on:
   pull_request:
@@ -18,7 +18,9 @@ jobs:
     steps:
     # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
     # This is a github function? Ref doc: https://github.com/actions/checkout#checkout-a-different-branch
-    - uses: actions/checkout@master
+    # IMPORTANT NOTE: pinned to v3 instead of master, because v4 uses node20 and glibc 2.27. Amazon linux 2 atm only supports
+    # glibc 2.26. Change notes: https://github.com/marketplace/actions/checkout
+    - uses: actions/checkout@v3
 
   # https://github.com/marketplace/actions/microsoft-teams-deploy-card
   # Using replacement fork for toko-bifrost, context for why: https://github.com/toko-bifrost/ms-teams-deploy-card/issues/33#issuecomment-888466503 
