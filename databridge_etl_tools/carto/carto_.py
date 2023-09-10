@@ -409,8 +409,11 @@ class Carto():
         print(f'Carto dataset id: {dataset.id}')
         print(f'Carto dataset url: {dataset.url}')
 
-        if 'publicuser' in self.select_users:
-            privacy = 'PUBLIC'
+        if self.select_users:
+            if 'publicuser' in self.select_users:
+                privacy = 'PUBLIC'
+            else:
+                privacy = 'PRIVATE'
         else:
             privacy = 'PRIVATE'
 
