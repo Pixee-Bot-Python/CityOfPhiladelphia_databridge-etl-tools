@@ -191,8 +191,8 @@ class Postgres():
             # the dataset with a proper 'objectid' primary key. However the CSV made from Oracle
             # will still have "objectid_1" in it. Handle this by replacing "objectid_1" 
             # with "objectid" in CSV header if "objectid" doesn't already exist.
-            if (re.search('objectid,', str_header) == None and 
-            (match := re.search('(objectid_\d+),', str_header)) != None): 
+            match = re.search('(objectid_\d+),', str_header)
+            if (re.search('objectid,', str_header) == None and match != None): 
                 old_col = match.groups()[0]
                 self.logger.info(f'\nDetected {old_col} primary key, implementing workaround and modifying header...\n')
                 str_header = str_header.replace(f'{old_col}', 'objectid')
