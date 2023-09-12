@@ -12,7 +12,7 @@ The tool can be use either with Docker or as a standalone Python package.
 ## Requirements 
 
 ### (w/o Docker)
-- Python 3.5 +
+- Python `>=3.7, <3.10` due to dependencies in the `arcgis` package.
 - Pip
 - AWS CLI
 - Oracle 11g Client
@@ -75,6 +75,7 @@ The tool can be use either with Docker or as a standalone Python package.
 * Attempt to install the python3-dev that matches your python minor version, so for example
     * `sudo apt-get install python3.9-dev`
 * `pip install .` or `pip install -e ./` if you are contributing to the repository
+	* _Note, you do not need the file_ `docker-fast-requirements.txt`
 
 ### (w/ Docker)
 * Until the dockerfile is able to auto-pull AWS credentials from `~/.aws/credentials`, substitute the correct keys and run: 
