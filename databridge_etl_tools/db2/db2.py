@@ -365,7 +365,7 @@ class Db2():
         # To do this we need to modify the insert delta table of our SDE table.
         reg_stmt=f'''
             SELECT registration_id FROM sde.sde_table_registry
-            WHERE owner = '{self.enterprise_schema}' AND table_name = '{self.enterprise_dataset_name}'
+            WHERE schema = '{self.enterprise_schema}' AND table_name = '{self.enterprise_dataset_name}'
         '''
         self.logger.info("Running reg_stmt: " + str(reg_stmt))
         self.pg_cursor.execute(reg_stmt)
