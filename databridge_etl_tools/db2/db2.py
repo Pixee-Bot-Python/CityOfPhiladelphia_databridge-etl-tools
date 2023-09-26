@@ -334,28 +334,29 @@ class Db2():
             '''
         self.logger.info("Executing get_oid_column_stmt: " + str(get_oid_column_stmt))
         self.pg_cursor.execute(get_oid_column_stmt)
-        oid_column = self.pg_cursor.fetchone()[0]
+        oid_column_return = self.pg_cursor.fetchone()
+        if oid_column_return:
+            oid_column = oid_column_return[0]
+        # Default to assume objectid column is just "objectid" so our update statements below work.
+        else:
+            oid_column = 'objectid'
 
-        # if table has objectid column, put at end of column list:
         print('enterprise_columns: ' + str(enterprise_columns))
         print('oid_column: ' + str(oid_column))
+        # Don't have object_id in their because our new method does not use objectid for the insert.
         if oid_column:
             enterprise_columns.remove(oid_column)
-            # Actually don't add it back because our new method does not use objectid in the insert.
-            #enterprise_columns.append(oid_column)
+        if 'objectid' in enterprise_columns:
+            enterprise_columns.remove('objectid')
 
         # Metadata column added into postgres tables by arc programs, not needed.
         if 'gdb_geomattr_data' in enterprise_columns:
             enterprise_columns.remove('gdb_geomattr_data')
 
-
         # Get our enterprise columns which we'll use for our insert statement below
         enterprise_columns_str = ', '.join(enterprise_columns)
         staging_columns = enterprise_columns
-        # Remove objectid (or whatever it is) the value we'll insert will be next_rowid('{table_schema}', '{table_name}')'
         print('staging_columns: ' + str(staging_columns))
-        #if oid_column:
-        #    staging_columns.remove(oid_column)
         staging_columns_str = ', '.join(staging_columns)
 
 
@@ -369,14 +370,16 @@ class Db2():
         '''
         self.logger.info("Running reg_stmt: " + str(reg_stmt))
         self.pg_cursor.execute(reg_stmt)
-        reg_id_return = self.pg_cursor.fetchone()[0]
+        reg_id_return = self.pg_cursor.fetchone()
         # Can be NULL if programmatically registered so treat carefully
         # If this table isn't "really" registered, then don't worry about resetting
         # the insert delta table because it won't exist and this table is likely not meant to be edited.
         if reg_id_return:
             print('Table is fully registered, resetting objectid field in delta insert table.')
-            reg_id = reg_id_return[0]
-
+            if isinstance(reg_id_return, list) or isinstance(reg_id_return, tuple):
+                reg_id = reg_id_return[0]
+            else:
+                reg_id = reg_id_return
 
             # Get enterprise row_count, needed for resetting the objectid counter in our delta table
             row_count_stmt=f'select count(*) from {self.enterprise_schema}.{self.enterprise_dataset_name}'
@@ -394,7 +397,7 @@ class Db2():
             #############
         else:
             print('Table appears to not be registered(or done so using Rolands hacky registration method). Not resetting objectid field in delta insert table..')
-
+            reg_id = None
 
         # Fields to select from staging
         select_fields = staging_columns_str
@@ -438,14 +441,18 @@ class Db2():
             -- and the values will get populated automagically.
             ALTER TABLE {prod_table} ADD objectid serial NOT NULL;
 
-            -- Set these vals to our row_count so ESRIs next_rowid() increments without collisions
-            UPDATE {self.enterprise_schema}.i{reg_id} SET base_id={row_count + 1}, last_id={row_count} WHERE id_type = 2;
-
             -- Set back to the ESRI objectid data type.
             ALTER TABLE {prod_table} ALTER COLUMN objectid TYPE int4;
 
         END;
         '''
+        # If we're actually fully registered then set the delta insert table to our row count.
+        if reg_id:
+            new_update_stmt += f'''
+                -- Set these vals to our row_count so ESRIs next_rowid() increments without collisions
+                UPDATE {self.enterprise_schema}.i{reg_id} SET base_id={row_count + 1}, last_id={row_count} WHERE id_type = 2;
+                '''
+
         self.logger.info("Running update_stmt: " + str(new_update_stmt))
         try:
             #####################
@@ -470,10 +477,16 @@ class Db2():
         self.pg_cursor.execute(f'VACUUM VERBOSE {self.enterprise_schema}.{self.enterprise_dataset_name}')
         self.pg_cursor.execute('COMMIT')
 
-        # Run a quick select statement to test.
-        select_test_stmt = f'''
-        SELECT * FROM {self.enterprise_schema}.{self.enterprise_dataset_name} WHERE {oid_column} IS NOT NULL LIMIT 1
-        '''
+        # Run a quick select statement to test, use objectid if available
+        if oid_column == 'objectid':
+            select_test_stmt = f'''
+            SELECT * FROM {self.enterprise_schema}.{self.enterprise_dataset_name} WHERE objectid IS NOT NULL LIMIT 1
+            '''
+        # Else use the first field in our columns list.
+        else:
+            select_test_stmt = f'''
+            SELECT * FROM {self.enterprise_schema}.{self.enterprise_dataset_name} WHERE {enterprise_columns[0]} IS NOT NULL LIMIT 1
+            '''
         self.logger.info("Running select_test_stmt: " + str(select_test_stmt))
 
         self.pg_cursor.execute(select_test_stmt)
