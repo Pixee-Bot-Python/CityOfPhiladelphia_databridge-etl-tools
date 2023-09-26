@@ -349,6 +349,9 @@ class Db2():
         if 'objectid' in enterprise_columns:
             enterprise_columns.remove('objectid')
 
+        # Assert we actually end up with a columns list, in case this table is messed up.
+        assert enterprise_columns
+
         # Metadata column added into postgres tables by arc programs, not needed.
         if 'gdb_geomattr_data' in enterprise_columns:
             enterprise_columns.remove('gdb_geomattr_data')
