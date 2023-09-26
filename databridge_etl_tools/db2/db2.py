@@ -369,37 +369,41 @@ class Db2():
         '''
         self.logger.info("Running reg_stmt: " + str(reg_stmt))
         self.pg_cursor.execute(reg_stmt)
-        reg_id = self.pg_cursor.fetchone()[0]
+        reg_id_return = self.pg_cursor.fetchone()[0]
+        # Can be NULL if programmatically registered so treat carefully
+        # If this table isn't "really" registered, then don't worry about resetting
+        # the insert delta table because it won't exist and this table is likely not meant to be edited.
+        if reg_id_return:
+            print('Table is fully registered, resetting objectid field in delta insert table.')
+            reg_id = reg_id_return[0]
 
 
-        # Get enterprise row_count, needed for resetting the objectid counter in our delta table
-        row_count_stmt=f'select count(*) from {self.enterprise_schema}.{self.enterprise_dataset_name}'
-        self.pg_cursor.execute(row_count_stmt)
-        row_count = self.pg_cursor.fetchone()[0]
+            # Get enterprise row_count, needed for resetting the objectid counter in our delta table
+            row_count_stmt=f'select count(*) from {self.enterprise_schema}.{self.enterprise_dataset_name}'
+            self.pg_cursor.execute(row_count_stmt)
+            row_count = self.pg_cursor.fetchone()[0]
 
-        # Reset what the objectid field will start incrementing from.
-        reset_stmt=f'''
-            UPDATE {self.enterprise_schema}.i{reg_id} SET base_id=1, last_id=1
-            WHERE id_type = 2
-        '''
-        self.logger.info("Running reset_stmt: " + str(reset_stmt))
-        self.pg_cursor.execute(reset_stmt)
-        self.pg_cursor.execute('COMMIT')
-        #############
+            # Reset what the objectid field will start incrementing from.
+            reset_stmt=f'''
+                UPDATE {self.enterprise_schema}.i{reg_id} SET base_id=1, last_id=1
+                WHERE id_type = 2
+            '''
+            self.logger.info("Running reset_stmt: " + str(reset_stmt))
+            self.pg_cursor.execute(reset_stmt)
+            self.pg_cursor.execute('COMMIT')
+            #############
+        else:
+            print('Table appears to not be registered(or done so using Rolands hacky registration method). Not resetting objectid field in delta insert table..')
 
 
         # Fields to select from staging
-        # Actually don't use next_rowid as our new method does not need it.
-        #select_fields = f'''
-        #{staging_columns_str}''' if not oid_column else f'''{staging_columns_str}''' + f''', next_rowid('{self.enterprise_schema}', '{self.enterprise_dataset_name}')
-        #'''
         select_fields = staging_columns_str
 
         ###############
         # Truncate is not 'MVCC-safe', which means concurrent select transactions will not be able to
         # view/select the data during the execution of the update_stmt.
         #truncate_stmt = f'''TRUNCATE TABLE {sel.enterprise_schema}.{self.enterprise_dataset_name}'''
-        # DELTE FROM is 'MVCC-safe'.
+        # DELETE FROM is 'MVCC-safe'.
 
         prod_table = f'{self.enterprise_schema}.{self.enterprise_dataset_name}'
         # If etl_staging, that means we got data uploaded from S3 or an ArcPy copy
@@ -413,44 +417,11 @@ class Db2():
 
         truncate_stmt = f'''DELETE FROM {prod_table}'''
 
-
         insert_stmt = f'''
             INSERT INTO {prod_table} ({enterprise_columns_str})
             SELECT {select_fields}
             FROM {stage_table}
             '''
-        # NOTE: this method of copying from etl_staging into a copy of the table, and then renaming,
-        # does not seem to be faster at all.
-        #
-        # Table names for copying stuff around
-        #table_copy = f'{self.enterprise_schema}.{self.enterprise_dataset_name+"_COPY_FOR_AIRFLOW"}'
-        #table_old = f'{self.enterprise_schema}.{self.enterprise_dataset_name+"_OLD_FOR_AIRFLOW"}'
-        #orig_table = f'{self.enterprise_schema}.{self.enterprise_dataset_name}'
-        
-        #self.pg_cursor.execute(f'DROP TABLE IF EXISTS {table_copy}')
-        #self.pg_cursor.execute(f'DROP TABLE IF EXISTS {table_old}')
-        #self.pg_cursor.execute('COMMIT')
-
-        #update_stmt = f'''
-        #    BEGIN;
-        #    -- Create a copy from the enterprise table
-        #    CREATE TABLE {table_copy} (LIKE {orig_table} INCLUDING ALL);
-        #    -- Insert into our table copy from etl_staging
-        #    {insert_stmt};
-        #    -- Swap things around, set orig table to 'old', table_copy to orig.
-        #    ALTER TABLE {orig_table} RENAME TO {self.enterprise_dataset_name+"_OLD_FOR_AIRFLOW"};
-        #    ALTER TABLE {table_copy} RENAME TO {self.enterprise_dataset_name};
-        #    END;
-        #    '''
-
-        #update_stmt = f'''
-        #    BEGIN;
-        #    -- Truncate our table (won't show until commit) 
-        #    {truncate_stmt};
-        #    -- Insert into our table from etl_staging (or dept schema)
-        #    {insert_stmt};
-        #    END;
-        #    '''
 
         new_update_stmt = f'''
         BEGIN;
@@ -490,12 +461,10 @@ class Db2():
             raise e
 
         # If successful, drop the etl_staging and old table when we're done to save space.
-        if self.copy_from_source_schema == 'etl_staging':
-            self.pg_cursor.execute(f'DROP TABLE {stage_table}')
-            self.pg_cursor.execute('COMMIT')
-
-        #self.pg_cursor.execute(f'DROP TABLE IF EXISTS {table_copy}')
-        #self.pg_cursor.execute(f'DROP TABLE IF EXISTS {table_old}')
+        # NOTE: don't do this for now to make task migration easier -Roland 9/25/2023
+        #if self.copy_from_source_schema == 'etl_staging':
+        #    self.pg_cursor.execute(f'DROP TABLE {stage_table}')
+        #    self.pg_cursor.execute('COMMIT')
 
         # Manually run a vacuum on our tables for database performance
         self.pg_cursor.execute(f'VACUUM VERBOSE {self.enterprise_schema}.{self.enterprise_dataset_name}')
