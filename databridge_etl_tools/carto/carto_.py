@@ -403,7 +403,7 @@ class Carto():
         dataset_manager = DatasetManager(auth_client)
 
         # Fetch your dataset
-        print('\nFetching cato information via DatasetManager function..')
+        print('\nFetching carto information via DatasetManager function..')
         dataset = dataset_manager.get(self.table_name)
         print(f'Carto dataset name: {dataset.name}')
         print(f'Carto dataset id: {dataset.id}')
@@ -435,7 +435,12 @@ class Carto():
             self.cartodbfytable()
             self.vacuum_analyze()
             self.swap_table()
-            self.enforce_privacy()
+            try:
+                self.enforce_privacy()
+            except Exception as e:
+                print('Bonus function "enforce_privacy" failed. Considering upload successful anyway.')
+                print('Error message:')
+                print(str(e))
             self.logger.info('Done!')
         except Exception as e:
             self.logger.error('Workflow failed, reverting...')
