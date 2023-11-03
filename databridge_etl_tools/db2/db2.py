@@ -335,11 +335,11 @@ class Db2():
         self.logger.info("Executing get_oid_column_stmt: " + str(get_oid_column_stmt))
         self.pg_cursor.execute(get_oid_column_stmt)
         oid_column_return = self.pg_cursor.fetchone()
+        # Will be used later if the table is registered. If it's not registered, set oid_column to None.
         if oid_column_return:
             oid_column = oid_column_return[0]
-        # Default to assume objectid column is just "objectid" so our update statements below work.
         else:
-            oid_column = 'objectid'
+            oid_column = None
 
         print('enterprise_columns: ' + str(enterprise_columns))
         print('oid_column: ' + str(oid_column))
@@ -402,6 +402,9 @@ class Db2():
             print('Table appears to not be registered(or done so using Rolands hacky registration method). Not resetting objectid field in delta insert table..')
             reg_id = None
 
+        if not oid_column and reg_id:
+            raise AssertionError('SDE Registration mismatch! We found an objectid column from sde.sde_table_registry, but could not find a registration id. This table is broken and should be remade!')
+
         # Fields to select from staging
         select_fields = staging_columns_str
 
@@ -429,26 +432,38 @@ class Db2():
             FROM {stage_table}
             '''
 
-        new_update_stmt = f'''
-        BEGIN;
+        # If registered and has an objectid columnd, remove that column so the insert happens WAY faster.
+        # Then recreate the column as a serial so that it populates, then set it back to int4 for SDE to work
+        if oid_column and reg_id:
+            new_update_stmt = f'''
+                BEGIN;
+                    -- Drop our ESRI objectid column so we can insert without any overhead from the objectid column doing stuff
+                    ALTER TABLE {prod_table} DROP COLUMN {oid_column};
 
-            -- Drop our ESRI objectid column so we can insert without any overhead from the objectid column doing stuff
-            ALTER TABLE {prod_table} DROP COLUMN objectid;
+                    -- Truncate our table (won't show until commit) 
+                    {truncate_stmt};
+                    -- Our delete and insert from etl_staging (or dept schema) statement.
+                    {insert_stmt};
 
-            -- Truncate our table (won't show until commit) 
-            {truncate_stmt};
-            -- Our delete and insert from etl_staging (or dept schema) statement.
-            {insert_stmt};
+                    -- Recreate it as an autoincrementer SERIAL column, it is much much faster,
+                    -- and the values will get populated automagically.
+                    ALTER TABLE {prod_table} ADD {oid_column} serial NOT NULL;
 
-            -- Recreate it as an autoincrementer SERIAL column, it is much much faster,
-            -- and the values will get populated automagically.
-            ALTER TABLE {prod_table} ADD objectid serial NOT NULL;
+                    -- Set back to the ESRI objectid data type.
+                    ALTER TABLE {prod_table} ALTER COLUMN {oid_column} TYPE int4;
+                END;
+                '''
+        # non-objectid
+        else:
+            new_update_stmt = f'''
+                BEGIN;
+                    -- Truncate our table (won't show until commit) 
+                    {truncate_stmt};
+                    -- Our delete and insert from etl_staging (or dept schema) statement.
+                    {insert_stmt};
+                END;
+                '''
 
-            -- Set back to the ESRI objectid data type.
-            ALTER TABLE {prod_table} ALTER COLUMN objectid TYPE int4;
-
-        END;
-        '''
         # If we're actually fully registered then set the delta insert table to our row count.
         if reg_id:
             new_update_stmt += f'''
