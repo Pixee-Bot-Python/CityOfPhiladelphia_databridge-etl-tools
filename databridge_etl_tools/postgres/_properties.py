@@ -37,13 +37,51 @@ def export_json_schema(self):
     '''Json schema to export to s3 during extraction, for use when uploading to places like Carto.'''
     if self._export_json_schema is None:
         stmt = sql.SQL('''
-        SELECT column_name, data_type, numeric_precision, numeric_scale
-        FROM information_schema.columns
-        WHERE table_schema = %s
-        AND table_name = %s
+        SELECT column_name, data_type, is_nullable 
+        FROM information_schema.columns 
+        WHERE table_name = %s
+        AND table_schema = %s;
         ''')
-        results = self.execute_sql(stmt, data=[self.table_schema, self.table_name], fetch='all')
-        self._export_json_schema = json.dumps(results)
+        results = self.execute_sql(stmt, data=[self.table_name, self.table_schema], fetch='all')
+
+        # Format into a JSON structure
+        fields = []
+        primary_key = None
+        final_json = None
+        for col in results:
+            if col[0] == 'objectid':
+                primary_key = 'objectid'
+            field = {"name": col[0], "type": col[1]}
+            # Add constraint information if column is set as "Not Null"
+            if col[2] == 'NO':
+                field["constraints"] = {"required": "true"}
+            fields.append(field)
+
+        pk_stmt = sql.SQL('''
+        SELECT c.column_name, c.ordinal_position
+        FROM information_schema.key_column_usage AS c
+        LEFT JOIN information_schema.table_constraints AS t
+        ON t.constraint_name = c.constraint_name
+        WHERE t.table_name = %s
+        AND t.table_schema = %s
+        AND t.constraint_type = 'PRIMARY KEY';
+        ''')
+        results = self.execute_sql(pk_stmt, data=[self.table_name, self.table_schema], fetch='one')
+        # override if we find a primary key with this method
+        if results:
+            print(f'Primary key found: {results}')
+            primary_key = results[0]
+
+        assert fields
+        final_json = {
+            "fields": fields,
+        }
+
+        if primary_key:
+            # Update this with the primary key columns if known
+            final_json["primaryKey"] = [ primary_key ]
+
+        self._export_json_schema = json.dumps(final_json)
     return self._export_json_schema
 
 @property
