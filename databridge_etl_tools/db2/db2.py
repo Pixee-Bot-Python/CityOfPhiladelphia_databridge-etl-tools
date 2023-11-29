@@ -434,6 +434,8 @@ class Db2():
 
         # If registered and has an objectid columnd, remove that column so the insert happens WAY faster.
         # Then recreate the column as a serial so that it populates, then set it back to int4 for SDE to work
+        # Update: changing to serial back to int4 apparently doesn't work, but it doesn't prevent Pro from opening and viewing
+        # tables so nvm.
         if oid_column and reg_id:
             new_update_stmt = f'''
                 BEGIN;
@@ -448,9 +450,6 @@ class Db2():
                     -- Recreate it as an autoincrementer SERIAL column, it is much much faster,
                     -- and the values will get populated automagically.
                     ALTER TABLE {prod_table} ADD {oid_column} serial NOT NULL;
-
-                    -- Set back to the ESRI objectid data type.
-                    ALTER TABLE {prod_table} ALTER COLUMN {oid_column} TYPE int4;
                 END;
                 '''
         # non-objectid
