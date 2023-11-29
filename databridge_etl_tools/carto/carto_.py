@@ -235,7 +235,7 @@ class Carto():
         except Exception as e:
             if 'HeadObject operation: Not Found' in str(e):
                 msg = f'Json schema file does not exist in S3! Please use databridge-etl-tools "extract-json-schema" command and place the file here: s3:/{self.s3_bucket}/{self.json_schema_s3_key}'
-                msg += '\n Command form would be: databridge_etl_tools postgres --table_name={table_name} --table_schema={table_schema} --connection_string=postgresql://postgres:{password}@{host}:5432/databridge --s3_bucket={s3_bucket} --s3_key=staging/{table_shema}/{table_name} extract'
+                msg += '\n Command form would be: databridge_etl_tools postgres --table_name={table_name} --table_schema={table_schema} --connection_string=postgresql://postgres:{password}@{host}:5432/databridge --s3_bucket={s3_bucket} --s3_key=staging/{table_shema}/{table_name} extract-json-schema'
                 raise AssertionError(msg)
             else:
                 raise e
