@@ -161,6 +161,16 @@ databridge_etl_tools \
     --s3_bucket=test \
     --s3_key=schemas/lni/li_appeals_type.json \
     extract-json-schema
+
+# Extract a json schema from DB2 (needed for carto uploads)
+databridge_etl_tools \
+    postgres \
+    --table_name fema_floodplain_2023 \
+    --table_schema viewer_planning \
+    --connection_string postgresql://postgres:<password>@<hostname>:5432/<dbname> \
+    --s3_bucket=test \
+    --s3_key=schemas/planning/fema_floodplain_2023.json \
+    extract-json-schema
 ```
 
 ## Development
