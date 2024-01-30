@@ -6,6 +6,8 @@ from .oracle.oracle_commands import oracle
 from .db2.db2_commands import db2
 from .opendata.opendata_commands import opendata
 from .postgres.postgres_commands import postgres
+from .knack.knack_commands import knack
+from .airtable.airtable_commands import airtable
 
 @click.group()
 def main():
@@ -17,3 +19,6 @@ main.add_command(db2)
 main.add_command(oracle)
 main.add_command(opendata)
 main.add_command(postgres)
+main.add_command(knack)
+main.add_command(airtable)
+

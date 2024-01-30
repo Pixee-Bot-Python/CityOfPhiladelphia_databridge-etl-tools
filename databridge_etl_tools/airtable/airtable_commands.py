@@ -1,0 +1,19 @@
+from .. import utils
+from .airtable import Airtable
+import click
+
+
+@click.group()
+@click.pass_context
+@click.option('--app_id', required=True)
+@click.option('--api_key', required=True)
+@click.option('--table_name', required=True)
+@click.option('--s3_bucket', required=True)
+@click.option('--s3_key', required=True)
+def airtable(ctx, **kwargs):
+    ctx.obj = Airtable(**kwargs)
+
+@airtable.command()
+@click.pass_context
+def extract(ctx): 
+    ctx.obj.extract()
