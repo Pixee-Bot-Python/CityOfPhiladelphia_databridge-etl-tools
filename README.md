@@ -171,6 +171,26 @@ databridge_etl_tools \
     --s3_bucket=test \
     --s3_key=schemas/planning/fema_floodplain_2023.json \
     extract-json-schema
+
+# Extract from Airtable
+databridge_etl_tools \
+    airtable \
+    --app_id <some_app_id> \
+    --api_key <key_for_some_app> \
+    --table_name immigrant_services \
+    --s3_bucket test \
+    --s3_key staging/test/immigrant_services.csv \
+    extract
+
+# Extract from Knack
+databridge_etl_tools \
+    knack \
+    --app_id <some_app_id> \
+    --api_key <key_for_some_app> \
+    --knack_objectid <some_id_corresponding_to_table> \
+    --s3_bucket test \
+    --s3_key staging/test/candidates.csv \
+    extract
 ```
 
 ## Development
