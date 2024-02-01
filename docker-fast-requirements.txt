@@ -45,6 +45,7 @@ geomet==1.0.0
 #geopetl @ git+https://github.com/CityOfPhiladelphia/geopetl.git@e8afcf08c87559ee5aa650cb9d4a026ae953dccd
 geopetl @ git+https://github.com/CityOfPhiladelphia/geopetl.git@master
 gssapi==1.8.2
+hurry.filesize
 idna==3.4
 importlib-metadata==6.0.0
 importlib-resources==5.12.0

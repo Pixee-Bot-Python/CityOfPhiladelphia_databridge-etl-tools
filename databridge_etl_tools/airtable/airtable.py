@@ -7,6 +7,7 @@ import json
 import requests
 import click
 import boto3
+from hurry.filesize import size
 
 
 class Airtable():
@@ -18,7 +19,7 @@ class Airtable():
         self.s3_key = s3_key
         self.offset = None
         self.rows_per_page = 1000
-        self.file_path = f'/tmp/{self.table_name}.csv'
+        self.csv_path = f'/tmp/{self.table_name}.csv'
 
     def get_fieldnames(self):
         
@@ -43,9 +44,11 @@ class Airtable():
         return fieldnames
 
     def get_records(self):
-        
+        endpoint = f'https://api.airtable.com/v0/{self.app_id}/{self.table_name}?maxRecords={self.rows_per_page}'
+        print(f'Starting extract from airtable endpoint: {endpoint}')
+
         response = requests.get(
-            f'https://api.airtable.com/v0/{self.app_id}/{self.table_name}?maxRecords={self.rows_per_page}',
+            endpoint,
             headers={
                 'Authorization': f'Bearer {self.api_key}'
             },
@@ -55,7 +58,6 @@ class Airtable():
         )
         
         data = response.json()
-        
         yield data['records']
         
         if 'offset' in data: 
@@ -70,11 +72,11 @@ class Airtable():
 
     def load_to_s3(self):
         s3 = boto3.resource('s3')
-        s3.Object(self.s3_bucket, self.s3_key).put(Body=open(self.file_path, 'rb'))
+        s3.Object(self.s3_bucket, self.s3_key).put(Body=open(self.csv_path, 'rb'))
 
     def clean_up(self) -> None:
-        if os.path.isfile(self.file_path):
-            os.remove(self.file_path)
+        if os.path.isfile(self.csv_path):
+            os.remove(self.csv_path)
 
     def extract(self):
         
@@ -82,7 +84,7 @@ class Airtable():
 
         if (self.s3_bucket and self.s3_key):
 
-            with open(self.file_path, 'w', newline='') as f:
+            with open(self.csv_path, 'w', newline='') as f:
                 writer = csv.DictWriter(f, fieldnames=fieldnames)
 
                 writer.writeheader()
@@ -92,6 +94,9 @@ class Airtable():
                         row = self.process_row(record['fields'])
                         writer.writerow(row)
 
+            num_lines = sum(1 for _ in open(self.csv_path)) - 1
+            file_size = size(os.path.getsize(self.csv_path))
+            print(f'Extraction successful? File size: {file_size}, total lines: {num_lines}')
             self.load_to_s3()
             self.clean_up()
 

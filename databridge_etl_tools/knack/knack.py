@@ -3,6 +3,7 @@ import requests
 import csv
 import os,sys
 import boto3
+from hurry.filesize import size
 
 csv.field_size_limit(sys.maxsize)
 
@@ -29,10 +30,9 @@ class Knack():
         s3.Object(self.s3_bucket, self.s3_key).put(Body=open(self.csv_path, 'rb'))
 
     def extract(self):
-        print(f'Starting extract from {self.knack_objectid}')
-
         # Knack API Endpoint
         endpoint = f'https://api.knack.com/v1/objects/{self.knack_objectid}/records'
+        print(f'Starting extract from Knack endpoint: {endpoint}, app_id: {self.app_id}')
 
         headers = {
             'X-Knack-Application-Id': self.app_id,
@@ -53,7 +53,9 @@ class Knack():
                     writer.writeheader()
                     for record in records:
                         writer.writerow(record)
-                print(f'Extraction successful? File size: {os.path.getsize(self.csv_path)}')
+                num_lines = sum(1 for _ in open(self.csv_path)) - 1
+                file_size = size(os.path.getsize(self.csv_path))
+                print(f'Extraction successful? File size: {file_size}, total lines: {num_lines}')
                 self.load_to_s3()
             else:
                 print("No records found.")
