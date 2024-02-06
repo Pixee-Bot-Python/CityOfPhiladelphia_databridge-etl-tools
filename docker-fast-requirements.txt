@@ -129,6 +129,7 @@ pytz==2021.3
 PyYAML==5.4.1
 pyzmq==25.0.1
 requests==2.28.2
+retrying
 requests-gssapi==1.2.3
 requests-mock==1.10.0
 requests-oauthlib==1.3.1
@@ -137,6 +138,7 @@ responses==0.23.1
 rfc3339-validator==0.1.4
 rfc3986-validator==0.1.1
 rsa==4.7.2
+smart-open
 s3transfer==0.5.2
 SecretStorage==3.3.3
 Send2Trash==1.8.0
