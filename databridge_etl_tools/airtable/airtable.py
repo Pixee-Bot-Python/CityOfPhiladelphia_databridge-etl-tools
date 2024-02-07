@@ -23,7 +23,8 @@ class Airtable():
         self.csv_path = f'/tmp/{self.table_name}.csv'
 
     def get_fieldnames(self):
-        
+        '''Get field names with an initial request, but if get_fields was passed
+        then filter for only those.'''
         request_stmt = f'https://api.airtable.com/v0/{self.app_id}/{self.table_name}?maxRecords={self.rows_per_page}'
 
         if self.get_fields:
@@ -53,10 +54,7 @@ class Airtable():
         return fieldnames
 
     def get_records(self, offset=None):
-        #if 'offset' in kwargs.keys():
-        #    offset = kwargs['offset']
-        #else:
-        #    offset = None
+        '''Recursive function to grab records.'''
         
         request_stmt = f'https://api.airtable.com/v0/{self.app_id}/{self.table_name}?maxRecords={self.rows_per_page}'
 
