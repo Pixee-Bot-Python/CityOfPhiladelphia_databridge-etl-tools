@@ -65,12 +65,11 @@ class Airtable():
 
     def process_row(self, row: Dict) -> Dict:
         for key, value in row.items():
-            # De-list-ify list into a comma separated string.
-            # Not sure why prior author did a json dumps. -Roland
+            # This is necessary to convert list type items to json so it can be inserted as an array/list properly.
+            # Specifically for carto data type "array" (shows as "jsonb" in the web gui), when we get lists from airflow they'll need to
+            # be jsonified to be inserted and displayd properly.
             if isinstance(value, list):
-                #row[key] = json.dumps(value)
-                row[key] = ','.join([str(x) for x in value])
-
+                row[key] = json.dumps(value)
         return row
 
     def load_to_s3(self):
