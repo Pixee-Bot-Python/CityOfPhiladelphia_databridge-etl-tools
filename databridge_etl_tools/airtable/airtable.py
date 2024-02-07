@@ -65,8 +65,11 @@ class Airtable():
 
     def process_row(self, row: Dict) -> Dict:
         for key, value in row.items():
+            # De-list-ify list into a comma separated string.
+            # Not sure why prior author did a json dumps. -Roland
             if isinstance(value, list):
-                row[key] = json.dumps(value)
+                #row[key] = json.dumps(value)
+                row[key] = ','.join([str(x) for x in value])
 
         return row
 
