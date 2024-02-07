@@ -10,6 +10,7 @@ import click
 @click.option('--table_name', required=True)
 @click.option('--s3_bucket', required=True)
 @click.option('--s3_key', required=True)
+@click.option('--get_fields', required=False, help='Fields you want to extract, comma separated string.')
 def airtable(ctx, **kwargs):
     ctx.obj = Airtable(**kwargs)
 
