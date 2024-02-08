@@ -19,7 +19,7 @@ class Airtable():
         self.s3_key = s3_key
         self.offset = None
         self.rows_per_page = 1000
-        self.get_fields = get_fields.split(',')
+        self.get_fields
         self.csv_path = f'/tmp/{self.table_name}.csv'
 
     def get_fieldnames(self):
@@ -28,7 +28,7 @@ class Airtable():
         request_stmt = f'https://api.airtable.com/v0/{self.app_id}/{self.table_name}?maxRecords={self.rows_per_page}'
 
         if self.get_fields:
-            for field in self.get_fields:
+            for field in self.get_fields.split(','):
                 request_stmt = request_stmt + '&fields%5B%5D=' + field
 
         print(f'Airtable endpoint: {request_stmt}')
@@ -59,7 +59,7 @@ class Airtable():
         request_stmt = f'https://api.airtable.com/v0/{self.app_id}/{self.table_name}?maxRecords={self.rows_per_page}'
 
         if self.get_fields:
-            for field in self.get_fields:
+            for field in self.get_fields.split(','):
                 request_stmt = request_stmt + '&fields%5B%5D=' + field
 
 
