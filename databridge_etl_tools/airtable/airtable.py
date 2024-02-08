@@ -11,7 +11,7 @@ from hurry.filesize import size
 
 
 class Airtable():
-    def __init__(self, app_id:str, api_key:str, table_name:str, s3_bucket:str, s3_key:str, get_fields:str):
+    def __init__(self, app_id:str, api_key:str, table_name:str, s3_bucket:str, s3_key:str, get_fields=None):
         self.app_id = app_id
         self.api_key = api_key
         self.table_name = table_name
@@ -19,7 +19,7 @@ class Airtable():
         self.s3_key = s3_key
         self.offset = None
         self.rows_per_page = 1000
-        self.get_fields
+        self.get_fields = get_fields
         self.csv_path = f'/tmp/{self.table_name}.csv'
 
     def get_fieldnames(self):
