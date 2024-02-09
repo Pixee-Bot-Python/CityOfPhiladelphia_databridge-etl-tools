@@ -49,7 +49,12 @@ class Airtable():
 
             for fieldname in record_fieldnames:
                 if fieldname not in fieldnames:
+
                     fieldnames.append(fieldname)
+
+        # Enforce lower-case headers because
+        # we're going into postgres and don't want mixed case.
+        fieldnames = [x.lower() for x in fieldnames]
                     
         return fieldnames
 
@@ -86,7 +91,11 @@ class Airtable():
             # be jsonified to be inserted and displayd properly.
             if isinstance(value, list):
                 row[key] = json.dumps(value)
-        return row
+
+            # lowercase all fields, we don't want mixed case in postgres
+            row_lower = {k.lower(): v for k, v in row.items()}
+
+        return row_lower
 
     def load_to_s3(self):
         s3 = boto3.resource('s3')
