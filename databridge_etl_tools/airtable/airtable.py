@@ -11,7 +11,7 @@ from hurry.filesize import size
 
 
 class Airtable():
-    def __init__(self, app_id:str, api_key:str, table_name:str, s3_bucket:str, s3_key:str, get_fields=None):
+    def __init__(self, app_id:str, api_key:str, table_name:str, s3_bucket:str, s3_key:str, add_objectid:bool, get_fields=None):
         self.app_id = app_id
         self.api_key = api_key
         self.table_name = table_name
@@ -19,8 +19,10 @@ class Airtable():
         self.s3_key = s3_key
         self.offset = None
         self.rows_per_page = 1000
+        self.add_objectid = add_objectid
         self.get_fields = get_fields
         self.csv_path = f'/tmp/{self.table_name}.csv'
+        self.counter = 0
 
     def get_fieldnames(self):
         '''Get field names with an initial request, but if get_fields was passed
@@ -55,6 +57,9 @@ class Airtable():
         # Enforce lower-case headers because
         # we're going into postgres and don't want mixed case.
         fieldnames = [x.lower() for x in fieldnames]
+
+        if self.add_objectid:
+            fieldnames.insert(0, 'objectid')
                     
         return fieldnames
 
@@ -93,9 +98,13 @@ class Airtable():
                 row[key] = json.dumps(value)
 
             # lowercase all fields, we don't want mixed case in postgres
-            row_lower = {k.lower(): v for k, v in row.items()}
+            row = {k.lower(): v for k, v in row.items()}
 
-        return row_lower
+        if self.add_objectid:
+            self.counter += 1
+            row['objectid'] = self.counter
+
+        return row
 
     def load_to_s3(self):
         s3 = boto3.resource('s3')
