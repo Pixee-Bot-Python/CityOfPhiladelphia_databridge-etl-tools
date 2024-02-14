@@ -11,9 +11,9 @@ from hurry.filesize import size
 
 
 class Airtable():
-    def __init__(self, app_id:str, api_key:str, table_name:str, s3_bucket:str, s3_key:str, add_objectid:bool, get_fields=None):
+    def __init__(self, app_id:str, pat_token:str, table_name:str, s3_bucket:str, s3_key:str, add_objectid:bool, get_fields=None):
         self.app_id = app_id
-        self.api_key = api_key
+        self.pat_token = pat_token
         self.table_name = table_name
         self.s3_bucket = s3_bucket
         self.s3_key = s3_key
@@ -38,7 +38,7 @@ class Airtable():
         response = requests.get(
             request_stmt,
             headers={
-                'Authorization': f'Bearer {self.api_key}'
+                'Authorization': f'Bearer {self.pat_token}'
             }
         )
 
@@ -46,13 +46,17 @@ class Airtable():
 
         fieldnames = []
 
-        for record in data['records']:
-            record_fieldnames = list(record['fields'].keys())
+        try:
+            for record in data['records']:
+                record_fieldnames = list(record['fields'].keys())
 
-            for fieldname in record_fieldnames:
-                if fieldname not in fieldnames:
+                for fieldname in record_fieldnames:
+                    if fieldname not in fieldnames:
 
-                    fieldnames.append(fieldname)
+                        fieldnames.append(fieldname)
+        except KeyError as e:
+            print(data)
+            raise Exception('Got unexpected response trying to determine headers!')
 
         # Enforce lower-case headers because
         # we're going into postgres and don't want mixed case.
@@ -76,7 +80,7 @@ class Airtable():
         response = requests.get(
             request_stmt,
             headers={
-                'Authorization': f'Bearer {self.api_key}'
+                'Authorization': f'Bearer {self.pat_token}'
             },
             params={
                 'offset': offset

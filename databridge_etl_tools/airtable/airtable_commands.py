@@ -6,7 +6,7 @@ import click
 @click.group()
 @click.pass_context
 @click.option('--app_id', required=True)
-@click.option('--api_key', required=True)
+@click.option('--pat_token', required=True, help='Create here: https://airtable.com/create/tokens')
 @click.option('--table_name', required=True)
 @click.option('--s3_bucket', required=True)
 @click.option('--s3_key', required=True)
