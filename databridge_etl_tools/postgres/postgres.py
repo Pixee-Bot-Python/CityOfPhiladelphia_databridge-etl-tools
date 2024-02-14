@@ -28,7 +28,7 @@ class Postgres():
                       load_json_schema_to_s3)
     from ._cleanup import (vacuum_analyze, cleanup, check_remove_nulls)
 
-    def __init__(self, connector: 'Postgres_Connector', table_name:str, table_schema:str=None, 
+    def __init__(self, connector: 'Postgres_Connector', table_name:str, table_schema:str=None,
                  **kwargs):
         '''Pass table_schema = None for TEMP tables'''
         self.connector = connector
@@ -397,7 +397,7 @@ class Postgres():
             cursor.execute(truncate_stmt)
             self.logger.info(f'Truncate successful: {cursor.rowcount:,} rows updated/inserted.\n')
 
-    def load(self, column_mappings:str=None, mappings_file:str=None):
+    def load(self, column_mappings:str=None, mappings_file:str=None, truncate_before_load:bool=False):
         '''
         Prepare and COPY a CSV from S3 to a Postgres table. If the keyword arguments 
         "column_mappings" or "mappings_file" are passed with values other than None, 
@@ -421,6 +421,8 @@ class Postgres():
         mapping_dict = self._make_mapping_dict(column_mappings, mappings_file)
         self.get_csv_from_s3()
         self.prepare_file(file=self.csv_path, mapping_dict=mapping_dict)
+        if truncate_before_load:
+            self.truncate()
         self.write_csv(write_file=self.temp_csv_path, table_name=self.table_name, 
                        schema_name=self.table_schema, mapping_dict=mapping_dict)
 

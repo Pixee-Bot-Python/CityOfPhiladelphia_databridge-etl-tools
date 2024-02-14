@@ -43,6 +43,7 @@ def extract_json_schema(ctx):
     
 @postgres.command()
 @click.pass_context
+@click.option('--truncate_before_load', is_flag=True, required=False, help='Optionally truncate table before loading.')
 @click.option('--column_mappings', required=False, help='''
     A string that can be read as a dictionary using `ast.literal_eval()`. It should 
     take the form "{'data_col': 'db_table_col', 'data_col2': 'db_table_col2', ...}"''')
