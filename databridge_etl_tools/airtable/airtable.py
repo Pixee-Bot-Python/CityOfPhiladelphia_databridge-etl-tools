@@ -133,6 +133,7 @@ class Airtable():
                     writer.writerow(row)
 
         num_lines = sum(1 for _ in open(self.csv_path)) - 1
+        assert num_lines > 0, 'CSV file contains 0 lines??'
         file_size = size(os.path.getsize(self.csv_path))
         print(f'Extraction successful? File size: {file_size}, total lines: {num_lines}')
         self.load_to_s3()
