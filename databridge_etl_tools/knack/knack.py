@@ -115,7 +115,7 @@ class Knack():
         yield data['records']
 
         if int(data['current_page']) < data['total_pages']:
-            yield from self.get_records(self.app_id, self.api_key, self.knack_objectid, page=int(data['current_page']) + 1)
+            yield from self.get_records(page=int(data['current_page']) + 1)
 
     def convert_type(self, local_type, knack_type, value):
         if value == None or value == '':
