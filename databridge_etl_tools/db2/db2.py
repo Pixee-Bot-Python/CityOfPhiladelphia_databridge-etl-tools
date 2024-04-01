@@ -439,7 +439,6 @@ class Db2():
             new_update_stmt = f'''
                 BEGIN;
                     CREATE TABLE {temp_final_table} (LIKE {prod_table} INCLUDING CONSTRAINTS INCLUDING DEFAULTS);
-                    COMMIT;
                     -- Drop our ESRI objectid column so we can insert without any overhead from the objectid column doing stuff
                     ALTER TABLE {temp_final_table} DROP COLUMN {oid_column};
 
