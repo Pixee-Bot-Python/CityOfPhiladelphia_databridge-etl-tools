@@ -424,32 +424,35 @@ class Db2():
         else:
             stage_table = f'{self.copy_from_source_schema}.{self.table_name}'
 
-        truncate_stmt = f'''DELETE FROM {prod_table}'''
-
-        insert_stmt = f'''
-            INSERT INTO {prod_table} ({enterprise_columns_str})
-            SELECT {select_fields}
-            FROM {stage_table}
-            '''
-
+        # Update 4-1-2024: My code repeatedly drops the objectid column, but the dropped columns are actually still there and just hidden.
+        # With a frequently updating dataset, this can eventually result in this error:
+        # psycopg2.errors.TooManyColumns: tables can have at most 1600 columns
+        # https://stackoverflow.com/questions/29387569/table-can-have-at-most-1600-columns-in-postgres-openerp/39130447#39130447 
+        # To get around this, we'll copy to a temporary table and then rename at the end.
+        #
         # If registered and has an objectid columnd, remove that column so the insert happens WAY faster.
         # Then recreate the column as a serial so that it populates, then set it back to int4 for SDE to work
         # Update: changing to serial back to int4 apparently doesn't work, but it doesn't prevent Pro from opening and viewing
         # tables so nvm.
         if oid_column and reg_id:
+            temp_final_table = prod_table + '_aflw_temp'
             new_update_stmt = f'''
                 BEGIN;
+                    CREATE TABLE {temp_final_table} (LIKE {prod_table} INCLUDING CONSTRAINTS INCLUDING DEFAULTS);
+                    COMMIT;
                     -- Drop our ESRI objectid column so we can insert without any overhead from the objectid column doing stuff
-                    ALTER TABLE {prod_table} DROP COLUMN {oid_column};
+                    ALTER TABLE {temp_final_table} DROP COLUMN {oid_column};
 
-                    -- Truncate our table (won't show until commit) 
-                    {truncate_stmt};
-                    -- Our delete and insert from etl_staging (or dept schema) statement.
-                    {insert_stmt};
+                    -- Insert from etl_staging (or dept schema) into temp final table.
+                    INSERT INTO {temp_final_table} ({enterprise_columns_str}) SELECT {select_fields} FROM {stage_table};
 
                     -- Recreate it as an autoincrementer SERIAL column, it is much much faster,
                     -- and the values will get populated automagically.
-                    ALTER TABLE {prod_table} ADD {oid_column} serial NOT NULL;
+                    ALTER TABLE {temp_final_table} ADD {oid_column} serial NOT NULL;
+
+                    -- We're done the work, now replace the table.
+                    DROP TABLE {prod_table};
+                    ALTER TABLE {temp_final_table} RENAME TO {self.enterprise_dataset_name};
                 END;
                 '''
         # non-objectid
@@ -457,9 +460,10 @@ class Db2():
             new_update_stmt = f'''
                 BEGIN;
                     -- Truncate our table (won't show until commit) 
-                    {truncate_stmt};
-                    -- Our delete and insert from etl_staging (or dept schema) statement.
-                    {insert_stmt};
+                    DELETE FROM {prod_table};
+                    INSERT INTO {prod_table} ({enterprise_columns_str})
+                        SELECT {select_fields}
+                        FROM {stage_table}
                 END;
                 '''
 
