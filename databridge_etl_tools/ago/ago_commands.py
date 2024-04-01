@@ -8,8 +8,8 @@ import click
 @click.option('--ago_user', required=True)
 @click.option('--ago_pw', required=True)
 @click.option('--ago_item_name', required=True)
-@click.option('--s3_bucket', required=True)
-@click.option('--s3_key', required=True)
+@click.option('--s3_bucket', required=False)
+@click.option('--s3_key', required=False)
 def ago(ctx, **kwargs):
     '''Run ETL commands for AGO'''
     ctx.obj = {}
@@ -58,7 +58,7 @@ def truncate_append(ctx):
 
 @ago.command()
 @click.pass_context
-@click.option('--index_fields', required=True)
+@click.option('--index_fields', type=click.STRING, required=True)
 def post_index_fields(ctx, **kwargs):
     '''Post index fields to AGO'''
     ago = AGO(**ctx.obj, **kwargs)
