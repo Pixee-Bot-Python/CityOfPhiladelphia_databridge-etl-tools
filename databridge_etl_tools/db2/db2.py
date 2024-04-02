@@ -524,7 +524,7 @@ class Db2():
                     DELETE FROM {prod_table};
                     INSERT INTO {prod_table} ({enterprise_columns_str})
                         SELECT {select_fields}
-                        FROM {stage_table}
+                        FROM {stage_table};
                 END;
                 '''
             self.logger.info("Running update_stmt: " + str(update_stmt))
