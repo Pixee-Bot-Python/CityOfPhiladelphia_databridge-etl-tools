@@ -310,7 +310,7 @@ class Db2():
 
     def remove_locks(self, table, schema, lock_type=None):
         # Update 4-2-2024:
-        # Because we're running ALTER statements, this tries to get an AccessExclusiveLock on the table.
+        # Because we're running ALTER statements, our final table rename process tries to get an AccessExclusiveLock on the table.
         # We cannot get this lock if anyone else is viewing the table through something like dbeaver (but not pro) because
         # dbeaver puts an AccessShareLock on the table when holding it open. Which blocks our alter.
         # We cannot get an AccessExclusive lock if ANY lock exists on the table, so find and kill them.
@@ -339,8 +339,10 @@ class Db2():
             for p in locks:
                 pid = p[0]
                 lock = p[1]
-                query = p[5]
-                print(f'Killing query: "{query}" with lock type "{lock}"')
+                # Note: Can't seem to reliably get what the actual query is, not trusting
+                # the pid matching between pg_locks and pg_stat_activity.
+                #query = p[5]
+                print(f'Killing pid: "{pid}" with lock type "{lock}"')
                 self.pg_cursor.execute(f'SELECT pg_terminate_backend({pid});')
                 self.pg_cursor.execute(f'COMMIT')
 
