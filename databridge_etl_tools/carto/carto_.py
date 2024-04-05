@@ -277,17 +277,18 @@ class Carto():
         self.logger.info('Temp table created successfully.\n')
         
     def create_indexes(self):
-        self.logger.info('Creating indexes on {}: {}'.format(
+        self.logger.info('\nCreating indexes on {}: {}'.format(
             self.temp_table_name,
             self.index_fields)
         )
         
         indexes = self.index_fields.split(',')
-        stmt = ''
+        index_stmt = 'BEGIN; '
         for indexes_field in indexes:
-            stmt += 'CREATE INDEX {table}_{field} ON "{table}" ("{field}");\n'.format(table=self.temp_table_name,
+            index_stmt += 'CREATE INDEX {table}_{field} ON "{table}" ("{field}");\n'.format(table=self.temp_table_name,
                                                                                       field=indexes_field)
-        self.execute_sql(stmt)
+        index_stmt += 'COMMIT;'
+        self.execute_sql(index_stmt)
         self.logger.info('Indexes created successfully.\n')
 
     def extract(self):
