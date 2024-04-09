@@ -506,10 +506,13 @@ class Db2():
                 UPDATE {self.enterprise_schema}.i{reg_id} SET base_id={row_count + 1}, last_id={row_count} WHERE id_type = 2;
                 '''
             try:
+                self.logger.info(update_stmt_1)
                 self.pg_cursor.execute(update_stmt_1)
                 # Remove locks just before we perform a rename.
                 self.remove_locks(self.enterprise_dataset_name, self.enterprise_schema)
+                self.logger.info(update_stmt_2)
                 self.pg_cursor.execute(update_stmt_2)
+                self.logger.info(update_stmt_3)
                 self.pg_cursor.execute(update_stmt_3)
                 self.pg_cursor.execute('COMMIT')
                 #####################

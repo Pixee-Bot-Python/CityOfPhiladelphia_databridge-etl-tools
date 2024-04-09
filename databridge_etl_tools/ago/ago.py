@@ -50,7 +50,11 @@ class AGO():
         self.ago_org_url = ago_org_url
         self.ago_user = ago_user
         self.ago_password = ago_pw
-        self.item_name = ago_item_name
+        if ago_item_name.rstrip().startswith('dbt_'):
+            self.logger.info('stripping "dbt_" prefix from item name..')
+            self.item_name = ago_item_name.rstrip().strip('dbt_')
+        else:
+            self.item_name = ago_item_name
         self.s3_bucket = s3_bucket
         self.s3_key = s3_key
         # Our org id, publicly viewable so fine to hardcode.
@@ -1416,7 +1420,8 @@ class AGO():
             url = f'https://services.arcgis.com/{self.ago_org_id}/arcgis/rest/admin/services/{self.item_name}/FeatureServer/0/addToDefinition'
 
             headers = { 'Content-Type': 'application/x-www-form-urlencoded' }
-            self.logger.info(f'\nPosting index for {field}...')
+            self.logger.info(f'\nPosting index for {field} against {url}...')
+            self.logger.info(f'Data passed: {jsonData}')
             self.logger.info(jsonData)
             r = requests.post(f'{url}?token={ago_token}', data = {'f': 'json', 'addToDefinition': jsonData }, headers=headers, timeout=360)
 
@@ -1427,6 +1432,9 @@ class AGO():
                 possible your index was actually rejected. ESRI just doesnt code in proper errors).
                 ''')
             # Seen this error before that prevents an index from being added. Sleep and try to add again.
+            elif 'Invalid URL' in r.text:
+                print('Invalid URL error, does your map name differ from the table name?? Please fix if so.')
+                sys.exit(1)
             elif 'Operation failed. The index entry of length' in r.text:
                 self.logger.info('Got a retriable error, retrying in 10 minutes...')
                 sleep(200)
@@ -1480,8 +1488,9 @@ class AGO():
         headers = {'Content-Type': 'application/x-www-form-urlencoded'}
         r = requests.get(f'{check_url}&token={ago_token}', headers=headers, timeout=3600)
         data = r.json()
-        # Pull indexes out of the fuater server json definition
+        # Pull indexes out of the feature server json definition
         ago_indexes = data['indexes']
+
         # Get just the names of the indexes
         ago_indexes_list = [ x['name'] for x in ago_indexes ]
 
