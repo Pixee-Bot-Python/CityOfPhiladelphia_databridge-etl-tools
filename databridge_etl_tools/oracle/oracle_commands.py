@@ -1,4 +1,5 @@
 from .oracle import Oracle
+from .. import utils
 import click
 
 @click.group()
@@ -23,3 +24,15 @@ def extract(ctx):
 def extract_json_schema(ctx): 
     """Extracts a dataset's schema in Oracle into a JSON file in S3"""
     ctx.obj.load_json_schema_to_s3()
+
+@oracle.command()
+@click.pass_context
+def truncate_and_load(ctx,): 
+    """Loads a CSV file from S3 into an Oracle table via truncate and load"""
+    ctx.obj.truncate_and_load()
+    
+@oracle.command()
+@click.pass_context
+def load(ctx,): 
+    """Loads a CSV file from S3 into an Oracle table in one transaction (should have no downtime)"""
+    ctx.obj.load()
