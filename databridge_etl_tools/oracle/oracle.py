@@ -298,14 +298,6 @@ class Oracle():
         # Interval to print progress
         interval = int(num_rows_in_csv / 10)
 
-        # Check if there is a "SRID=2272;"" leader in the shape
-        rowsnotnone = rows.select('shape', lambda v: v != None and v != '')
-        first_geom_val = rowsnotnone.values('shape')[0] or ''
-        print(first_geom_val)
-        if 'SRID=' in first_geom_val:
-            new_rows = etl.convert(rows, 'shape', lambda v: v.split(';')[1] if v else None)
-        rows = new_rows
-
         # Get columns from prod oracle table
         cursor = self.conn.cursor()
         cols_stmt = f'''SELECT LISTAGG(column_name, ', ') WITHIN GROUP (ORDER BY column_id)
@@ -326,7 +318,8 @@ class Oracle():
             cols = cols.replace('OBJECTID,', '')
             cols = cols.replace('OBJECTID', '')
 
-        # create a temp table name exactly 30 characters in length so we don't go over oracle 11g's table name limit
+        # Create a temp table name exactly 30 characters in length so we don't go over oracle 11g's table name limit
+        # and then hash it so that it's unique to our table name.
         hashed = hashlib.sha256(self.table_name.encode()).hexdigest()
         temp_table_name = self.table_schema.upper() + '.TMP_' + hashed[:26].upper()
 
@@ -336,13 +329,14 @@ class Oracle():
             tmp_tbl_stmt = f'''CREATE TABLE {temp_table_name} AS
                                 SELECT {cols}
                                 FROM {self.table_schema.upper()}.{self.table_name.upper()}
-            '''
+                            '''
             print(tmp_tbl_stmt)
             cursor.execute(tmp_tbl_stmt)
             cursor.execute('COMMIT')
             tmp_table_made = True
             
             print(f'Loading CSV into {temp_table_name} (note that first printed progress rows are just loading csv into petl object)..')
+            # Remove objectid because we're loading into temp table first minus objectid
             if sde_registered:
                 rows_mod = etl.cutout(rows, 'objectid')
                 rows_mod.progress(interval).tooraclesde(self.conn, temp_table_name)
