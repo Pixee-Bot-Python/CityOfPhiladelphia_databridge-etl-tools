@@ -322,6 +322,13 @@ class Oracle():
         # and then hash it so that it's unique to our table name.
         hashed = hashlib.sha256(self.table_name.encode()).hexdigest()
         temp_table_name = self.table_schema.upper() + '.TMP_' + hashed[:26].upper()
+        # Create as the user we're logged in as, so we have sufficient perms to make the table.
+        cursor.execute('select user from dual')
+        running_user = cursor.fetchone()[0]
+        temp_table_name = running_user + '.TMP_' + hashed[:26].upper()
+
+        if running_user != 'SDE' and self.table_schema.upper() != running_user:
+            raise Exception(f'Must run this as schema owner or as SDE user, please adjust your connection string! Running user: {running_user}')
 
         try:
             # Create temp table to hold columns, minus any possible objectid name
@@ -361,7 +368,7 @@ class Oracle():
             cursor.execute('COMMIT')
             cursor.execute(f'SELECT COUNT(*) FROM {self.table_schema.upper()}.{self.table_name.upper()}')
             oracle_rows = cursor.fetchone()[0]
-            print(f'assert {oracle_rows} == {num_rows_in_csv}')
+            print(f'assert {num_rows_in_csv} == {oracle_rows}')
             assert num_rows_in_csv == oracle_rows
             print('Done.')
         except Exception as e:
@@ -369,4 +376,10 @@ class Oracle():
             if tmp_table_made or 'name is already used by an existing object' in str(e):
                 cursor.execute(f'DROP TABLE {temp_table_name}')
                 cursor.execute('COMMIT')
-            raise e
+            raise e 
+        except KeyboardInterrupt as e:
+            cursor.execute('ROLLBACK')
+            if tmp_table_made or 'name is already used by an existing object' in str(e):
+                cursor.execute(f'DROP TABLE {temp_table_name}')
+                cursor.execute('COMMIT')
+            raise e 
