@@ -316,7 +316,7 @@ class Oracle():
             sde_registered = True
             print('objectid found, assuming sde registered.')
             cols = cols.replace('OBJECTID,', '')
-            cols = cols.replace('OBJECTID', '')
+            cols = cols.replace(', OBJECTID', '')
 
         # Create a temp table name exactly 30 characters in length so we don't go over oracle 11g's table name limit
         # and then hash it so that it's unique to our table name.
@@ -352,13 +352,18 @@ class Oracle():
 
             if sde_registered:
                 copy_into_cols = 'OBJECTID, ' + cols
+                copy_stmt = f'''
+                    INSERT INTO {self.table_schema.upper()}.{self.table_name.upper()} ({copy_into_cols})
+                    SELECT SDE.GDB_UTIL.NEXT_ROWID('{self.table_schema.upper()}', '{self.table_name.upper()}'), {cols}
+                    FROM {temp_table_name}
+                    '''
             else:
                 copy_into_cols = cols
-            copy_stmt = f'''
-                INSERT INTO {self.table_schema.upper()}.{self.table_name.upper()} ({copy_into_cols})
-                SELECT SDE.GDB_UTIL.NEXT_ROWID('{self.table_schema.upper()}', '{self.table_name.upper()}'), {cols}
-                FROM {temp_table_name}
-                '''
+                copy_stmt = f'''
+                    INSERT INTO {self.table_schema.upper()}.{self.table_name.upper()} ({copy_into_cols})
+                    SELECT {cols}
+                    FROM {temp_table_name}
+                    '''
             print('Begin copying from temp into final table..')
             print(copy_stmt)
             cursor.execute(f'DELETE FROM {self.table_schema.upper()}.{self.table_name.upper()}')
