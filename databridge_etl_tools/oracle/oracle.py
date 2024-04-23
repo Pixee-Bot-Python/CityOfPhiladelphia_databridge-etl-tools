@@ -267,8 +267,8 @@ class Oracle():
     
         self.logger.info('Successfully extracted from {}'.format(self.schema_table_name))
 
-    def truncate_and_load(self):
-        '''truncate table and then load csv into it.'''
+    def append(self):
+        '''append a csv into a table.'''
         self.get_csv_from_s3()
         print('loading CSV into geopetl..')
         rows = etl.fromcsv(self.csv_path)
@@ -277,14 +277,9 @@ class Oracle():
             raise AssertionError('Error! Dataset is empty? Line count of CSV is 0.')
         print(f'Rows: {num_rows_in_csv}')
         interval = int(num_rows_in_csv / 10)
-        print('Truncating..')
-        cursor = self.conn.cursor()
-        truncate_stmt = f"DELETE FROM {self.table_schema.upper()}.{self.table_name.upper()}"
-        cursor.execute(truncate_stmt)
-        cursor.execute('COMMIT')
         
-        print('Loading CSV into Oracle..')
-        rows.progress(interval).tooraclesde(self.conn, f'{self.table_schema.upper()}.{self.table_name.upper()}')
+        print(f"Loading CSV into Oracle table '{self.table_schema.upper()}.{self.table_name.upper()}..")
+        rows.progress(interval).appendoraclesde(self.conn, f'{self.table_schema.upper()}.{self.table_name.upper()}')
 
     def load(self):
         '''Copy CSV into table by first inserting into a temp table (_T affix) and then deleting and inserting into table in one transaction.'''
@@ -376,13 +371,7 @@ class Oracle():
             print(f'assert {num_rows_in_csv} == {oracle_rows}')
             assert num_rows_in_csv == oracle_rows
             print('Done.')
-        except Exception as e:
-            cursor.execute('ROLLBACK')
-            if tmp_table_made or 'name is already used by an existing object' in str(e):
-                cursor.execute(f'DROP TABLE {temp_table_name}')
-                cursor.execute('COMMIT')
-            raise e 
-        except KeyboardInterrupt as e:
+        except (Exception, KeyboardInterrupt) as e:
             cursor.execute('ROLLBACK')
             if tmp_table_made or 'name is already used by an existing object' in str(e):
                 cursor.execute(f'DROP TABLE {temp_table_name}')

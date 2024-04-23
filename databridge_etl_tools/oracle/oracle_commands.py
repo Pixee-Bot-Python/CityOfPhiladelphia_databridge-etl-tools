@@ -27,12 +27,12 @@ def extract_json_schema(ctx):
 
 @oracle.command()
 @click.pass_context
-def truncate_and_load(ctx,): 
-    """Loads a CSV file from S3 into an Oracle table via truncate and load"""
-    ctx.obj.truncate_and_load()
+def append(ctx,): 
+    """Appends CSV file from S3 into an Oracle table"""
+    ctx.obj.append()
     
 @oracle.command()
 @click.pass_context
 def load(ctx,): 
-    """Loads a CSV file from S3 into an Oracle table in one transaction (should have no downtime)"""
+    """Loads a CSV file from S3 into a temp Oracle table and overwrites a final table in one transaction (should have no downtime)"""
     ctx.obj.load()
