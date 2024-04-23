@@ -7,6 +7,8 @@ import boto3
 import petl as etl
 import geopetl
 import json
+import hashlib
+
 
 
 class Oracle():
@@ -16,8 +18,9 @@ class Oracle():
     _json_schema_path = None
     _fields = None
     _row_count = None
+    from ._s3 import (get_csv_from_s3)
 
-    def __init__(self, connection_string, table_name, table_schema, s3_bucket, s3_key):
+    def __init__(self, connection_string, table_name, table_schema, s3_bucket, s3_key, **kwargs):
         self.connection_string = connection_string
         self.table_name = table_name
         self.table_schema = table_schema
@@ -264,5 +267,113 @@ class Oracle():
     
         self.logger.info('Successfully extracted from {}'.format(self.schema_table_name))
 
-    def write(self):
-        raise NotImplementedError
+    def append(self):
+        '''append a csv into a table.'''
+        self.get_csv_from_s3()
+        print('loading CSV into geopetl..')
+        rows = etl.fromcsv(self.csv_path)
+        num_rows_in_csv = rows.nrows()
+        if num_rows_in_csv == 0:
+            raise AssertionError('Error! Dataset is empty? Line count of CSV is 0.')
+        print(f'Rows: {num_rows_in_csv}')
+        interval = int(num_rows_in_csv / 10)
+        
+        print(f"Loading CSV into Oracle table '{self.table_schema.upper()}.{self.table_name.upper()}..")
+        rows.progress(interval).appendoraclesde(self.conn, f'{self.table_schema.upper()}.{self.table_name.upper()}')
+
+    def load(self):
+        '''Copy CSV into table by first inserting into a temp table (_T affix) and then deleting and inserting into table in one transaction.'''
+        self.get_csv_from_s3()
+        print('loading CSV into geopetl..')
+        rows = etl.fromcsv(self.csv_path)
+        num_rows_in_csv = rows.nrows()
+        if num_rows_in_csv == 0:
+            raise AssertionError('Error! Dataset is empty? Line count of CSV is 0.')
+        print(f'Rows: {num_rows_in_csv}')
+        # Interval to print progress
+        interval = int(num_rows_in_csv / 10)
+
+        # Get columns from prod oracle table
+        cursor = self.conn.cursor()
+        cols_stmt = f'''SELECT LISTAGG(column_name, ', ') WITHIN GROUP (ORDER BY column_id)
+                        FROM all_tab_cols
+                        WHERE table_name = '{self.table_name.upper()}'
+                        AND owner  = '{self.table_schema.upper()}'
+                        AND column_name not like 'SYS_%'
+                        '''
+        cursor.execute(cols_stmt)
+        cols = cursor.fetchall()[0][0]
+        # Detect if registered through existence of objectid column
+        sde_registered = False
+        if 'OBJECTID_' in cols:
+            raise AssertionError('Nonstandard OBJECTID columm detected! Please correct your objectid column to be named just "OBJECTID"!!')
+        if 'OBJECTID' in cols:
+            sde_registered = True
+            print('objectid found, assuming sde registered.')
+            cols = cols.replace('OBJECTID,', '')
+            cols = cols.replace(', OBJECTID', '')
+
+        # Create a temp table name exactly 30 characters in length so we don't go over oracle 11g's table name limit
+        # and then hash it so that it's unique to our table name.
+        hashed = hashlib.sha256(self.table_name.encode()).hexdigest()
+        temp_table_name = self.table_schema.upper() + '.TMP_' + hashed[:26].upper()
+        # Create as the user we're logged in as, so we have sufficient perms to make the table.
+        cursor.execute('select user from dual')
+        running_user = cursor.fetchone()[0]
+        temp_table_name = running_user + '.TMP_' + hashed[:26].upper()
+
+        if running_user != 'SDE' and self.table_schema.upper() != running_user:
+            raise Exception(f'Must run this as schema owner or as SDE user, please adjust your connection string! Running user: {running_user}')
+
+        try:
+            # Create temp table to hold columns, minus any possible objectid name
+            tmp_table_made = False
+            tmp_tbl_stmt = f'''CREATE TABLE {temp_table_name} AS
+                                SELECT {cols}
+                                FROM {self.table_schema.upper()}.{self.table_name.upper()}
+                            '''
+            print(tmp_tbl_stmt)
+            cursor.execute(tmp_tbl_stmt)
+            cursor.execute('COMMIT')
+            tmp_table_made = True
+            
+            print(f'Loading CSV into {temp_table_name} (note that first printed progress rows are just loading csv into petl object)..')
+            # Remove objectid because we're loading into temp table first minus objectid
+            if sde_registered:
+                rows_mod = etl.cutout(rows, 'objectid')
+                rows_mod.progress(interval).tooraclesde(self.conn, temp_table_name)
+            else:
+                rows.progress(interval).tooraclesde(self.conn, temp_table_name)
+
+            if sde_registered:
+                copy_into_cols = 'OBJECTID, ' + cols
+                copy_stmt = f'''
+                    INSERT INTO {self.table_schema.upper()}.{self.table_name.upper()} ({copy_into_cols})
+                    SELECT SDE.GDB_UTIL.NEXT_ROWID('{self.table_schema.upper()}', '{self.table_name.upper()}'), {cols}
+                    FROM {temp_table_name}
+                    '''
+            else:
+                copy_into_cols = cols
+                copy_stmt = f'''
+                    INSERT INTO {self.table_schema.upper()}.{self.table_name.upper()} ({copy_into_cols})
+                    SELECT {cols}
+                    FROM {temp_table_name}
+                    '''
+            print('Begin copying from temp into final table..')
+            print(copy_stmt)
+            cursor.execute(f'DELETE FROM {self.table_schema.upper()}.{self.table_name.upper()}')
+            cursor.execute(copy_stmt)
+            cursor.execute('COMMIT')
+            cursor.execute(f'DROP TABLE {temp_table_name}')
+            cursor.execute('COMMIT')
+            cursor.execute(f'SELECT COUNT(*) FROM {self.table_schema.upper()}.{self.table_name.upper()}')
+            oracle_rows = cursor.fetchone()[0]
+            print(f'assert {num_rows_in_csv} == {oracle_rows}')
+            assert num_rows_in_csv == oracle_rows
+            print('Done.')
+        except (Exception, KeyboardInterrupt) as e:
+            cursor.execute('ROLLBACK')
+            if tmp_table_made or 'name is already used by an existing object' in str(e):
+                cursor.execute(f'DROP TABLE {temp_table_name}')
+                cursor.execute('COMMIT')
+            raise e 
