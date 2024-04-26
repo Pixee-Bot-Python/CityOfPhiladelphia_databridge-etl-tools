@@ -404,6 +404,8 @@ class Db2():
                 reg_id = reg_id_return[0]
             else:
                 reg_id = reg_id_return
+        else:
+            reg_id = False
 
         reg_stmt2 = f"select uuid from sde.gdb_items where name like '%{self.enterprise_schema}.{self.enterprise_dataset_name}';"
         print(reg_stmt2)
