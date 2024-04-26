@@ -524,8 +524,8 @@ class Db2():
                 END;
                 '''
             self.logger.info("Running update_stmt: " + str(update_stmt))
+            self.remove_locks(self.enterprise_dataset_name, self.enterprise_schema, lock_type='AccessExclusiveLock')
             self.pg_cursor.execute(update_stmt)
-
             self.pg_cursor.execute('COMMIT;')
         except psycopg2.Error as e:
             self.logger.error(f'Error truncating and inserting into enterprise! Error: {str(e)}')
