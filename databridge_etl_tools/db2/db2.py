@@ -335,7 +335,7 @@ class Db2():
         self.pg_cursor.execute(lock_stmt)
         locks = self.pg_cursor.fetchall()
         if locks:
-            self.logger.info('Locks on table found!!')
+            self.logger.info(f'Locks on table "{schema}.{table}" found!!')
             for p in locks:
                 pid = p[0]
                 lock = p[1]
@@ -345,6 +345,8 @@ class Db2():
                 self.logger.info(f'Killing pid: "{pid}" with lock type "{lock}"')
                 self.pg_cursor.execute(f'SELECT pg_terminate_backend({pid});')
                 self.pg_cursor.execute(f'COMMIT')
+        else:
+            self.logger.info(f'No locks on table "{schema}.{table}" found.')
 
     def create_staging_from_enterprise(self):
         self.confirm_table_existence()
