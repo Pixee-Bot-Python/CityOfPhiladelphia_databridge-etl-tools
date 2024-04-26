@@ -239,12 +239,10 @@ class Oracle():
         self.check_remove_nulls()
 
         num_rows_in_csv = rows.nrows()
-        if num_rows_in_csv == 0:
-            raise AssertionError('Error! Dataset is empty? Line count of CSV is 0.')
+        assert num_rows_in_csv != 0, 'Error! Dataset is empty? Line count of CSV is 0.'
 
-        self.logger.info(f'Asserting counts match between recorded count in db and extracted csv')
-        self.logger.info(f'{self.row_count} == {num_rows_in_csv}')
-        assert self.row_count == num_rows_in_csv
+        self.logger.info(f'{num_rows_in_csv} == {self.row_count}')
+        assert self.row_count == num_rows_in_csv, f'Row counts dont match!! extracted csv: {num_rows_in_csv}, oracle table: {self.row_count}'
 
         self.logger.info(f'Checking row count again and comparing against csv count, this can catch large datasets that are actively updating..')
 
@@ -260,7 +258,7 @@ class Oracle():
         cursor.execute(stmt)
         recent_row_count = cursor.fetchone()[0]
         self.logger.info(f'{recent_row_count} == {num_rows_in_csv}')
-        assert recent_row_count == num_rows_in_csv
+        assert recent_row_count == num_rows_in_csv, f'Row counts dont match!! recent row count: {recent_row_count}, csv : {self.num_rows_in_csv}'
 
         self.load_csv_to_s3()
         os.remove(self.csv_path)
@@ -273,8 +271,7 @@ class Oracle():
         print('loading CSV into geopetl..')
         rows = etl.fromcsv(self.csv_path)
         num_rows_in_csv = rows.nrows()
-        if num_rows_in_csv == 0:
-            raise AssertionError('Error! Dataset is empty? Line count of CSV is 0.')
+        assert num_rows_in_csv != 0, 'Error! Dataset is empty? Line count of CSV is 0.'
         print(f'Rows: {num_rows_in_csv}')
         interval = int(num_rows_in_csv / 10)
         
@@ -287,8 +284,7 @@ class Oracle():
         print('loading CSV into geopetl..')
         rows = etl.fromcsv(self.csv_path)
         num_rows_in_csv = rows.nrows()
-        if num_rows_in_csv == 0:
-            raise AssertionError('Error! Dataset is empty? Line count of CSV is 0.')
+        assert num_rows_in_csv != 0, 'Error! Dataset is empty? Line count of CSV is 0.'
         print(f'Rows: {num_rows_in_csv}')
         # Interval to print progress
         interval = int(num_rows_in_csv / 10)
@@ -303,6 +299,7 @@ class Oracle():
                         '''
         cursor.execute(cols_stmt)
         cols = cursor.fetchall()[0][0]
+        assert cols, f'Could not fetch columns, does the table exist?\n Statement: {cols_stmt}'
         # Detect if registered through existence of objectid column
         sde_registered = False
         if 'OBJECTID_' in cols:
@@ -369,7 +366,7 @@ class Oracle():
             cursor.execute(f'SELECT COUNT(*) FROM {self.table_schema.upper()}.{self.table_name.upper()}')
             oracle_rows = cursor.fetchone()[0]
             print(f'assert {num_rows_in_csv} == {oracle_rows}')
-            assert num_rows_in_csv == oracle_rows
+            assert num_rows_in_csv == oracle_rows, f'Row counts dont match!! csv: {num_rows_in_csv}, oracle table: {oracle_rows}'
             print('Done.')
         except (Exception, KeyboardInterrupt) as e:
             cursor.execute('ROLLBACK')
