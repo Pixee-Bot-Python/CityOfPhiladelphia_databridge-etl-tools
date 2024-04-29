@@ -383,7 +383,7 @@ class Db2():
             oid_column = oid_column_return[0]
         else:
             oid_column = None
-        if oid_column != 'objectid':
+        if oid_column and oid_column != 'objectid':
             self.logger.info(f'Non-standard OID column detected, you should correct this!!: {oid_column}')
 
         # Metadata column added into postgres tables by arc programs, often empty, not needed.
@@ -419,6 +419,7 @@ class Db2():
 
         # Get the objectid sequence associated with the table, also needed for resetting objectid column counter.
         # Sometimes this may not exist somehow.
+        seq_name = None
         if oid_column:
             seq_stmt = f'''
             SELECT
@@ -444,11 +445,8 @@ class Db2():
                 seq_name = seq_return[0]
             else:
                 seq_name = seq_name
-            try:
-                assert seq_name
-            except AssertionError as e:
-                self.logger.warning(f'Could not find the objectid sequence! Ran statement: \n {seq_stmt}')
-                seq_name = False
+            if not seq_name:
+                self.logger.info(f'Could not find an objectid sequence, ran statement: \n {seq_stmt}')
 
 
         if reg_id and reg_uuid and oid_column:
@@ -492,7 +490,7 @@ class Db2():
         enterprise_columns_str = ', '.join(enterprise_columns)
 
         self.logger.info('enterprise_columns: ' + str(enterprise_columns))
-        self.logger.info('oid_column: ' + str(oid_column))
+        self.logger.info('oid_column?: ' + str(oid_column))
 
         prod_table = f'{self.enterprise_schema}.{self.enterprise_dataset_name}'
         # If etl_staging, that means we got data uploaded from S3 or an ArcPy copy
@@ -505,6 +503,7 @@ class Db2():
             stage_table = f'{self.copy_from_source_schema}.{self.table_name}'
 
         if fully_registered:
+            self.logger.info('Table detected as fully registered.')
             # Reset these these to our row_count so next call to next_rowid() increments without collisions
             if seq_name:
                 self.logger.info("Resetting oid sequence..")
@@ -516,6 +515,8 @@ class Db2():
             self.logger.info(reset_oid_sequence_2)
             self.pg_cursor.execute(reset_oid_sequence_2)
             self.pg_cursor.execute('COMMIT;')
+        else:
+            self.logger.info('\nTable not registered.\n')
 
         try:
             update_stmt = f'''
