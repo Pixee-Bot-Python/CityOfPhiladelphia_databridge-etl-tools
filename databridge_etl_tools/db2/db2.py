@@ -407,7 +407,7 @@ class Db2():
         else:
             reg_id = False
 
-        reg_stmt2 = f"select uuid from sde.gdb_items where name like '%{self.enterprise_schema}.{self.enterprise_dataset_name}';"
+        reg_stmt2 = f"select uuid from sde.gdb_items where LOWER(name) = 'databridge.{self.enterprise_schema}.{self.enterprise_dataset_name}';"
         print(reg_stmt2)
         self.logger.info("Running reg_stmt2: " + str(reg_stmt2))
         self.pg_cursor.execute(reg_stmt2)
