@@ -1,6 +1,7 @@
 import csv, sys, re, ast
 import psycopg2.sql as sql
 import geopetl
+import pytz
 import petl as etl
 from .postgres_connector import Postgres_Connector
 
@@ -50,6 +51,7 @@ class Postgres():
         self._primary_keys = None
         self._pk_constraint_name = None
         self._fields = None
+        self._database_object_type = None
 
         # First make sure the table exists: 
         if self.table_schema == None: # If no schema provided, assume the table is TEMPORARY
@@ -98,7 +100,85 @@ class Postgres():
         else: # An exception was raised before __exit__()
             self.logger.error('Workflow failed... rolling back database transactions.\n')
             self.conn.rollback()
-            self.cleanup() 
+            self.cleanup()
+
+
+    @property
+    def database_object_type(self):
+        """returns whether the object is a table, view, or materialized view using pg_class
+        to figure out the type of object we're interacting with.
+        docs: https://www.postgresql.org/docs/11/catalog-pg-class.html
+        Right now we want to know whether its a table, view, or materialized view. Other
+        things shouldn't be getting passed and we'll raise an exception if they are.
+        """
+        if self._database_object_type:
+            return self._database_object_type
+        type_map = {
+            'r': 'table','i': 'index','S': 'sequence','t': 'TOAST_table','v': 'view', 'm': 'materialized_view',
+            'c': 'composite_type','f': 'foreign_table','p': 'partitioned_table','I': 'partitioned_index'
+        }
+        stmt = """
+            SELECT relkind FROM pg_class
+            JOIN pg_catalog.pg_namespace n ON n.oid = pg_class.relnamespace
+            WHERE relname='{}'
+            AND n.nspname='{}';
+            """.format(self.table_name,self.table_schema)
+        with self.conn.cursor() as cursor: 
+            cursor.execute(stmt)
+            res = cursor.fetchone()
+            relkind = res[0]
+        if type_map[relkind] in ['table', 'materialized_view', 'view']:
+            self._database_object_type = type_map[relkind]
+            print('Database object type: {}.'.format(self._database_object_type))
+            return self._database_object_type
+        else:
+            raise TypeError("""This database object is unsupported at this time.
+            database object passed to us looks like a '{}'""".format(type_map[relkind]))
+
+
+    @property
+    def fields(self):
+        if self._fields:
+            return self._fields
+        else:
+            if self.database_object_type == 'table':
+                stmt = """
+                    select column_name as name, data_type as type
+                    from information_schema.columns
+                    where table_schema = '{}' and table_name = '{}'
+                    """.format(self.table_schema, self.table_name)
+            # Funny method for getting the column names and data types for views
+            elif self.database_object_type == 'materialized_view' or self.database_object_type == 'view':
+                stmt = """
+                    select 
+                        attr.attname as name,
+                        trim(leading '_' from tp.typname) as type
+                    from pg_catalog.pg_attribute as attr
+                    join pg_catalog.pg_class as cls on cls.oid = attr.attrelid
+                    join pg_catalog.pg_namespace as ns on ns.oid = cls.relnamespace
+                    join pg_catalog.pg_type as tp on tp.typelem = attr.atttypid
+                    where 
+                        ns.nspname = '{}' and
+                        cls.relname = '{}' and 
+                        not attr.attisdropped and 
+                        cast(tp.typanalyze as text) = 'array_typanalyze' and 
+                        attr.attnum > 0
+                    order by 
+                        attr.attnum
+                    """.format(self.table_schema,self.table_name)
+            
+            with self.conn.cursor() as cursor: 
+                cursor.execute(stmt)
+                fields = cursor.fetchall()
+            # RealDictRows don't accept normal key removals like .pop for whatever reason
+            # only removal by index number works.
+            # gdb_geomattr_data is a postgis specific column added automatically by arc programs
+            # we don't need to worry about this field so we should remove it.
+            # docs: https://support.esri.com/en/technical-article/000001196
+            for i,field in enumerate(fields):
+                if field[0] == 'gdb_geomattr_data':
+                    del fields[i]
+            return fields
 
     def check_exists(self, table_name: str, schema_name:str) -> bool: 
         '''Check if a table exists, returning True or False. 
@@ -323,14 +403,28 @@ class Postgres():
             rows = etl.frompostgis(self.conn, self.table_schema_name, geom_with_srid=False)
 
         num_rows_in_csv = rows.nrows()
-
         if num_rows_in_csv == 0:
             raise AssertionError('Error! Dataset is empty? Line count of CSV is 0.')
+
+        # Find datetime fields so we can make everything timezone aware if it's naive.. This is important for Carto.
+        datetime_fields = []
+        # Do not use etl.typeset to determine data types because otherwise it causes geopetl to
+        # read the database multiple times
+        for field in self.fields: 
+            # Create list of datetime type fields that aren't timezone aware:
+            if ('timestamp' in field[1].lower() or 'date' in field[1].lower()) and \
+                ('tz' not in field[1].lower() and 'with time zone' not in field[1].lower()):
+                datetime_fields.append(field[0].lower())
+
+        if datetime_fields:
+            self.logger.info(f'Converting {datetime_fields} fields to Eastern timezone datetime')
+            rows_new = etl.convert(rows, datetime_fields, pytz.timezone('US/Eastern').localize)
+            # Replace rows with our converted object
+            rows = rows_new
 
         self.logger.info(f'Asserting counts match between db and extracted csv')
         self.logger.info(f'{row_count} == {num_rows_in_csv}')
         assert row_count == num_rows_in_csv
-
                 
         # New assert as well that will fail if row_count doesn't equal CSV again (because of time difference)
         db_newest_row_count = self.get_row_count()
