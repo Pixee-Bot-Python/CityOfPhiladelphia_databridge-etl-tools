@@ -143,6 +143,50 @@ def fields(self) -> 'list':
     return self._fields
 
 @property
+def fields_and_types(self):
+    '''Returns a list of tuples, each containing field name [0] and type [1]'''
+    if self._fields:
+        return self._fields
+    else:
+        if self.database_object_type == 'table':
+            stmt = """
+                select column_name as name, data_type as type
+                from information_schema.columns
+                where table_schema = '{}' and table_name = '{}'
+                """.format(self.table_schema, self.table_name)
+        # Funny method for getting the column names and data types for views
+        elif self.database_object_type == 'materialized_view' or self.database_object_type == 'view':
+            stmt = """
+                select 
+                    attr.attname as name,
+                    trim(leading '_' from tp.typname) as type
+                from pg_catalog.pg_attribute as attr
+                join pg_catalog.pg_class as cls on cls.oid = attr.attrelid
+                join pg_catalog.pg_namespace as ns on ns.oid = cls.relnamespace
+                join pg_catalog.pg_type as tp on tp.typelem = attr.atttypid
+                where 
+                    ns.nspname = '{}' and
+                    cls.relname = '{}' and 
+                    not attr.attisdropped and 
+                    cast(tp.typanalyze as text) = 'array_typanalyze' and 
+                    attr.attnum > 0
+                order by 
+                    attr.attnum
+                """.format(self.table_schema,self.table_name)
+
+        with self.conn.cursor() as cursor: 
+            cursor.execute(stmt)
+            fields = cursor.fetchall()
+        # RealDictRows don't accept normal key removals like .pop for whatever reason
+        # only removal by index number works.
+        # gdb_geomattr_data is a postgis specific column added automatically by arc programs
+        # we don't need to worry about this field so we should remove it.
+        # docs: https://support.esri.com/en/technical-article/000001196
+        for i,field in enumerate(fields):
+            if field[0] == 'gdb_geomattr_data':
+                del fields[i]
+        return fields
+@property
 def database_object_type(self):
     """returns whether the object is a table, view, or materialized view using pg_class
     to figure out the type of object we're interacting with.

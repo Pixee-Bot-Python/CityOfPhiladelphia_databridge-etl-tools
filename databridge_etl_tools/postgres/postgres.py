@@ -24,7 +24,7 @@ class Postgres():
     from ._properties import (
         csv_path, temp_csv_path, json_schema_path, json_schema_s3_key, 
         export_json_schema, primary_keys, pk_constraint_name, table_self_identifier, 
-        fields, geom_field, geom_type, database_object_type)
+        fields, fields_and_types, geom_field, geom_type, database_object_type)
     from ._s3 import (get_csv_from_s3, get_json_schema_from_s3, load_csv_to_s3, 
                       load_json_schema_to_s3)
     from ._cleanup import (vacuum_analyze, cleanup, check_remove_nulls)
@@ -331,14 +331,14 @@ class Postgres():
         datetime_fields = []
         # Do not use etl.typeset to determine data types because otherwise it causes geopetl to
         # read the database multiple times
-        for field in self.fields: 
+        for field in self.fields_and_types: 
             # Create list of datetime type fields that aren't timezone aware:
             if ('timestamp' in field[1].lower() or 'date' in field[1].lower()) and \
                 ('tz' not in field[1].lower() and 'with time zone' not in field[1].lower()):
                 datetime_fields.append(field[0].lower())
 
         if datetime_fields:
-            self.logger.info(f'Converting {datetime_fields} fields to Eastern timezone datetime')
+            self.logger.info(f'\nConverting {datetime_fields} fields to Eastern timezone datetime\n')
             rows_new = etl.convert(rows, datetime_fields, pytz.timezone('US/Eastern').localize)
             # Replace rows with our converted object
             rows = rows_new
