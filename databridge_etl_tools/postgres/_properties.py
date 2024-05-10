@@ -96,7 +96,7 @@ def primary_keys(self) -> 'set':
         WHERE  i.indrelid = %s::regclass
         AND    i.indisprimary;
         ''')
-        results = self.execute_sql(stmt, data=[self.table_schema_name], fetch='all')
+        results = self.execute_sql(stmt, data=[self.fully_qualified_table_name], fetch='all')
         self._primary_keys = set(x[0] for x in results)
     return self._primary_keys
 
@@ -141,6 +141,43 @@ def fields(self) -> 'list':
             rv.append(column.name)
         self._fields = rv
     return self._fields
+
+@property
+def database_object_type(self):
+    """returns whether the object is a table, view, or materialized view using pg_class
+    to figure out the type of object we're interacting with.
+    docs: https://www.postgresql.org/docs/11/catalog-pg-class.html
+    Right now we want to know whether its a table, view, or materialized view. Other
+    things shouldn't be getting passed and we'll raise an exception if they are.
+    """
+    if self._database_object_type:
+        return self._database_object_type
+    type_map = {
+        'r': 'table','i': 'index','S': 'sequence','t': 'TOAST_table','v': 'view', 'm': 'materialized_view',
+        'c': 'composite_type','f': 'foreign_table','p': 'partitioned_table','I': 'partitioned_index'
+    }
+    stmt = f"""
+        SELECT relkind FROM pg_class
+        JOIN pg_catalog.pg_namespace n ON n.oid = pg_class.relnamespace
+        WHERE relname='{self.table_name}'
+        """
+    # temporary tables will come in with a None schema
+    if self.table_schema:
+        stmt += f"AND n.nspname='{self.table_schema}'"
+    stmt += ';'
+    with self.conn.cursor() as cursor: 
+        cursor.execute(stmt)
+        res = cursor.fetchone()
+        if not res:
+            raise AssertionError(f'Table doesnt appear to exist?: {self.table_schema}.{self.table_name}')
+        relkind = res[0]
+    if type_map[relkind] in ['table', 'materialized_view', 'view']:
+        self._database_object_type = type_map[relkind]
+        print('Database object type: {}.'.format(self._database_object_type))
+        return self._database_object_type
+    else:
+        raise TypeError("""This database object is unsupported at this time.
+        database object passed to us looks like a '{}'""".format(type_map[relkind]))
 
 @property
 def geom_field(self):
