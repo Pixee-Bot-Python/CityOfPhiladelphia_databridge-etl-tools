@@ -397,6 +397,15 @@ class Postgres():
             cursor.execute(truncate_stmt)
             self.logger.info(f'Truncate successful: {cursor.rowcount:,} rows updated/inserted.\n')
 
+    def delete_from_truncate(self):
+        '''Truncates a table but instead does it via a DELETE FROM which allows it to happen in one transaction'''
+        truncate_stmt = sql.SQL('DELETE FROM {table_schema_name}').format(
+            table_schema_name=self.table_self_identifier)
+        with self.conn.cursor() as cursor: 
+            self.logger.info(f'truncate_stmt:{cursor.mogrify(truncate_stmt).decode()}')
+            cursor.execute(truncate_stmt)
+            self.logger.info(f'Truncate successful: {cursor.rowcount:,} rows updated/inserted.\n')
+
     def load(self, column_mappings:str=None, mappings_file:str=None, truncate_before_load:bool=False):
         '''
         Prepare and COPY a CSV from S3 to a Postgres table. If the keyword arguments 
@@ -422,7 +431,7 @@ class Postgres():
         self.get_csv_from_s3()
         self.prepare_file(file=self.csv_path, mapping_dict=mapping_dict)
         if truncate_before_load:
-            self.truncate()
+            self.delete_from_truncate()
         self.write_csv(write_file=self.temp_csv_path, table_name=self.table_name, 
                        schema_name=self.table_schema, mapping_dict=mapping_dict)
 
