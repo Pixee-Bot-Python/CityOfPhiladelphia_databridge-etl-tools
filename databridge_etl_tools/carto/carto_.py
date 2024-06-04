@@ -273,7 +273,7 @@ class Carto():
         self.logger.info('Temp table created successfully.\n')
         
     def confirm_indexes(self, table_name):
-        print('Confirming indexes exist...')
+        print('\nConfirming indexes exist...')
         stmt = '''SELECT indexname FROM pg_indexes WHERE tablename = '{}';'''.format(table_name)
         response = self.execute_sql(stmt, fetch='many')
         create_idx_stmt = ''
@@ -286,7 +286,7 @@ class Carto():
                 create_idx_stmt += f'CREATE INDEX {wanted_index_name} ON "{table_name}" ("{index_field}")'
 
         if create_idx_stmt:
-            self.logger.info(f'Fallback creating indexes??: {create_idx_stmt}')
+            self.logger.info(f'Fallback creating indexes: {create_idx_stmt}')
             self.execute_sql(create_idx_stmt)
         else:
             print('Indexes confirmed.\n')
@@ -397,17 +397,17 @@ class Carto():
         stmt += f'ALTER TABLE IF EXISTS "{self.table_name}" RENAME TO "{self.table_name}_old";'
         stmt += f'ALTER TABLE "{self.temp_table_name}" RENAME TO "{self.table_name}";'
 
-        if self.index_fields:
-            self.logger.info(f"Indexing fields: {self.index_fields}")
-            indexes = self.index_fields.split(',')
-            for indexes_field in indexes:
-                stmt += 'CREATE INDEX {t}_{f} ON "{t}" ("{f}");'.format(t=self.table_name, f=indexes_field)
+        #if self.index_fields:
+        #    self.logger.info(f"Indexing fields: {self.index_fields}")
+        #    indexes = self.index_fields.split(',')
+        #    for indexes_field in indexes:
+        #        stmt += 'CREATE INDEX {t}_{f} ON "{t}" ("{f}");'.format(t=self.table_name, f=indexes_field)
 
         stmt += f'DROP TABLE IF EXISTS "{self.table_name}_old" cascade;'
         stmt += self.generate_select_grants()
         stmt += 'COMMIT;'
 
-        print(f'\nDEBUG: {stmt}')
+        #print(f'\nDEBUG: {stmt}')
 
         self.logger.info('Swapping temporary and production tables...')
         self.logger.info(stmt)
