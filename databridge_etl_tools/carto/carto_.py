@@ -280,10 +280,15 @@ class Carto():
         existing_indexes = [ x['indexname'] for x in response['rows'] ]
         wanted_indexes = self.index_fields.split(',')
         for index_field in wanted_indexes:
-            wanted_index_name = f'{table_name}_{index_field}'
-            # If we didn't find the index we expect, then try to create it again
-            if wanted_index_name not in existing_indexes:
-                create_idx_stmt += f'CREATE INDEX {wanted_index_name} ON "{table_name}" ("{index_field}");'
+            # Skip shape index, carto automatically makes it for the shape field it makes called "the_geom"
+            if index_field == 'shape':
+                print('Ignoring shape field index specification because carto already makes it.')
+                continue
+            else:
+                wanted_index_name = f'{table_name}_{index_field}'
+                # If we didn't find the index we expect, then try to create it again
+                if wanted_index_name not in existing_indexes:
+                    create_idx_stmt += f'CREATE INDEX {wanted_index_name} ON "{table_name}" ("{index_field}");'
 
         if create_idx_stmt:
             create_idx_stmt += 'COMMIT;'
