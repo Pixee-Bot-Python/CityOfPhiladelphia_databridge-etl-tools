@@ -283,9 +283,10 @@ class Carto():
             wanted_index_name = f'{table_name}_{index_field}'
             # If we didn't find the index we expect, then try to create it again
             if wanted_index_name not in existing_indexes:
-                create_idx_stmt += f'CREATE INDEX {wanted_index_name} ON "{table_name}" ("{index_field}")'
+                create_idx_stmt += f'CREATE INDEX {wanted_index_name} ON "{table_name}" ("{index_field}");'
 
         if create_idx_stmt:
+            create_idx_stmt += 'COMMIT;'
             self.logger.info(f'Fallback creating indexes: {create_idx_stmt}')
             self.execute_sql(create_idx_stmt)
         else:
@@ -396,13 +397,6 @@ class Carto():
         stmt ='BEGIN;'
         stmt += f'ALTER TABLE IF EXISTS "{self.table_name}" RENAME TO "{self.table_name}_old";'
         stmt += f'ALTER TABLE "{self.temp_table_name}" RENAME TO "{self.table_name}";'
-
-        #if self.index_fields:
-        #    self.logger.info(f"Indexing fields: {self.index_fields}")
-        #    indexes = self.index_fields.split(',')
-        #    for indexes_field in indexes:
-        #        stmt += 'CREATE INDEX {t}_{f} ON "{t}" ("{f}");'.format(t=self.table_name, f=indexes_field)
-
         stmt += f'DROP TABLE IF EXISTS "{self.table_name}_old" cascade;'
         stmt += self.generate_select_grants()
         stmt += 'COMMIT;'
