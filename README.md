@@ -1,5 +1,3 @@
-[![Build Status](https://travis-ci.com/CityOfPhiladelphia/databridge-etl-tools.svg?branch=master)](https://travis-ci.com/CityOfPhiladelphia/databridge-etl-tools)
-
 # databridge-etl-tools
 
 Command line tools to extract and load SQL and Carto tables using [JSON Table Schema](http://frictionlessdata.io/guides/json-table-schema/).
@@ -7,7 +5,7 @@ Command line tools to extract and load SQL and Carto tables using [JSON Table Sc
 ## Overview
 Use this tool to extract data from an Oracle SDE database, load it to S3, and then load it to PostGIS or Carto from S3. In order for this to work, a JSON table schema for the table you are working with needs to reside in S3, in the bucket _citygeo-airflow-databridge2_ in the _schemas/_ folder. 
 
-The tool can be use either with Docker or as a standalone Python package. 
+The tool can be used either with Docker or as a standalone Python package. 
 
 ## Requirements 
 
@@ -24,12 +22,19 @@ The tool can be use either with Docker or as a standalone Python package.
 - Access to _citygeo-oracle-instant-client_ S3 bucket
 
 ## Installation
-* Install aws CLI if you don't have it `sudo apt-get install awscli`
-* Install alien if don't already have it `sudo apt-get install alien`
-* Run `bash ./scripts/pull-oracle-rpm.sh`
-    * You can then verify with `ls` that the oracle instant client was downloaded into the project folder
-* Run `alien -i oracle-instantclient18.5-basiclite-18.5.0.0.0-3.x86_64.rpm \
-&& rm oracle-instantclient18.5-basiclite-18.5.0.0.0-3.x86_64.rpm`
+* Perform the following if installing this package onto a server that has not already had these steps completed
+    * Install aws CLI if you don't have it `sudo apt-get install awscli`
+    * Install alien if don't already have it `sudo apt-get install alien`
+    * Run `bash ./scripts/pull-oracle-rpm.sh`
+        * You can then verify with `ls` that the oracle instant client was downloaded into the project folder
+    * Run `alien -i oracle-instantclient18.5-basiclite-18.5.0.0.0-3.x86_64.rpm \
+    && rm oracle-instantclient18.5-basiclite-18.5.0.0.0-3.x86_64.rpm`
+
+### (with pip)
+* Source a virtual environment, then
+```bash
+pip install git+https://github.com/CityOfPhiladelphia/databridge-etl-tools.git
+```
 
 ### (w/o Docker)
 * Set environment variables for Oracle, if the below are not already in your `~/.bashrc` file then add them there and run them in the terminal as well: 

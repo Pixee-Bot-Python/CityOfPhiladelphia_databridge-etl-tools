@@ -47,6 +47,10 @@ dependencies = [
     "moto",
     "pytest",
     "requests-mock",
+    "stringcase", 
+    "hurry.filesize", 
+    "smart_open", 
+    "retrying"
 ]
 
 # installs our command as a cli runnable script
