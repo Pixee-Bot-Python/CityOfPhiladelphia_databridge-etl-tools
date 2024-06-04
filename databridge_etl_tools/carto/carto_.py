@@ -175,7 +175,7 @@ class Carto():
             with open(self.json_schema_path) as json_file:
                 schema = json.load(json_file).get('fields', '')
                 if not schema:
-                    logger.error('Json schema malformatted...')
+                    self.logger.error('Json schema malformatted...')
                     raise
                 num_fields = len(schema)
                 schema_fmt = ''
@@ -187,7 +187,7 @@ class Carto():
                         if scheme_srid and scheme_geometry_type:
                             scheme_type = '''geometry ({}, {}) '''.format(scheme_geometry_type, scheme_srid)
                         else:
-                            logger.error('srid and geometry_type must be provided with geometry field...')
+                            self.logger.error('srid and geometry_type must be provided with geometry field...')
                             raise
 
                     schema_fmt += ' {} {}'.format(scheme['name'], scheme_type)
@@ -270,26 +270,32 @@ class Carto():
             self.logger.error(message)
             raise Exception(message)
 
-        if self.index_fields:
-            self.logger.info("Indexing fields: {}".format(self.index_fields))
-            self.create_indexes()
-
         self.logger.info('Temp table created successfully.\n')
         
-    def create_indexes(self):
-        self.logger.info('\nCreating indexes on {}: {}'.format(
-            self.temp_table_name,
-            self.index_fields)
-        )
-        
-        indexes = self.index_fields.split(',')
-        index_stmt = 'BEGIN; '
-        for indexes_field in indexes:
-            index_stmt += 'CREATE INDEX {table}_{field} ON "{table}" ("{field}");\n'.format(table=self.temp_table_name,
-                                                                                      field=indexes_field)
-        index_stmt += 'COMMIT;'
-        self.execute_sql(index_stmt)
-        self.logger.info('Indexes created successfully.\n')
+    def confirm_indexes(self, table_name):
+        print('\nConfirming indexes exist...')
+        stmt = '''SELECT indexname FROM pg_indexes WHERE tablename = '{}';'''.format(table_name)
+        response = self.execute_sql(stmt, fetch='many')
+        create_idx_stmt = ''
+        existing_indexes = [ x['indexname'] for x in response['rows'] ]
+        wanted_indexes = self.index_fields.split(',')
+        for index_field in wanted_indexes:
+            # Skip shape index, carto automatically makes it for the shape field it makes called "the_geom"
+            if index_field == 'shape':
+                print('Ignoring shape field index specification because carto already makes it.')
+                continue
+            else:
+                wanted_index_name = f'{table_name}_{index_field}'
+                # If we didn't find the index we expect, then try to create it again
+                if wanted_index_name not in existing_indexes:
+                    create_idx_stmt += f'CREATE INDEX {wanted_index_name} ON "{table_name}" ("{index_field}");'
+
+        if create_idx_stmt:
+            create_idx_stmt += 'COMMIT;'
+            self.logger.info(f'Fallback creating indexes: {create_idx_stmt}')
+            self.execute_sql(create_idx_stmt)
+        else:
+            print('Indexes confirmed.\n')
 
     def extract(self):
         raise NotImplementedError
@@ -350,9 +356,9 @@ class Carto():
         if num_rows_in_table != num_rows_expected:
             self.logger.error('Did not insert all rows, reverting...')
             stmt = 'BEGIN;' + \
-                    'DROP TABLE if exists "{}" cascade;'.format(temp_table_name) + \
+                    'DROP TABLE if exists "{}" cascade;'.format(self.temp_table_name) + \
                     'COMMIT;'
-            execute_sql(stmt)
+            self.execute_sql(stmt)
             exit(1)
         self.logger.info('Row count verified.\n')
 
@@ -393,15 +399,19 @@ class Carto():
         self.logger.info('Successfully removed temp files.')
 
     def swap_table(self):
-        stmt = 'BEGIN;' + \
-                'ALTER TABLE IF EXISTS "{}" RENAME TO "{}_old";'.format(self.table_name, self.table_name) + \
-                'ALTER TABLE "{}" RENAME TO "{}";'.format(self.temp_table_name, self.table_name) + \
-                'DROP TABLE IF EXISTS "{}_old" cascade;'.format(self.table_name) + \
-                self.generate_select_grants() + \
-                'COMMIT;'
+        stmt ='BEGIN;'
+        stmt += f'ALTER TABLE IF EXISTS "{self.table_name}" RENAME TO "{self.table_name}_old";'
+        stmt += f'ALTER TABLE "{self.temp_table_name}" RENAME TO "{self.table_name}";'
+        stmt += f'DROP TABLE IF EXISTS "{self.table_name}_old" cascade;'
+        stmt += self.generate_select_grants()
+        stmt += 'COMMIT;'
+
+        #print(f'\nDEBUG: {stmt}')
+
         self.logger.info('Swapping temporary and production tables...')
         self.logger.info(stmt)
         self.execute_sql(stmt)
+        self.confirm_indexes(self.table_name)
 
     # Force privacy settings because carto is unreliable about privacy
     def enforce_privacy(self):
