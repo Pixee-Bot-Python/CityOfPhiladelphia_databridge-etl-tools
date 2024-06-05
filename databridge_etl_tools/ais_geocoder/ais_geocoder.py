@@ -1,15 +1,7 @@
-import re
-import sys
-import csv
-import codecs
-
-import click
+import sys, csv
 from smart_open import open as smopen
 import boto3
-import botocore
-from sys import getsizeof
 from hurry.filesize import size
-
 from .ais_request import ais_request
 
 csv.field_size_limit(sys.maxsize)
