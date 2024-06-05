@@ -273,29 +273,32 @@ class Carto():
         self.logger.info('Temp table created successfully.\n')
         
     def confirm_indexes(self, table_name):
-        print('\nConfirming indexes exist...')
-        stmt = '''SELECT indexname FROM pg_indexes WHERE tablename = '{}';'''.format(table_name)
-        response = self.execute_sql(stmt, fetch='many')
-        create_idx_stmt = ''
-        existing_indexes = [ x['indexname'] for x in response['rows'] ]
-        wanted_indexes = self.index_fields.split(',')
-        for index_field in wanted_indexes:
-            # Skip shape index, carto automatically makes it for the shape field it makes called "the_geom"
-            if index_field == 'shape':
-                print('Ignoring shape field index specification because carto already makes it.')
-                continue
-            else:
-                wanted_index_name = f'{table_name}_{index_field}'
-                # If we didn't find the index we expect, then try to create it again
-                if wanted_index_name not in existing_indexes:
-                    create_idx_stmt += f'CREATE INDEX {wanted_index_name} ON "{table_name}" ("{index_field}");'
-
-        if create_idx_stmt:
-            create_idx_stmt += 'COMMIT;'
-            self.logger.info(f'Fallback creating indexes: {create_idx_stmt}')
-            self.execute_sql(create_idx_stmt)
+        if not self.index_fields:
+            print('No index fields specified, skipping index confirmation.')
         else:
-            print('Indexes confirmed.\n')
+            print('\nConfirming indexes exist...')
+            stmt = '''SELECT indexname FROM pg_indexes WHERE tablename = '{}';'''.format(table_name)
+            response = self.execute_sql(stmt, fetch='many')
+            create_idx_stmt = ''
+            existing_indexes = [ x['indexname'] for x in response['rows'] ]
+            wanted_indexes = self.index_fields.split(',')
+            for index_field in wanted_indexes:
+                # Skip shape index, carto automatically makes it for the shape field it makes called "the_geom"
+                if index_field == 'shape':
+                    print('Ignoring shape field index specification because carto already makes it.')
+                    continue
+                else:
+                    wanted_index_name = f'{table_name}_{index_field}'
+                    # If we didn't find the index we expect, then try to create it again
+                    if wanted_index_name not in existing_indexes:
+                        create_idx_stmt += f'CREATE INDEX {wanted_index_name} ON "{table_name}" ("{index_field}");'
+
+            if create_idx_stmt:
+                create_idx_stmt += 'COMMIT;'
+                self.logger.info(f'Fallback creating indexes: {create_idx_stmt}')
+                self.execute_sql(create_idx_stmt)
+            else:
+                print('Indexes confirmed.\n')
 
     def extract(self):
         raise NotImplementedError
@@ -411,7 +414,8 @@ class Carto():
         self.logger.info('Swapping temporary and production tables...')
         self.logger.info(stmt)
         self.execute_sql(stmt)
-        self.confirm_indexes(self.table_name)
+        if self.index_fields:
+            self.confirm_indexes(self.table_name)
 
     # Force privacy settings because carto is unreliable about privacy
     def enforce_privacy(self):
