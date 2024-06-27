@@ -93,6 +93,19 @@ class Oracle():
             csv_path = '/tmp/{}.csv'.format(csv_file_name)
         return csv_path
 
+    def get_interval(self, row_count):
+        # Try to get an (arbitrary) sensible interval to print progress on by dividing by the row count
+        if row_count < 10000:
+            interval = int(row_count/3)
+        if row_count > 10000:
+            interval = int(row_count/15)
+        if row_count == 1:
+            interval = 1
+        # If it rounded down to 0 with int(), that means we have a very small amount of rows
+        if not interval:
+            interval = 1
+        return interval
+
     @property
     def json_schema_path(self):
         if self._json_schema_path:
@@ -190,16 +203,7 @@ class Oracle():
                 datetime_fields.append(field[0].lower())
 
 
-        # Try to get an (arbitrary) sensible interval to print progress on by dividing by the row count
-        if self.row_count < 10000:
-            interval = int(self.row_count/3)
-        if self.row_count > 10000:
-            interval = int(self.row_count/15)
-        if self.row_count == 1:
-            interval = 1
-        # If it rounded down to 0 with int(), that means we have a very small amount of rows
-        if not interval:
-            interval = 1
+        interval = self.get_interval(self.row_count)
 
         if datetime_fields:
             self.logger.info(f'Converting {datetime_fields} fields to Eastern timezone datetime')
@@ -273,7 +277,8 @@ class Oracle():
         num_rows_in_csv = rows.nrows()
         assert num_rows_in_csv != 0, 'Error! Dataset is empty? Line count of CSV is 0.'
         print(f'Rows: {num_rows_in_csv}')
-        interval = int(num_rows_in_csv / 10)
+
+        interval = self.get_interval(num_rows_in_csv)
         
         print(f"Loading CSV into Oracle table '{self.table_schema.upper()}.{self.table_name.upper()}..")
         rows.progress(interval).appendoraclesde(self.conn, f'{self.table_schema.upper()}.{self.table_name.upper()}')
@@ -287,7 +292,7 @@ class Oracle():
         assert num_rows_in_csv != 0, 'Error! Dataset is empty? Line count of CSV is 0.'
         print(f'Rows: {num_rows_in_csv}')
         # Interval to print progress
-        interval = int(num_rows_in_csv / 10)
+        interval = self.get_interval(num_rows_in_csv)
 
         # Get columns from prod oracle table
         cursor = self.conn.cursor()
