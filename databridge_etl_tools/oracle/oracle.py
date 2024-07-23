@@ -363,12 +363,18 @@ class Oracle():
                     '''
             print('Begin copying from temp into final table..')
             print(copy_stmt)
-            cursor.execute(f'DELETE FROM {self.table_schema.upper()}.{self.table_name.upper()}')
-            cursor.execute(copy_stmt)
-            cursor.execute('COMMIT')
-            cursor.execute(f'DROP TABLE {temp_table_name}')
-            cursor.execute('COMMIT')
-            cursor.execute(f'SELECT COUNT(*) FROM {self.table_schema.upper()}.{self.table_name.upper()}')
+            try:            
+                cursor.execute(f'DELETE FROM {self.table_schema.upper()}.{self.table_name.upper()}')
+                cursor.execute(copy_stmt)
+                cursor.execute('COMMIT')
+                cursor.execute(f'DROP TABLE {temp_table_name}')
+                cursor.execute('COMMIT')
+                cursor.execute(f'SELECT COUNT(*) FROM {self.table_schema.upper()}.{self.table_name.upper()}')
+            except Exception as e:
+                if 'ORA-01031: insufficient privileges' in str(e):
+                    fix_sql_stmt = 'GRANT ALL PRIVILEGES ON ' + self.table_schema.upper() + '.' + self.table_name.upper() + ' TO SDE'
+                    print(f'You need to grant the SDE user privileges over this table! Connect to the database as the {self.table_schema.upper()} user and run this: {fix_sql_stmt}')
+                raise e
             oracle_rows = cursor.fetchone()[0]
             print(f'assert {num_rows_in_csv} == {oracle_rows}')
             assert num_rows_in_csv == oracle_rows, f'Row counts dont match!! csv: {num_rows_in_csv}, oracle table: {oracle_rows}'
