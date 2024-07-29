@@ -357,6 +357,16 @@ class Db2():
 
     def copy_to_enterprise(self):
         ''''Copy from either department table or etl_staging temp table, depending on args passed.'''
+        
+        prod_table = f'{self.enterprise_schema}.{self.enterprise_dataset_name}'
+        # If etl_staging, that means we got data uploaded from S3 or an ArcPy copy
+        # so use the appropriate name which would be "etl_staging.dept_name__table_name"
+        if self.copy_from_source_schema == 'etl_staging':
+            stage_table = self.staging_dataset_name
+        # If it's not etl_staging, that means we're copying directly from the dept table to entreprise
+        # so appropriate name would be "dept_name.table_name"
+        else:
+            stage_table = f'{self.copy_from_source_schema}.{self.table_name}'
 
         get_enterprise_columns_stmt = f'''
         SELECT array_agg(COLUMN_NAME::text order by COLUMN_NAME)
@@ -486,21 +496,36 @@ class Db2():
         if 'objectid' in enterprise_columns and seq_name:
             enterprise_columns.remove('objectid')
 
-        # Get our enterprise columns which we'll use for our insert statement below
-        enterprise_columns_str = ', '.join(enterprise_columns)
+        # Construct our columns string, which we'll use for our insert statement below
+        #
+        # Some tables are made without a sequence, and can have an empty objectid column if someone decided
+        # to make a different objectid than just "objectid" in oracle. This means that the table is initially made
+        # without that column, but still an oid column called "objectid". In this rare scenario, the objectid column will be empty.
+        null_oid_stmt = f'select {oid_column} from {stage_table} where {oid_column} is not null;'
+        print(f'Checking if {oid_column} col is null...')
+        self.pg_cursor.execute(null_oid_stmt)
+        result = self.pg_cursor.fetchone()
+        # If empty oid column, AND no oid sequence, insert using sde.next_rowid
+        if not result:
+            print(f'Falling back to using sde_nextrowid() function for inserting into {oid_column}..')
+            # Remove so we can put objectid last and be sure of it's position.
+            enterprise_columns.remove(oid_column)
+            # Actually make a copy of the list and not just a pointer.
+            staging_columns = list(enterprise_columns)
 
-        self.logger.info('enterprise_columns: ' + str(enterprise_columns))
-        self.logger.info('oid_column?: ' + str(oid_column))
-
-        prod_table = f'{self.enterprise_schema}.{self.enterprise_dataset_name}'
-        # If etl_staging, that means we got data uploaded from S3 or an ArcPy copy
-        # so use the appropriate name which would be "etl_staging.dept_name__table_name"
-        if self.copy_from_source_schema == 'etl_staging':
-            stage_table = self.staging_dataset_name
-        # If it's not etl_staging, that means we're copying directly from the dept table to entreprise
-        # so appropriate name would be "dept_name.table_name"
+            staging_columns.append(oid_column)
+            staging_columns_str = ', '.join(staging_columns)
+            
+            enterprise_columns.append(f"sde.next_rowid('{self.enterprise_schema}','{self.enterprise_dataset_name}')")
+            enterprise_columns_str = ', '.join(enterprise_columns)
         else:
-            stage_table = f'{self.copy_from_source_schema}.{self.table_name}'
+            staging_columns = ', '.join(enterprise_columns)
+            enterprise_columns_str = ', '.join(enterprise_columns)
+
+        self.logger.info('')
+        self.logger.info('enterprise_columns: ' + str(enterprise_columns_str))
+        self.logger.info('staging_columns: ' + str(staging_columns_str))
+        self.logger.info('oid_column?: ' + str(oid_column))
 
         if fully_registered:
             self.logger.info('Table detected as fully registered.')
@@ -523,7 +548,7 @@ class Db2():
                 BEGIN;
                     -- Truncate our table (won't show until commit) 
                     DELETE FROM {prod_table};
-                    INSERT INTO {prod_table} ({enterprise_columns_str})
+                    INSERT INTO {prod_table} ({staging_columns_str})
                         SELECT {enterprise_columns_str}
                         FROM {stage_table};
                 END;
