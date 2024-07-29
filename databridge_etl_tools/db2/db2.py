@@ -497,27 +497,32 @@ class Db2():
             enterprise_columns.remove('objectid')
 
         # Construct our columns string, which we'll use for our insert statement below
+        # still deciding how to handle our oid column at this point.
         #
         # Some tables are made without a sequence, and can have an empty objectid column if someone decided
         # to make a different objectid than just "objectid" in oracle. This means that the table is initially made
         # without that column, but still an oid column called "objectid". In this rare scenario, the objectid column will be empty.
-        null_oid_stmt = f'select {oid_column} from {stage_table} where {oid_column} is not null;'
-        print(f'Checking if {oid_column} col is null...')
-        self.pg_cursor.execute(null_oid_stmt)
-        result = self.pg_cursor.fetchone()
-        # If empty oid column, AND no oid sequence, insert using sde.next_rowid
-        if not result:
-            print(f'Falling back to using sde_nextrowid() function for inserting into {oid_column}..')
-            # Remove so we can put objectid last and be sure of it's position.
-            enterprise_columns.remove(oid_column)
-            # Actually make a copy of the list and not just a pointer.
-            staging_columns = list(enterprise_columns)
+        if oid_column and not seq_name:
+            null_oid_stmt = f'select {oid_column} from {stage_table} where {oid_column} is not null;'
+            print(f'Checking if {oid_column} col is null...')
+            self.pg_cursor.execute(null_oid_stmt)
+            result = self.pg_cursor.fetchone()
+            # If empty oid column, AND no oid sequence, insert using sde.next_rowid
+            if not result:
+                print(f'Falling back to using sde_nextrowid() function for inserting into {oid_column}..')
+                # Remove so we can put objectid last and be sure of it's position.
+                enterprise_columns.remove(oid_column)
+                # Actually make a copy of the list and not just a pointer.
+                staging_columns = list(enterprise_columns)
 
-            staging_columns.append(oid_column)
-            staging_columns_str = ', '.join(staging_columns)
-            
-            enterprise_columns.append(f"sde.next_rowid('{self.enterprise_schema}','{self.enterprise_dataset_name}')")
-            enterprise_columns_str = ', '.join(enterprise_columns)
+                staging_columns.append(oid_column)
+                staging_columns_str = ', '.join(staging_columns)
+                
+                enterprise_columns.append(f"sde.next_rowid('{self.enterprise_schema}','{self.enterprise_dataset_name}')")
+                enterprise_columns_str = ', '.join(enterprise_columns)
+            else:
+                staging_columns = ', '.join(enterprise_columns)
+                enterprise_columns_str = ', '.join(enterprise_columns)
         else:
             staging_columns = ', '.join(enterprise_columns)
             enterprise_columns_str = ', '.join(enterprise_columns)
