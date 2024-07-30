@@ -514,18 +514,15 @@ class Db2():
                 enterprise_columns.remove(oid_column)
                 # Actually make a copy of the list and not just a pointer.
                 staging_columns = list(enterprise_columns)
-
                 staging_columns.append(oid_column)
-                staging_columns_str = ', '.join(staging_columns)
-                
                 enterprise_columns.append(f"sde.next_rowid('{self.enterprise_schema}','{self.enterprise_dataset_name}')")
-                enterprise_columns_str = ', '.join(enterprise_columns)
             else:
-                staging_columns = ', '.join(enterprise_columns)
-                enterprise_columns_str = ', '.join(enterprise_columns)
+                staging_columns = enterprise_columns
         else:
-            staging_columns = ', '.join(enterprise_columns)
-            enterprise_columns_str = ', '.join(enterprise_columns)
+            staging_columns = enterprise_columns
+
+        staging_columns_str = ', '.join(staging_columns)
+        enterprise_columns_str = ', '.join(enterprise_columns)
 
         self.logger.info('')
         self.logger.info('enterprise_columns: ' + str(enterprise_columns_str))
