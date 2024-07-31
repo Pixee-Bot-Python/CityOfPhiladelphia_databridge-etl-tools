@@ -575,14 +575,14 @@ class Db2():
         self.pg_cursor.execute('COMMIT')
 
         # Run a quick select statement to test, use objectid if available
-        if oid_column == 'objectid':
+        if oid_column:
             select_test_stmt = f'''
-            SELECT * FROM {self.enterprise_schema}.{self.enterprise_dataset_name} WHERE objectid IS NOT NULL LIMIT 1
+            SELECT * FROM {self.enterprise_schema}.{self.enterprise_dataset_name} WHERE {oid_column} IS NOT NULL LIMIT 1
             '''
-        # Else use the first field in our columns list.
+        # Else bare select
         else:
             select_test_stmt = f'''
-            SELECT * FROM {self.enterprise_schema}.{self.enterprise_dataset_name} WHERE {enterprise_columns[0]} IS NOT NULL LIMIT 1
+            SELECT * FROM {self.enterprise_schema}.{self.enterprise_dataset_name} LIMIT 1
             '''
         self.logger.info("Running select_test_stmt: " + str(select_test_stmt))
 
