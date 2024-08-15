@@ -332,7 +332,8 @@ class Oracle():
             tmp_table_made = False
             tmp_tbl_stmt = f'''CREATE TABLE {temp_table_name} AS
                                 SELECT {cols}
-                                FROM {self.table_schema.upper()}.{self.table_name.upper()}
+                                FROM {self.table_schema.upper()}.{self.table_name.upper()} 
+                                WHERE 1=0
                             '''
             print(tmp_tbl_stmt)
             cursor.execute(tmp_tbl_stmt)
