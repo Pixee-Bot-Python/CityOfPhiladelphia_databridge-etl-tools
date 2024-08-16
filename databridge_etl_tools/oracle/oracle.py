@@ -305,6 +305,20 @@ class Oracle():
         cursor.execute(cols_stmt)
         cols = cursor.fetchall()[0][0]
         assert cols, f'Could not fetch columns, does the table exist?\n Statement: {cols_stmt}'
+
+        # Becaues we're inserting into a temp table first, we need to provide the SRID. Geopetl will try to determine it for the temp table
+        # and it will fail because we just made a bare, non-SDE table.
+        # So, get the final table's SRID first and use it for geopetl's "insert_srid" argument.
+        srid_stmt = f'''select s.auth_srid
+            from sde.layers l
+            join sde.spatial_references s
+            on l.srid = s.srid
+            where l.owner = '{self.table_schema.upper()}'
+            and l.table_name = '{self.table_name.upper()}'
+            '''
+        cursor.execute(srid_stmt)
+        srid = cursor.fetchone()[0]
+
         # Detect if registered through existence of objectid column
         sde_registered = False
         if 'OBJECTID_' in cols:
@@ -340,13 +354,16 @@ class Oracle():
             cursor.execute('COMMIT')
             tmp_table_made = True
             
+            # Replace empty strings with None (which corresponds to NULL in databases)
+            #rows = etl.convert(rows, {field: lambda v: 'NULL' if v == '' else v for field in etl.header(rows)})
+            
             print(f'Loading CSV into {temp_table_name} (note that first printed progress rows are just loading csv into petl object)..')
             # Remove objectid because we're loading into temp table first minus objectid
             if sde_registered:
                 rows_mod = etl.cutout(rows, 'objectid')
-                rows_mod.progress(interval).tooraclesde(self.conn, temp_table_name)
+                rows_mod.progress(interval).tooraclesde(self.conn, temp_table_name, table_srid=srid)
             else:
-                rows.progress(interval).tooraclesde(self.conn, temp_table_name)
+                rows.progress(interval).tooraclesde(self.conn, temp_table_name, table_srid=srid)
 
             if sde_registered:
                 copy_into_cols = 'OBJECTID, ' + cols
