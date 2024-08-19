@@ -317,7 +317,8 @@ class Oracle():
             and l.table_name = '{self.table_name.upper()}'
             '''
         cursor.execute(srid_stmt)
-        srid = cursor.fetchone()[0]
+        response = cursor.fetchone()
+        srid = response[0] if response else None
 
         # Detect if registered through existence of objectid column
         sde_registered = False
