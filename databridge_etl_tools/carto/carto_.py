@@ -65,12 +65,14 @@ class Carto():
                  table_name, 
                  s3_bucket, 
                  s3_key,
+                 json_schema_s3_key=None,
                  select_users=None,
                  index_fields=None):
         self.connection_string = connection_string
         self.table_name = table_name
         self.s3_bucket = s3_bucket
         self.s3_key = s3_key
+        self._json_schema_s3_key = json_schema_s3_key
         self.select_users = select_users
         self.index_fields = index_fields
 
@@ -86,7 +88,10 @@ class Carto():
     @property
     def json_schema_s3_key(self):
         if self._json_schema_s3_key is None:
-            self._json_schema_s3_key = self.s3_key.replace('staging', 'schemas').replace('.csv', '.json')
+            print('No json schema arg passed, assuming name matches the csv name..')
+            asplit = self.s3_key.split('/')
+            json_schema_s3_key = 'schemas/' + '/'.join(asplit[1:])
+            self._json_schema_s3_key = json_schema_s3_key.replace('.csv', '.json')
         return self._json_schema_s3_key
 
 

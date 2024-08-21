@@ -7,6 +7,7 @@ import click
 @click.option('--connection_string', required=True)
 @click.option('--s3_bucket', required=True)
 @click.option('--s3_key', required=True)
+@click.option('--json_schema_s3_key', required=False, default=None)
 @click.option('--select_users', required=False, default=None)
 @click.option('--index_fields', required=False, default=None)
 def carto(ctx, **kwargs):
