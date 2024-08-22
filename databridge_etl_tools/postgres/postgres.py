@@ -516,9 +516,6 @@ class Postgres():
         '''
         # See https://www.postgresql.org/docs/current/sql-insert.html for why the 
         # table is called EXCLUDED
-        
-        if delete_stale: 
-            self._delete_using_except(staging=staging, mapping_dict=mapping_dict)
 
         # Iterate through the Other table's fields and use the mapping_dict to create 
         # three sql.Composed statements: prod_fields, staging_fields, update_set
@@ -574,6 +571,9 @@ class Postgres():
             self.logger.info(f'upsert_statement:{cursor.mogrify(upsert_stmt).decode()}')
             cursor.execute(upsert_stmt)
             self.logger.info(f'Upsert Successful: {cursor.rowcount:,} rows updated/inserted.\n')
+        
+        if delete_stale: 
+            self._delete_using_except(staging=staging, mapping_dict=mapping_dict)
 
     def _upsert_csv(self, mapping_dict:dict, delete_stale:bool): 
         '''Upsert a CSV file from S3 to a Postgres table'''
