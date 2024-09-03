@@ -293,14 +293,23 @@ class Carto():
                     print('Ignoring shape field index specification because carto already makes it.')
                     continue
                 else:
-                    wanted_index_name = f'{table_name}_{index_field}'
+                    if '+' in index_field:
+                        wanted_index_name = f'{table_name}_{index_field.replace("+","__plus__")}'
+                    else:
+                        wanted_index_name = f'{table_name}_{index_field}'
                     # If we didn't find the index we expect, then try to create it again
                     if wanted_index_name not in existing_indexes:
-                        create_idx_stmt += f'CREATE INDEX {wanted_index_name} ON "{table_name}" ("{index_field}");'
+                        if '+' in index_field:
+                            print(f'Creating compound index for {index_field}..')
+                            individual_cols = index_field.split('+')
+                            cols_sql = ', '.join(individual_cols)
+                            create_idx_stmt += f'CREATE INDEX {wanted_index_name} ON "{table_name}" ({cols_sql});'
+                        else:
+                            create_idx_stmt += f'CREATE INDEX {wanted_index_name} ON "{table_name}" ("{index_field}");'
 
             if create_idx_stmt:
                 create_idx_stmt += 'COMMIT;'
-                self.logger.info(f'Fallback creating indexes: {create_idx_stmt}')
+                self.logger.info(f'Creating indexes: {create_idx_stmt}')
                 self.execute_sql(create_idx_stmt)
             else:
                 print('Indexes confirmed.\n')
