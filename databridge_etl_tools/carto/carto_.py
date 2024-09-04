@@ -287,6 +287,8 @@ class Carto():
             create_idx_stmt = ''
             existing_indexes = [ x['indexname'] for x in response['rows'] ]
             wanted_indexes = self.index_fields.split(',')
+            
+            idx_counter = 1
             for index_field in wanted_indexes:
                 # Skip shape index, carto automatically makes it for the shape field it makes called "the_geom"
                 if index_field == 'shape':
@@ -294,22 +296,24 @@ class Carto():
                     continue
                 else:
                     if '+' in index_field:
-                        wanted_index_name = f'{table_name}_{index_field.replace("+","__plus__")}'
+                        print(f'Creating compound index for {index_field}..')
+                        # Too long of a name gets truncated, make a shorter name.
+                        wanted_index_name = f'{table_name}_comp{idx_counter}'
+                        idx_counter += 1
+                        individual_cols = index_field.split('+')
+                        cols_sql = ', '.join(individual_cols)
+                        # If we didn't find the index we expect, then try to create it again
+                        if wanted_index_name not in existing_indexes:
+                            create_idx_stmt += f'CREATE INDEX {wanted_index_name} ON "{table_name}" ({cols_sql});'
                     else:
                         wanted_index_name = f'{table_name}_{index_field}'
-                    # If we didn't find the index we expect, then try to create it again
-                    if wanted_index_name not in existing_indexes:
-                        if '+' in index_field:
-                            print(f'Creating compound index for {index_field}..')
-                            individual_cols = index_field.split('+')
-                            cols_sql = ', '.join(individual_cols)
-                            create_idx_stmt += f'CREATE INDEX {wanted_index_name} ON "{table_name}" ({cols_sql});'
-                        else:
+                        # If we didn't find the index we expect, then try to create it again
+                        if wanted_index_name not in existing_indexes:
                             create_idx_stmt += f'CREATE INDEX {wanted_index_name} ON "{table_name}" ("{index_field}");'
 
             if create_idx_stmt:
                 create_idx_stmt += 'COMMIT;'
-                self.logger.info(f'Creating indexes: {create_idx_stmt}')
+                print(f'Creating indexes: {create_idx_stmt}')
                 self.execute_sql(create_idx_stmt)
             else:
                 print('Indexes confirmed.\n')
