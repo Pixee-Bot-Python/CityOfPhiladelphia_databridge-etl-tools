@@ -91,7 +91,7 @@ def upsert_csv(ctx, **kwargs):
     with Postgres(**ctx.obj) as postgres: 
         postgres.upsert('csv', **kwargs)
 
-@click.option('--staging_table', required=True, help='''Name of Postgres table to upsert from ''')
+@click.option('--staging_table', required=True, help='''Name of Postgres table or view to upsert from ''')
 @click.option('--staging_schema', required=False, help='''Schema of Postgres table 
     to upsert from. If None, assume the same schema as the table being upserted to''')
 @click.option('--column_mappings', required=False, help='''
@@ -108,7 +108,7 @@ def upsert_csv(ctx, **kwargs):
 @postgres.command()
 @click.pass_context
 def upsert_table(ctx, **kwargs): 
-    '''Upserts data from a Postgres table to a Postgres table in the same database, 
+    '''Upserts data from a Postgres table or view to a Postgres table in the same database, 
     which must have at least one primary key. The keyword arguments 
     "column_mappings" or "mappings_file" can be used to map data file columns to 
     database table colums with different names. 

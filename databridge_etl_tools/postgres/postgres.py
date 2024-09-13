@@ -596,7 +596,7 @@ class Postgres():
     
     def upsert(self, method:str, staging_table:str=None, staging_schema:str=None, 
                column_mappings:str=None, mappings_file:str=None, delete_stale:bool=False): 
-        '''Upserts data from a CSV or from a table within the same database to a 
+        '''Upserts data from a CSV or from a table/view within the same database to a 
         Postgres table, which must have at least one primary key. Whether 
         upserting from a CSV or Postgres table, the keyword arguments 
         "column_mappings" or "mappings_file" may be passed with values other than 
