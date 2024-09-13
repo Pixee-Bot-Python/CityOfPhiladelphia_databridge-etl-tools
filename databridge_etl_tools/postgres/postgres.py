@@ -102,22 +102,19 @@ class Postgres():
             self.cleanup()
 
     def check_exists(self, table_name: str, schema_name:str) -> bool: 
-        '''Check if a table exists, returning True or False. 
-        - type: If None or "base" or "table", look for a BASE TABLE. If "temp" 
-        or "temporary", look for a LOCAL TEMPORARY table. 
-        '''
+        '''Check if a table or view exists, returning True or False. 
+        - `table_name`: Name of table or view
+        - `schema_name`: If not None, look for a BASE TABLE or VIEW. Otherwise 
+        look for a LOCAL TEMPORARY table. '''
         stmt = sql.SQL('''
     SELECT *
     FROM information_schema.tables
-    WHERE table_name = %s AND
-    table_type = %s''')
+    WHERE table_name = %s''')
         
         data = [table_name]
         if schema_name != None: 
             stmt += sql.SQL(' AND table_schema = %s')
-            data.extend(['BASE TABLE', self.table_schema])
-        else: 
-            data.append('LOCAL TEMPORARY')
+            data.append(self.table_schema)
         with self.conn.cursor() as cursor: 
             cursor.execute(stmt, data)
             rv = cursor.fetchone()
