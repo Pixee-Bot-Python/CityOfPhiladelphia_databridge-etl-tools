@@ -254,7 +254,7 @@ class Postgres():
         
         with open(write_file, 'r') as f: 
             # f.readline() moves cursor position out of position
-            str_header = f.readline().strip().split(',')            
+            str_header = f.readline(5_000_000).strip().split(',')            
             f.seek(0)
 
             with self.conn.cursor() as cursor:
