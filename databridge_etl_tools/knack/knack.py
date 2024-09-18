@@ -89,7 +89,7 @@ class Knack():
             headers={
                 'X-Knack-Application-Id': self.app_id,
                 'X-Knack-REST-API-KEY': self.api_key
-            })
+            }, timeout=60)
 
         data = response.json()
 
@@ -105,7 +105,7 @@ class Knack():
             headers={
                 'X-Knack-Application-Id': self.app_id,
                 'X-Knack-REST-API-KEY':  self.api_key
-            })
+            }, timeout=60)
 
         data = response.json()
 

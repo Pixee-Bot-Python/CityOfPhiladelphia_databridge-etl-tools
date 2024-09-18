@@ -39,8 +39,8 @@ class Airtable():
             request_stmt,
             headers={
                 'Authorization': f'Bearer {self.pat_token}'
-            }
-        )
+            }, 
+        timeout=60)
 
         data = response.json()
 
@@ -84,8 +84,8 @@ class Airtable():
             },
             params={
                 'offset': offset
-            }
-        )
+            }, 
+        timeout=60)
         
         data = response.json()
         yield data['records']
