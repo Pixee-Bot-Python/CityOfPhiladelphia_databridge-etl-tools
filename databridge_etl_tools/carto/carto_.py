@@ -350,7 +350,7 @@ class Carto():
             table_name=self.temp_table_name, header=str_header)
         url = USR_BASE_URL.format(user=self.user) + 'api/v2/sql/copyfrom'
         with open(write_file, 'rb') as f:
-            r = requests.post(url, params={'api_key': self.api_key, 'q': q}, data=f, stream=True)
+            r = requests.post(url, params={'api_key': self.api_key, 'q': q}, data=f, stream=True, timeout=60)
 
             if r.status_code != 200:
                 self.logger.error('Carto Write Error Response: {}'.format(r.text))
