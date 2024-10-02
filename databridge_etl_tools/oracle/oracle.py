@@ -39,16 +39,16 @@ class Oracle():
     def fields(self):
         if self._fields:
             return self._fields
-        stmt=f'''
+        stmt='''
         SELECT
             COLUMN_NAME,
             DATA_TYPE
         FROM ALL_TAB_COLUMNS
-        WHERE OWNER = '{self.table_schema.upper()}'
-        AND TABLE_NAME = '{self.table_name.upper()}'
+        WHERE OWNER = ?
+        AND TABLE_NAME = ?
         '''
         cursor = self.conn.cursor()
-        cursor.execute(stmt)
+        cursor.execute(stmt, (self.table_schema.upper(), self.table_name.upper(), ))
         self._fields = cursor.fetchall()
         return self._fields
 
@@ -248,7 +248,7 @@ class Oracle():
         self.logger.info(f'{num_rows_in_csv} == {self.row_count}')
         assert self.row_count == num_rows_in_csv, f'Row counts dont match!! extracted csv: {num_rows_in_csv}, oracle table: {self.row_count}'
 
-        self.logger.info(f'Checking row count again and comparing against csv count, this can catch large datasets that are actively updating..')
+        self.logger.info('Checking row count again and comparing against csv count, this can catch large datasets that are actively updating..')
 
         if 'OBJECTID' in self.fields:
             stmt=f'''
@@ -296,27 +296,27 @@ class Oracle():
 
         # Get columns from prod oracle table
         cursor = self.conn.cursor()
-        cols_stmt = f'''SELECT LISTAGG(column_name, ', ') WITHIN GROUP (ORDER BY column_id)
+        cols_stmt = '''SELECT LISTAGG(column_name, ', ') WITHIN GROUP (ORDER BY column_id)
                         FROM all_tab_cols
-                        WHERE table_name = '{self.table_name.upper()}'
-                        AND owner  = '{self.table_schema.upper()}'
+                        WHERE table_name = ?
+                        AND owner  = ?
                         AND column_name not like 'SYS_%'
                         '''
-        cursor.execute(cols_stmt)
+        cursor.execute(cols_stmt, (self.table_name.upper(), self.table_schema.upper(), ))
         cols = cursor.fetchall()[0][0]
         assert cols, f'Could not fetch columns, does the table exist?\n Statement: {cols_stmt}'
 
         # Becaues we're inserting into a temp table first, we need to provide the SRID. Geopetl will try to determine it for the temp table
         # and it will fail because we just made a bare, non-SDE table.
         # So, get the final table's SRID first and use it for geopetl's "insert_srid" argument.
-        srid_stmt = f'''select s.auth_srid
+        srid_stmt = '''select s.auth_srid
             from sde.layers l
             join sde.spatial_references s
             on l.srid = s.srid
-            where l.owner = '{self.table_schema.upper()}'
-            and l.table_name = '{self.table_name.upper()}'
+            where l.owner = ?
+            and l.table_name = ?
             '''
-        cursor.execute(srid_stmt)
+        cursor.execute(srid_stmt, (self.table_schema.upper(), self.table_name.upper(), ))
         response = cursor.fetchone()
         srid = response[0] if response else None
 

@@ -121,22 +121,22 @@ class Db2():
         return self._enterprise_dataset_name
 
     def confirm_table_existence(self):
-        exist_stmt = f"SELECT to_regclass('{self.enterprise_schema}.{self.enterprise_dataset_name}');"
+        exist_stmt = "SELECT to_regclass(?);"
         self.logger.info(f'Table exists statement: {exist_stmt}')
-        self.pg_cursor.execute(exist_stmt)
+        self.pg_cursor.execute(exist_stmt, ('{0}.{1}'.format(self.enterprise_schema, self.enterprise_dataset_name), ))
         table_exists_check = self.pg_cursor.fetchone()[0]
         assert table_exists_check
 
     def get_table_column_info_from_enterprise(self):
         """Queries the information_schema.columns table to get column names and data types"""
 
-        col_info_stmt = f'''
+        col_info_stmt = '''
             SELECT column_name, data_type 
             FROM information_schema.columns
-            WHERE table_schema = '{self.enterprise_schema}' and table_name = '{self.enterprise_dataset_name}'
+            WHERE table_schema = ? and table_name = ?
         '''
         self.logger.info('Running col_info_stmt: ' + col_info_stmt)
-        self.pg_cursor.execute(col_info_stmt)
+        self.pg_cursor.execute(col_info_stmt, (self.enterprise_schema, self.enterprise_dataset_name, ))
 
         # Format and transform data types:
         column_info = {i[0]: self.data_type_map.get(i[1], i[1]) for i in self.pg_cursor.fetchall()}
@@ -155,13 +155,13 @@ class Db2():
     def get_geom_column_info(self):
         """Queries the geometry_columns table to geom field and srid, then queries the sde table to get geom_type"""
 
-        get_column_name_and_srid_stmt = f'''
+        get_column_name_and_srid_stmt = '''
             select f_geometry_column, srid from geometry_columns
-            where f_table_schema = '{self.enterprise_schema}' and f_table_name = '{self.enterprise_dataset_name}'
+            where f_table_schema = ? and f_table_name = ?
         '''
         # Identify the geometry column values
         self.logger.info('Running get_column_name_and_srid_stmt' + get_column_name_and_srid_stmt)
-        self.pg_cursor.execute(get_column_name_and_srid_stmt)
+        self.pg_cursor.execute(get_column_name_and_srid_stmt, (self.enterprise_schema, self.enterprise_dataset_name, ))
 
         #col_name = self.pg_cursor.fetchall()[0]
         col_name1 = self.pg_cursor.fetchall()
@@ -210,12 +210,12 @@ class Db2():
         # Figure out if the dataset is 3D with either Z (elevation) or M ("linear referencing measures") properties
         # Grabbing this text out of the XML definition put in place by ESRI, can't find out how to do
         # it with PostGIS, doesn't seem to be a whole lot of support or awareness for these extra properties.
-        has_m_or_z_stmt = f'''
+        has_m_or_z_stmt = '''
             SELECT definition FROM sde.gdb_items
-            WHERE name = 'databridge.{self.enterprise_schema}.{self.enterprise_dataset_name}'
+            WHERE name = ?
         '''
         self.logger.info('Running has_m_or_z_stmt: ' + has_m_or_z_stmt)
-        self.pg_cursor.execute(has_m_or_z_stmt)
+        self.pg_cursor.execute(has_m_or_z_stmt, ('databridge.{0}.{1}'.format(self.enterprise_schema, self.enterprise_dataset_name), ))
         result = self.pg_cursor.fetchone()
         if result is None:
             # NO xml definition is in the sde.gdb_items yet, assume false
@@ -289,14 +289,14 @@ class Db2():
         self.pg_cursor.execute('COMMIT')
         # Make sure we were successful
         try:
-            check_stmt = f'''
+            check_stmt = '''
                 SELECT EXISTS
                     (SELECT FROM pg_tables
-                    WHERE schemaname = \'{self.staging_schema}\'
-                    AND tablename = \'{self.enterprise_dataset_name}\');
+                    WHERE schemaname = ?
+                    AND tablename = ?);
                     '''
             self.logger.info('Running check_stmt: ' + check_stmt)
-            self.pg_cursor.execute(check_stmt)
+            self.pg_cursor.execute(check_stmt, (self.staging_schema, self.enterprise_dataset_name, ))
             return_val = str(self.pg_cursor.fetchone()[0])
             assert (return_val == 'True' or return_val == 'False')
             if return_val == 'False':
@@ -344,7 +344,7 @@ class Db2():
                 #query = p[5]
                 self.logger.info(f'Killing pid: "{pid}" with lock type "{lock}"')
                 self.pg_cursor.execute(f'SELECT pg_terminate_backend({pid});')
-                self.pg_cursor.execute(f'COMMIT')
+                self.pg_cursor.execute('COMMIT')
         else:
             self.logger.info(f'No locks on table "{schema}.{table}" found.')
 
@@ -368,25 +368,25 @@ class Db2():
         else:
             stage_table = f'{self.copy_from_source_schema}.{self.table_name}'
 
-        get_enterprise_columns_stmt = f'''
+        get_enterprise_columns_stmt = '''
         SELECT array_agg(COLUMN_NAME::text order by COLUMN_NAME)
         FROM information_schema.columns
-        WHERE table_name = '{self.enterprise_dataset_name}' AND table_schema = '{self.enterprise_schema}'
+        WHERE table_name = ? AND table_schema = ?
         '''
 
         self.logger.info("Executing get_enterprise_columns_stmt: " + str(get_enterprise_columns_stmt))
-        self.pg_cursor.execute(get_enterprise_columns_stmt)
+        self.pg_cursor.execute(get_enterprise_columns_stmt, (self.enterprise_dataset_name, self.enterprise_schema, ))
         enterprise_columns = [column for column in self.pg_cursor.fetchall()[0]][0]
         # Assert we actually end up with a columns list, in case this table is messed up.
         assert enterprise_columns
 
         # Figure out what the official OBJECTID is (since there can be multiple like "OBJECTID_1")
-        get_oid_column_stmt = f'''
+        get_oid_column_stmt = '''
             SELECT rowid_column FROM sde.sde_table_registry
-            WHERE table_name = '{self.enterprise_dataset_name}' AND schema = '{self.enterprise_schema}'
+            WHERE table_name = ? AND schema = ?
             '''
         self.logger.info("Executing get_oid_column_stmt: " + str(get_oid_column_stmt))
-        self.pg_cursor.execute(get_oid_column_stmt)
+        self.pg_cursor.execute(get_oid_column_stmt, (self.enterprise_dataset_name, self.enterprise_schema, ))
         oid_column_return = self.pg_cursor.fetchone()
         # Will be used later if the table is registered. If it's not registered, set oid_column to None.
         if oid_column_return:
@@ -402,12 +402,12 @@ class Db2():
 
         ###############
         # Extra checks to see if we're registered
-        reg_stmt=f'''
+        reg_stmt='''
             SELECT registration_id FROM sde.sde_table_registry
-            WHERE schema = '{self.enterprise_schema}' AND table_name = '{self.enterprise_dataset_name}'
+            WHERE schema = ? AND table_name = ?
         '''
         self.logger.info("Running reg_stmt: " + str(reg_stmt))
-        self.pg_cursor.execute(reg_stmt)
+        self.pg_cursor.execute(reg_stmt, (self.enterprise_schema, self.enterprise_dataset_name, ))
         reg_id_return = self.pg_cursor.fetchone()
         if reg_id_return:
             if isinstance(reg_id_return, list) or isinstance(reg_id_return, tuple):
@@ -417,10 +417,10 @@ class Db2():
         else:
             reg_id = False
 
-        reg_stmt2 = f"select uuid from sde.gdb_items where LOWER(name) = 'databridge.{self.enterprise_schema}.{self.enterprise_dataset_name}';"
+        reg_stmt2 = "select uuid from sde.gdb_items where LOWER(name) = ?;"
         print(reg_stmt2)
         self.logger.info("Running reg_stmt2: " + str(reg_stmt2))
-        self.pg_cursor.execute(reg_stmt2)
+        self.pg_cursor.execute(reg_stmt2, ('databridge.{0}.{1}'.format(self.enterprise_schema, self.enterprise_dataset_name), ))
         reg_uuid_return = self.pg_cursor.fetchone()
         if isinstance(reg_uuid_return, list) or isinstance(reg_uuid_return, tuple):
             reg_uuid = reg_uuid_return[0]
@@ -431,7 +431,7 @@ class Db2():
         # Sometimes this may not exist somehow.
         seq_name = None
         if oid_column:
-            seq_stmt = f'''
+            seq_stmt = '''
             SELECT
                 S.relname AS sequence_name
             FROM
@@ -441,12 +441,12 @@ class Db2():
             JOIN pg_namespace n ON (S.relnamespace = n.oid)
             WHERE
                 S.relkind = 'S' AND
-                n.nspname = '{self.enterprise_schema}' AND
-                T.relname = '{self.enterprise_dataset_name}' AND
+                n.nspname = ? AND
+                T.relname = ? AND
                 s.relname like '%objectid_seq';
             '''
             
-            self.pg_cursor.execute(seq_stmt)
+            self.pg_cursor.execute(seq_stmt, (self.enterprise_schema, self.enterprise_dataset_name, ))
             seq_return = self.pg_cursor.fetchone()
             if not seq_return:
                 self.logger.warning(f'Could not find the objectid sequence! Ran statement: \n {seq_stmt}')
@@ -534,9 +534,9 @@ class Db2():
             # Reset these these to our row_count so next call to next_rowid() increments without collisions
             if seq_name:
                 self.logger.info("Resetting oid sequence..")
-                reset_oid_sequence_1 = f"SELECT setval('{self.enterprise_schema}.{seq_name}', 1, false)"
+                reset_oid_sequence_1 = "SELECT setval(?, 1, false)"
                 self.logger.info(reset_oid_sequence_1)
-                self.pg_cursor.execute(reset_oid_sequence_1)
+                self.pg_cursor.execute(reset_oid_sequence_1, ('{0}.{1}'.format(self.enterprise_schema, seq_name), ))
             reset_oid_sequence_2 = f"UPDATE {self.enterprise_schema}.i{reg_id} SET base_id=1, last_id={row_count} WHERE id_type = 2;"
             self.logger.info("Resetting oid column..")
             self.logger.info(reset_oid_sequence_2)
