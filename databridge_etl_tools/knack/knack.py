@@ -1,5 +1,4 @@
 
-import requests
 import csv
 import json
 import os,sys
@@ -7,6 +6,7 @@ import boto3
 import stringcase
 from datetime import datetime
 from hurry.filesize import size
+from security import safe_requests
 
 csv.field_size_limit(sys.maxsize)
 
@@ -84,7 +84,7 @@ class Knack():
         }
 
     def get_schema(self):
-        response = requests.get(
+        response = safe_requests.get(
             f'https://api.knack.com/v1/objects/{self.knack_objectid}/fields',
             headers={
                 'X-Knack-Application-Id': self.app_id,
@@ -96,7 +96,7 @@ class Knack():
         return self.convert_knack_schema(data['fields'])
 
     def get_records(self, page=1, rows_per_page=1000):
-        response = requests.get(
+        response = safe_requests.get(
             f'https://api.knack.com/v1/objects/{self.knack_objectid}/records',
             params={
                 'rows_per_page': rows_per_page,

@@ -3,11 +3,10 @@ from typing import List, Type, Optional, Dict
 import sys
 import os
 import json
-
-import requests
 import click
 import boto3
 from hurry.filesize import size
+from security import safe_requests
 
 
 class Airtable():
@@ -35,7 +34,7 @@ class Airtable():
 
         print(f'Airtable endpoint: {request_stmt}')
 
-        response = requests.get(
+        response = safe_requests.get(
             request_stmt,
             headers={
                 'Authorization': f'Bearer {self.pat_token}'
@@ -77,7 +76,7 @@ class Airtable():
                 request_stmt = request_stmt + '&fields%5B%5D=' + field
 
 
-        response = requests.get(
+        response = safe_requests.get(
             request_stmt,
             headers={
                 'Authorization': f'Bearer {self.pat_token}'

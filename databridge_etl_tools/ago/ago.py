@@ -22,6 +22,7 @@ import dateutil.parser
 import requests
 import json
 from datetime import datetime
+from security import safe_requests
 
 
 class AGO():
@@ -1486,7 +1487,7 @@ class AGO():
         check_url = f'https://services.arcgis.com/{self.ago_org_id}/ArcGIS/rest/services/{self.item_name}/FeatureServer/0?f=pjson'
         self.logger.info(f'Item defintion json URL: {check_url}')
         headers = {'Content-Type': 'application/x-www-form-urlencoded'}
-        r = requests.get(f'{check_url}&token={ago_token}', headers=headers, timeout=3600)
+        r = safe_requests.get(f'{check_url}&token={ago_token}', headers=headers, timeout=3600)
         data = r.json()
         # Pull indexes out of the feature server json definition
         ago_indexes = data['indexes']
